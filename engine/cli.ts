@@ -359,6 +359,12 @@ function human(command: string, value: unknown) {
 function humanItem(command: string, item: unknown) {
   if (!isRecord(item)) return String(item);
   if (typeof item.name === 'string' && command === 'estantes') return item.name;
+  if (typeof item.path === 'string' && Array.isArray(item.segments)) {
+    const text = item.segments
+      .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
+      .join('');
+    return `${item.path} [${item.field}] ${text}`;
+  }
   if (typeof item.path === 'string' && typeof item.workspace === 'string') return item.path;
   if (typeof item.path === 'string' && item.workspace === null) return item.path;
   if (typeof item.summary === 'string' && typeof item.origin === 'string')
@@ -367,12 +373,6 @@ function humanItem(command: string, item: unknown) {
     return `${item.status} ${item.raw}${item.path ? ` -> ${item.path}` : ''}`;
   if (typeof item.from === 'string' && typeof item.display === 'string')
     return `${item.from}: ${item.display}`;
-  if (typeof item.path === 'string' && Array.isArray(item.segments)) {
-    const text = item.segments
-      .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
-      .join('');
-    return `${item.path} [${item.field}] ${text}`;
-  }
   if (typeof item.path === 'string') return item.path;
   return JSON.stringify(item);
 }
