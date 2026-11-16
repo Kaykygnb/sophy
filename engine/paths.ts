@@ -15,6 +15,7 @@ export function contains(parent: string, child: string) {
 
 export type OpenOptions = {
   home?: string;
+  /** Mantido para chamadas antigas. Não impede abrir a biblioteca a partir de dentro dela. */
   cwd?: string;
   protectedPaths?: string[];
 };
@@ -57,12 +58,12 @@ export function openLibraryRoot(folder: string, options: OpenOptions = {}) {
 
 function assertNotProtected(root: string, options: OpenOptions) {
   const home = options.home ? path.resolve(options.home) : os.homedir();
-  const cwd = path.resolve(options.cwd ?? process.cwd());
   const protectedPaths = [
     ...defaultProtectedPaths(home),
     ...(options.protectedPaths ?? []).map((entry) => path.resolve(entry)),
   ];
-  if (contains(root, home) || contains(root, cwd))
+  // A pasta de trabalho pode estar dentro da biblioteca. A CLI depende disso.
+  if (contains(root, home))
     throw new EngineError(
       'protected',
       'Essa pasta é protegida. Escolha uma pasta dedicada à biblioteca.',
