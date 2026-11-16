@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
+    />
+    <title>Sophy — Bibliotecas</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="design-system.css" />
+    <link rel="stylesheet" href="visual.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <div class="app-brand">
+          <img class="brand-mark" src="../assets/sophy.svg" alt="" />
+          <strong>Sophy</strong>
+        </div>
+        <button id="worldNav" class="header-action" type="button" aria-label="Abrir bibliotecas">
+          Bibliotecas
+        </button>
+        <span id="breadcrumb">Estantes</span>
+        <div class="header-end">
+          <button
+            id="commandButton"
+            class="icon-button"
+            type="button"
+            aria-label="Abrir comandos"
+            title="Comandos (Ctrl+K)"
+          ></button>
+          <span class="device-label">Neste computador</span>
+          <button
+            id="themeToggle"
+            class="icon-button theme-toggle"
+            type="button"
+            aria-label="Ativar tema escuro"
+            title="Ativar tema escuro"
+          >
+            ◐
+          </button>
+          <button
+            id="settingsButton"
+            class="icon-button"
+            type="button"
+            aria-label="Configurações"
+            title="Configurações"
+          ></button>
+        </div>
+      </header>
+      <main id="content" tabindex="-1"></main>
+      <div id="notice" role="status" aria-live="polite" hidden></div>
+    </div>
+    <dialog id="modal" aria-labelledby="modalTitle">
+      <form id="modalForm">
+        <button type="button" class="modal-close" id="closeModal" aria-label="Fechar">×</button>
+        <div id="modalSymbol" class="modal-symbol" aria-hidden="true">▦</div>
+        <h2 id="modalTitle"></h2>
+        <p id="modalDescription"></p>
+        <div id="modalFields"></div>
+        <p id="modalError" role="alert"></p>
+        <div class="modal-actions">
+          <button type="button" class="button secondary" id="cancelModal">Cancelar</button
+          ><button type="submit" class="button primary" id="submitModal">Continuar</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="palette" class="palette-dialog" aria-label="Paleta de comandos">
+      <div class="palette-shell">
+        <input id="paletteInput" type="search" autocomplete="off" spellcheck="false" />
+        <div id="paletteList" role="listbox"></div>
+        <p id="paletteHint" class="palette-hint"></p>
+      </div>
+    </dialog>
+    <dialog id="graphDialog" class="graph-dialog" aria-label="Mapa de links">
+      <div class="graph-shell">
+        <header class="graph-header">
+          <div>
+            <p class="eyebrow">MAPA DE LINKS</p>
+            <h2 id="graphTitle">Conexões desta estante</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button"
+            id="closeGraph"
+            aria-label="Fechar mapa"
+          ></button>
+        </header>
+        <div class="graph-body">
+          <aside class="graph-controls" aria-label="Opções do grafo">
+            <input
+              id="graphSearch"
+              type="search"
+              placeholder="Buscar nota…"
+              aria-label="Buscar nota no grafo"
+            />
+            <label><input id="graphLabels" type="checkbox" checked /> Mostrar nomes</label>
+            <label><input id="graphIsolated" type="checkbox" checked /> Notas sem conexões</label>
+            <div class="graph-zoom" role="group" aria-label="Zoom do grafo">
+              <button
+                id="graphZoomOut"
+                type="button"
+                class="icon-button"
+                aria-label="Diminuir zoom"
+              >
+                −
+              </button>
+              <button id="graphFit" type="button" class="button secondary">Enquadrar</button>
+              <button id="graphZoomIn" type="button" class="icon-button" aria-label="Aumentar zoom">
+                +
+              </button>
+            </div>
+            <p>
+              As linhas vêm dos links entre suas notas. Selecione uma nota para abri-la no editor.
+            </p>
+          </aside>
+          <div
+            id="graphCanvas"
+            class="graph-canvas"
+            role="region"
+            aria-label="Conexões entre notas"
+            aria-live="polite"
+          ></div>
+        </div>
+        <p id="graphMeta" class="graph-meta"></p>
+      </div>
+    </dialog>
+    <script src="appearance.js"></script>
+    <script src="icons.js"></script>
+    <script src="note-links.js"></script>
+    <script src="note-templates.js"></script>
+    <script src="palette.js"></script>
+    <script src="canvas-board.js"></script>
+    <script src="explorer.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>

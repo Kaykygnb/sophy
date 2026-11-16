@@ -1,0 +1,7 @@
+node_modules/
+test-results/
+playwright-report/
+src/editor/marked.js
+src/editor/MARKED-LICENSE
+package-lock.json
+assets/
