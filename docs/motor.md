@@ -114,6 +114,37 @@ A biblioteca é `--biblioteca <caminho>`, ou a variável `SOPHY_LIBRARY`, ou a p
 
 A saída humana é o padrão. `--json` sozinho imprime o resultado para máquina. `--json '{...}'` envia o objeto da tool e também imprime JSON. Código 0 é sucesso, 1 é erro de uso, 2 é erro do motor (conflito de revisão ou link ambíguo).
 
+## MCP
+
+`sophy mcp` sobe um servidor stdio com o SDK `@modelcontextprotocol/sdk`. As tools são as do registro: o schema anunciado sai do Zod, sem uma segunda implementação. O servidor usa a mesma descoberta de biblioteca da CLI (`--biblioteca`, `SOPHY_LIBRARY` ou a pasta `.sophy` acima). `libraryPath` e `path` de `library.open` enviados pelo cliente são ignorados, para o processo não ser apontado a outra pasta. Toda mutação grava `origin: "mcp"`, mesmo que o input peça outra origem.
+
+Conflito de revisão, link ambíguo e caminho proibido voltam como resultado de erro do MCP, com a mensagem em texto. Não há tool de chave de API nem de configuração sensível.
+
+Notas são resources `sophy://nota/<caminho>`, por exemplo `sophy://nota/Estudos/Nota.md`.
+
+`ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` estão no registro. Elas publicam num canal em processo (`subscribeUi`). Sem a interface assinando esse canal, a resposta é `A interface não está aberta.` A janela entra na etapa 5.
+
+Exemplo para Claude Desktop ou Cursor:
+
+```json
+{
+  "mcpServers": {
+    "sophy": {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "/caminho/absoluto/do/sophy/engine/cli.ts",
+        "mcp",
+        "--biblioteca",
+        "/caminho/da/biblioteca"
+      ]
+    }
+  }
+}
+```
+
+O bin `sophy mcp --biblioteca /caminho/da/biblioteca` é equivalente.
+
 ## Testes
 
 Na raiz do repositório, com Node 22:

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { EngineError } from './errors.ts';
+import { serveMcp } from './mcp.ts';
 import { callTool, tools } from './tools.ts';
 
 type Io = {
@@ -49,7 +50,7 @@ const SHORTCUTS = new Set([
   'help',
 ]);
 
-export function execute(argv: string[], io: Io): number {
+export async function execute(argv: string[], io: Io): Promise<number> {
   try {
     const parsed = parseArgv(argv);
     if (!parsed.command || parsed.command === 'help') {
@@ -59,6 +60,11 @@ export function execute(argv: string[], io: Io): number {
     }
     if (parsed.command === 'tools') {
       for (const tool of tools) io.stdout(`${tool.name} — ${tool.description}\n`);
+      return 0;
+    }
+    if (parsed.command === 'mcp') {
+      if (parsed.positionals.length) throw new CliError('Uso: sophy mcp [--biblioteca <pasta>]', 1);
+      await serveMcp(findLibrary(io, parsed.biblioteca));
       return 0;
     }
     if (parsed.command === 'init') return initLibrary(parsed, io);
@@ -408,6 +414,7 @@ Uso:
   sophy desfazer
   sophy tools
   sophy help <tool>
+  sophy mcp
   sophy <tool> [--campo valor] [--json '{...}']
 
 A biblioteca vem de --biblioteca, de SOPHY_LIBRARY, ou da pasta atual
@@ -489,14 +496,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
 const isDirectRun = entry !== '' && import.meta.url === pathToFileURL(entry).href;
 if (isDirectRun) {
-  const code = execute(process.argv.slice(2), {
-    cwd: process.cwd(),
-    env: process.env,
-    stdin: wantsStdin(process.argv.slice(2)) ? fs.readFileSync(0, 'utf8') : '',
-    stdout: (text) => process.stdout.write(text),
-    stderr: (text) => process.stderr.write(text),
-  });
-  process.exit(code);
+  Promise.resolve(
+    execute(process.argv.slice(2), {
+      cwd: process.cwd(),
+      env: process.env,
+      stdin: wantsStdin(process.argv.slice(2)) ? fs.readFileSync(0, 'utf8') : '',
+      stdout: (text) => process.stdout.write(text),
+      stderr: (text) => process.stderr.write(text),
+    }),
+  ).then(
+    (code) => process.exit(code),
+    (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Falha inesperada.';
+      process.stderr.write(`${message}\n`);
+      process.exit(2);
+    },
+  );
 }
 
 function wantsStdin(argv: string[]) {
