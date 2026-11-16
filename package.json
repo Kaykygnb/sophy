@@ -31,6 +31,9 @@
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
+  "bin": {
+    "sophy": "engine/bin/sophy"
+  },
   "productName": "Sophy",
   "build": {
     "appId": "app.sophy.desktop",

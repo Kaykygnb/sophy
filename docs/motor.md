@@ -86,7 +86,33 @@ A gravação usa arquivo temporário, `fsync` e `rename`. O caminho relativo nã
 
 A lixeira segue o layout do Freedesktop (`files/` e `info/`). Se o movimento falha, o original fica onde está. Não há exclusão permanente.
 
-Ao abrir a biblioteca, o motor recusa a própria home, um ancestral da home, a pasta do processo e diretórios protegidos (`.ssh`, `.config`, `.local`, `.gnupg`, `.codex`). A pasta da biblioteca não precisa estar dentro da home: o chamador entrega o caminho. Isso permite testes em diretório temporário e uma pasta escolhida fora do perfil.
+Ao abrir a biblioteca, o motor recusa a própria home, um ancestral da home e diretórios protegidos (`.ssh`, `.config`, `.local`, `.gnupg`, `.codex`). A pasta de trabalho pode ficar dentro da biblioteca, que é o uso normal da CLI. A pasta da biblioteca não precisa estar dentro da home: o chamador entrega o caminho. Isso permite testes em diretório temporário e uma pasta escolhida fora do perfil.
+
+## CLI
+
+O comando `sophy` fica em `engine/bin/sophy`. Ele roda o TypeScript com Node 22 e `--experimental-strip-types`, sem compilação. Não há lógica própria de nota: a CLI só interpreta argumentos, chama `callTool` e formata a saída. Toda alteração passa `origin: "cli"`, mesmo que o JSON de entrada diga outra origem.
+
+```bash
+sophy init ~/Notas
+sophy estantes
+sophy nova Estudos/Ideia --texto "Um [[ começo"
+sophy ler Estudos/Ideia
+sophy buscar gato
+sophy links Estudos/Ideia
+sophy backlinks Estudos/Ideia
+sophy mover Estudos/Ideia.md Livro/Ideia.md
+sophy lixeira Livro/Ideia.md
+sophy grafo --json
+sophy historico
+sophy desfazer
+sophy tools
+sophy help note.read
+sophy note.list --json
+```
+
+A biblioteca é `--biblioteca <caminho>`, ou a variável `SOPHY_LIBRARY`, ou a primeira pasta acima do diretório atual que contém `.sophy`. `sophy init` cria essa pasta oculta. Sem extensão, `nova`, `ler`, `links` e `backlinks` acrescentam `.md`. `--texto -` lê o corpo da entrada padrão.
+
+A saída humana é o padrão. `--json` sozinho imprime o resultado para máquina. `--json '{...}'` envia o objeto da tool e também imprime JSON. Código 0 é sucesso, 1 é erro de uso, 2 é erro do motor (conflito de revisão ou link ambíguo).
 
 ## Testes
 
