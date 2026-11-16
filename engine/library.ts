@@ -91,7 +91,50 @@ export function listNotes(library: Library, workspace?: string): NoteInfo[] {
 
 /** Canvas e anexos. O conteúdo não é interpretado: `.canvas` continua JSON Canvas; o resto são bytes. */
 export function listFiles(library: Library, workspace?: string): FileInfo[] {
-  return walkFiles(library, workspace).filter((file) => file.kind !== 'note');
+  return walkFiles(library, workspace).filter((file): file is FileInfo => file.kind !== 'note');
+}
+
+export function listDirectories(library: Library): string[] {
+  const directories: string[] = [];
+  let count = 0;
+  const visit = (directory: string, prefix: string, depth: number) => {
+    if (depth > MAX_TREE_DEPTH)
+      throw new EngineError('too-large', 'A biblioteca ultrapassou o limite de 40 níveis.');
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.isSymbolicLink() || !entry.isDirectory()) continue;
+      if (++count > MAX_TREE_ENTRIES)
+        throw new EngineError('too-large', 'A biblioteca ultrapassou o limite de 20 mil itens.');
+      const relative = prefix ? prefix + '/' + entry.name : entry.name;
+      directories.push(relative);
+      visit(path.join(directory, entry.name), relative, depth + 1);
+    }
+  };
+  visit(library.root, '', 1);
+  return directories.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+}
+
+export function readText(library: Library, relative: string) {
+  const full = resolveInside(library.root, relative);
+  const stat = fs.lstatSync(full);
+  if (stat.isSymbolicLink() || !stat.isFile())
+    throw new EngineError('invalid-path', 'O item não é um arquivo.');
+  if (stat.size > MAX_NOTE_BYTES) throw new EngineError('too-large', 'O arquivo passa de 8 MB.');
+  const content = fs.readFileSync(full, 'utf8');
+  return { content, revision: revisionOf(content) };
+}
+
+export function writeText(
+  library: Library,
+  relative: string,
+  content: string,
+  expectedRevision: string,
+) {
+  assertSize(content);
+  const current = readText(library, relative);
+  if (current.revision !== expectedRevision)
+    return { conflict: true as const, revision: current.revision };
+  atomicWrite(library, relative, content, expectedRevision);
+  return { conflict: false as const, revision: revisionOf(content) };
 }
 
 export function readNote(library: Library, relative: string): NoteDocument {
@@ -150,7 +193,9 @@ export function writeNote(
     input.frontmatter === undefined ? parts.prefix : prefixFromFrontmatter(input.frontmatter);
   const content = composeMarkdown({ bom: parts.bom, prefix, body: input.body });
   assertSize(content);
-  return atomicReplace(library, relative, content, input.expectedRevision);
+  const written = writeText(library, relative, content, input.expectedRevision);
+  if (written.conflict) return { conflict: true, current: readNote(library, relative) };
+  return { conflict: false, note: readNote(library, relative) };
 }
 
 export function moveEntry(library: Library, source: string, target: string) {
@@ -183,12 +228,12 @@ export function trashEntry(library: Library, relative: string, options?: TrashOp
   return { path: relative, trashed: true, trashPath: trashed.trashPath };
 }
 
-function atomicReplace(
+function atomicWrite(
   library: Library,
   relative: string,
   content: string,
   expectedRevision: string,
-): WriteResult {
+) {
   const full = resolveInside(library.root, relative);
   const stat = fs.statSync(full);
   const temp = path.join(path.dirname(full), '.sophy-save-' + randomUUID());
@@ -200,13 +245,12 @@ function atomicReplace(
     } finally {
       fs.closeSync(fd);
     }
-    const current = readNote(library, relative);
-    if (current.revision !== expectedRevision) return { conflict: true, current };
+    if (readText(library, relative).revision !== expectedRevision)
+      throw new EngineError('conflict', 'O arquivo mudou durante a gravação.');
     fs.renameSync(temp, full);
   } finally {
     if (fs.existsSync(temp)) fs.unlinkSync(temp);
   }
-  return { conflict: false, note: readNote(library, relative) };
 }
 
 function noteFrom(
