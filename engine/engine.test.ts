@@ -268,6 +268,7 @@ test('a tool grava [[ sem escape e preserva o frontmatter quando ele é omitido'
       path: 'Estudos/Diario.md',
       body: '---\n',
       frontmatter: { tags: ['dia'] },
+      origin: 'ui',
     });
     const read = callTool('note.read', { libraryPath: root, path: 'Estudos/Diario.md' }) as {
       body: string;
@@ -282,6 +283,7 @@ test('a tool grava [[ sem escape e preserva o frontmatter quando ele é omitido'
       path: 'Estudos/Diario.md',
       body: '[[',
       expectedRevision: read.revision,
+      origin: 'ui',
     }) as { conflict: boolean; note: { body: string } };
     assert.equal(written.conflict, false);
     assert.equal(written.note.body, '[[');
@@ -293,8 +295,9 @@ test('a tool grava [[ sem escape e preserva o frontmatter quando ele é omitido'
       libraryPath: root,
       from: 'Estudos/Diario.md',
       to: 'Estudos/Amanha.md',
+      origin: 'cli',
     });
-    callTool('entry.trash', { libraryPath: root, path: 'Estudos/Amanha.md' });
+    callTool('entry.trash', { libraryPath: root, path: 'Estudos/Amanha.md', origin: 'mcp' });
     assert.equal(fs.existsSync(path.join(root, 'Estudos', 'Amanha.md')), false);
     assert.equal(fs.readdirSync(path.join(xdg, 'Trash', 'files')).length, 1);
   } finally {
