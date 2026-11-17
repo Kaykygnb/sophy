@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { agentConfirmation, runAgentTurn } from './agent.ts';
 import { importVault } from './extras.ts';
 import { queryGraph } from './graph.ts';
+import { capture, diff, pushHistory, undoLast } from './history.ts';
 import { createNote, listNotes, openLibrary } from './library.ts';
 import { backlinks } from './links.ts';
 import { exportSite, listVersions, saveVersionPoint } from './study.ts';
@@ -140,6 +141,21 @@ test('o MCP somente leitura recusa note.create', async () => {
   } finally {
     await client.close();
   }
+});
+
+test('apagar pelo sistema entra no histórico e o desfazer restaura', () => {
+  const opened = library();
+  createNote(opened, 'Nota.md', '# Nota\n\nAntes.\n');
+  const before = capture(opened);
+  fs.rmSync(path.join(opened.root, 'Nota.md'));
+  pushHistory(opened, {
+    origin: 'ui',
+    tool: 'entry.trash',
+    summary: 'Lixeira Nota.md',
+    changes: diff(before, capture(opened)),
+  });
+  undoLast(opened);
+  assert.match(fs.readFileSync(path.join(opened.root, 'Nota.md'), 'utf8'), /Antes/);
 });
 
 test('a pasta de presença dos testes não é a compartilhada', () => {
