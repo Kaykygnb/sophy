@@ -540,7 +540,10 @@ function paintTree() {
       if (event.target.closest('input')) return;
       state.treeFocus = 'shelf';
       state.selectedShelf = button.dataset.shelf;
+      state.view = 'shelf';
+      state.active = null;
       paintTree();
+      paintCenter();
     };
   });
   bindNameField(
@@ -641,6 +644,16 @@ function paintTabs() {
 function paintCenter() {
   const center = $('#centro');
   if (!center) return;
+  if (state.view === 'shelf') {
+    const notes = state.notes.filter((note) => note.workspace === state.selectedShelf);
+    const boards = state.canvases.filter((file) => file.workspace === state.selectedShelf);
+    center.innerHTML = notes.length || boards.length
+      ? `<div class="vazio-ensina"><h2>${escapeHtml(state.selectedShelf)}</h2><p>${notes.length} notas · ${boards.length} canvas</p></div>`
+      : `<div class="vazio-estante vazio-ensina"><h2>${escapeHtml(state.selectedShelf)} está vazia</h2><p>Crie a primeira nota desta estante, ou um canvas, pelo botão Novo.</p><button type="button" class="btn btn--primario" id="estante-nova-nota">${icon('nota-nova')} Nova nota aqui</button></div>`;
+    const create = $('#estante-nova-nota');
+    if (create) create.onclick = () => createNote();
+    return;
+  }
   if (state.view === 'soon') {
     center.innerHTML = `<div class="vazio-ensina"><h2>${escapeHtml(state.soonTitle || 'Em seguida')}</h2><p>Esta tela entra na próxima etapa. As notas continuam Markdown.</p></div>`;
     return;
@@ -707,7 +720,7 @@ function paintCenter() {
   $('#coluna')
     ?.querySelectorAll('[data-menu]')
     .forEach((button) => {
-      button.onclick = () => openSlashAt(Number(button.dataset.menu));
+      button.onclick = (event) => openBlockMenu(event.currentTarget, Number(button.dataset.menu));
     });
   $('#coluna')
     .querySelectorAll('[data-target]')
@@ -1613,7 +1626,8 @@ function openLibraryMenu(anchor) {
     `<div class="menu__sep"></div>
     <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
     <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
-    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>`;
+    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>
+    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('mostrar-pasta')} Mostrar no Explorer</button>`;
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
@@ -1636,6 +1650,10 @@ function openLibraryMenu(anchor) {
   menu.querySelector('[data-acao="remover"]').onclick = () => {
     closeMenus();
     forgetLibrary();
+  };
+  menu.querySelector('[data-acao="revelar"]').onclick = () => {
+    closeMenus();
+    sophy.libraryReveal(state.libraryPath);
   };
 }
 
@@ -1695,6 +1713,49 @@ async function applyLibrary(root, libraries) {
   paintCenter();
   paintLinks();
   paintStatus();
+}
+
+function openBlockMenu(anchor, index) {
+  closeMenus();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu--bloco menu-flutuante';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = [
+    ['titulo', 'titulo', 'Transformar em título'],
+    ['lista', 'lista', 'Transformar em lista'],
+    ['tarefa', 'tarefa', 'Transformar em tarefa'],
+    ['apagar', 'lixeira', 'Excluir bloco'],
+  ]
+    .map(
+      ([id, glyph, label]) =>
+        `<button type="button" class="menu__item" role="menuitem" data-bloco="${id}">${icon(glyph)} ${label}</button>`,
+    )
+    .join('');
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.right + 4}px`;
+  menu.style.top = `${rect.top}px`;
+  menu.querySelectorAll('[data-bloco]').forEach((button) => {
+    button.onclick = () => {
+      const action = button.dataset.bloco;
+      closeMenus();
+      const block = state.doc.blocks[index];
+      const text = Doc.visibleOf(block);
+      if (action === 'apagar') {
+        const blocks = state.doc.blocks.filter((_, position) => position !== index);
+        state.doc = { ...state.doc, blocks, body: blocks.map((item) => item.raw).join('') };
+      } else if (action === 'titulo') {
+        state.doc = Doc.withBlockRaw(state.doc, index, `# ${text}\n`);
+      } else if (action === 'lista') {
+        state.doc = Doc.withBlockRaw(state.doc, index, `- ${text}\n`);
+      } else if (action === 'tarefa') {
+        state.doc = Doc.withBlockRaw(state.doc, index, `- [ ] ${text}\n`);
+      }
+      paintCenter();
+      scheduleSave();
+    };
+  });
 }
 
 function openSlashAt(index) {
@@ -2146,23 +2207,33 @@ function openPalette() {
   const input = $('#paleta-q');
   input.focus();
   const render = async () => {
-    const query = input.value.trim();
+    const raw = input.value;
+    const commandMode = raw.trimStart().startsWith('>');
+    const query = (commandMode ? raw.trimStart().slice(1) : raw).trim();
     let hits = [];
-    if (query.length >= 2) {
+    if (!commandMode && query.length >= 2) {
       try {
         hits = await tool('search.query', { query });
       } catch {
         hits = [];
       }
+      const canvases = state.canvases.filter((file) =>
+        file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+      );
+      hits = hits.concat(
+        canvases.map((file) => ({
+          path: file.path,
+          title: baseName(file.path),
+          workspace: file.workspace,
+          kind: 'canvas',
+          segments: [],
+        })),
+      );
     }
     const list = $('#paleta-lista');
-    const commands = [
-      { label: 'Nova nota', run: () => createNote() },
-      { label: 'Mostrar grafo', run: () => showGraph() },
-      { label: 'Alternar tema', run: () => toggleTheme() },
-    ].filter(
-      (item) => !query || item.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-    );
+    const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
+      .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+      .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
     list.innerHTML =
       (hits.length ? '<div class="menu__grupo">Notas</div>' : '') +
       hits
@@ -2177,7 +2248,7 @@ function openPalette() {
           const dot = shelf?.color
             ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
             : '';
-          return `<button type="button" class="menu__item" data-hit="${index}" ${index === 0 ? 'aria-selected="true"' : ''}>${icon('nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
+          return `<button type="button" class="menu__item" data-hit="${index}" ${index === 0 ? 'aria-selected="true"' : ''}>${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
         })
         .join('') +
       (commands.length ? '<div class="menu__grupo">Comandos</div>' : '') +
@@ -2193,7 +2264,9 @@ function openPalette() {
     list.querySelectorAll('[data-hit]').forEach((button) => {
       button.onclick = () => {
         closePalette();
-        openNote(hits[Number(button.dataset.hit)].path);
+        const hit = hits[Number(button.dataset.hit)];
+        if (hit.kind === 'canvas' || String(hit.path).toLowerCase().endsWith('.canvas')) openCanvas(hit.path);
+        else openNote(hit.path);
       };
     });
     list.querySelectorAll('[data-cmd]').forEach((button) => {

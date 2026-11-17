@@ -684,10 +684,22 @@ button.arvore__linha[aria-selected='true'] {
   opacity: 1;
   background: var(--hover);
 }
-.bloco[data-dica='1']:not(:focus)::before {
-  content: 'Digite / para comandos';
+.bloco[data-dica='1']:focus::before {
+  content: attr(data-placeholder);
   color: var(--ink-3);
   pointer-events: none;
+}
+.bloco-alca {
+  position: absolute;
+  left: -52px;
+  top: 2px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+.bloco-linha:hover .bloco-alca,
+.bloco-linha:focus-within .bloco-alca {
+  opacity: 1;
 }
 .barra-formato {
   position: fixed;
