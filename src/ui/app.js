@@ -469,7 +469,7 @@ function paintTree() {
             state.renaming?.kind === 'note' && state.renaming.path === note.path
               ? `<input class="arvore__renomear" data-rename="note" value="${escapeHtml(baseName(note.path))}" aria-label="Nome da nota" />`
               : `<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span>`;
-          return `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${note.path === state.active}">
+          return `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}">
             ${icon('nota')}${label}</button></li>`;
         })
         .join('');
@@ -478,14 +478,14 @@ function paintTree() {
         .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
         .map(
           (file) =>
-            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${file.path === state.canvasPath}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
+            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
         )
         .join('');
       const shelfLabel =
         state.renaming?.kind === 'shelf' && state.renaming.name === workspace.name
           ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
-      return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${workspace.name === state.selectedShelf}" aria-expanded="true"${color}>
+      return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
@@ -495,7 +495,7 @@ function paintTree() {
     .map(
       (
         note,
-      ) => `<li><button type="button" class="arvore__linha" data-open="${escapeHtml(note.path)}" aria-selected="${note.path === state.active}">
+      ) => `<li><button type="button" class="arvore__linha" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}">
         ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
     )
     .join('');
@@ -520,6 +520,7 @@ function paintTree() {
   host.querySelectorAll('[data-shelf]').forEach((button) => {
     button.onclick = (event) => {
       if (event.target.closest('input')) return;
+      state.treeFocus = 'shelf';
       state.selectedShelf = button.dataset.shelf;
       paintTree();
     };
@@ -693,6 +694,12 @@ function paintCenter() {
     .forEach((button) => {
       button.onclick = () => cycleTask(Number(button.dataset.task));
     });
+  if (state.caret) {
+    const caret = state.caret;
+    state.caret = null;
+    const target = document.querySelector(`[data-block="${caret.index}"]`);
+    if (target) placeCaret(target, caret.offset);
+  }
   if (state.selectTitle) {
     state.selectTitle = false;
     const title = $('#coluna .bloco--titulo');
@@ -782,6 +789,7 @@ function inlineHtml(text) {
 function bindBlock(el) {
   el.addEventListener('input', () => onBlockInput(el));
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
+  el.addEventListener('paste', (event) => onBlockPaste(event, el));
   el.addEventListener('blur', () => {
     if (state.wrapping) return;
     closeMenus();
@@ -822,6 +830,7 @@ function readEditable(el) {
     if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
     else if (node.dataset && node.dataset.raw) text += node.dataset.raw;
     else if (node.tagName === 'BR') text += '\n';
+    else if (node.tagName === 'DIV' || node.tagName === 'P') text += `\n${node.textContent}`;
     else text += node.textContent;
   }
   return text;
@@ -844,34 +853,174 @@ function onBlockInput(el) {
 }
 
 function onBlockKey(event, el) {
+  const menu = $('.menu-flutuante');
   if (event.key === 'Escape') {
     const text = readEditable(el);
     slash.dismiss(text, modelOffset(el));
     closeMenus();
     event.preventDefault();
+    return;
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
     event.preventDefault();
     saveNow();
+    return;
   }
-  const menu = $('.menu-flutuante');
-  if (!menu) return;
-  const items = [...menu.querySelectorAll('[role="option"], .menu__item')];
-  const current = items.findIndex((item) => item.getAttribute('aria-selected') === 'true');
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'b') {
     event.preventDefault();
-    const next = event.key === 'ArrowDown' ? current + 1 : current - 1;
-    items.forEach((item, position) =>
-      item.setAttribute(
-        'aria-selected',
-        position === (next + items.length) % items.length ? 'true' : 'false',
-      ),
-    );
+    formatBlock(el, '**', '**');
+    return;
   }
-  if (event.key === 'Enter' && current >= 0) {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'i') {
     event.preventDefault();
-    items[current].click();
+    formatBlock(el, '*', '*');
+    return;
   }
+  if (menu && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter')) {
+    const items = [...menu.querySelectorAll('[role="option"], .menu__item')];
+    const current = items.findIndex((item) => item.getAttribute('aria-selected') === 'true');
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = event.key === 'ArrowDown' ? current + 1 : current - 1;
+      items.forEach((item, position) =>
+        item.setAttribute(
+          'aria-selected',
+          position === (next + items.length) % items.length ? 'true' : 'false',
+        ),
+      );
+    }
+    if (event.key === 'Enter' && current >= 0) {
+      event.preventDefault();
+      items[current].click();
+    }
+    return;
+  }
+  const index = Number(el.dataset.block);
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const offset = modelOffset(el);
+    const result = event.shiftKey
+      ? Doc.insertInBlock(state.doc, index, offset, '\n')
+      : Doc.splitBlock(state.doc, index, offset);
+    state.doc = result.doc;
+    state.caret = result.caret;
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  if (event.key === 'Backspace' && modelOffset(el) === 0 && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault();
+    const result = Doc.joinBlocks(state.doc, index);
+    state.doc = result.doc;
+    state.caret = result.caret;
+    paintCenter();
+    scheduleSave();
+  }
+}
+
+function onBlockPaste(event, el) {
+  const text = event.clipboardData?.getData('text/plain');
+  if (!text) return;
+  event.preventDefault();
+  const index = Number(el.dataset.block);
+  const offset = modelOffset(el);
+  const result = text.includes('\n')
+    ? Doc.pasteLines(state.doc, index, offset, text)
+    : Doc.insertInBlock(state.doc, index, offset, text);
+  state.doc = result.doc;
+  state.caret = result.caret;
+  paintCenter();
+  scheduleSave();
+}
+
+function formatBlock(el, prefix, suffix) {
+  const index = Number(el.dataset.block);
+  const range = selectionOffsets(el);
+  const result = Doc.wrapBlock(state.doc, index, range.start, range.end, prefix, suffix);
+  state.wrapping = true;
+  state.doc = result.doc;
+  state.caret = result.caret;
+  setTimeout(() => {
+    paintCenter();
+    saveNow();
+    state.wrapping = false;
+  }, 0);
+}
+
+function selectionOffsets(el) {
+  const selection = getSelection();
+  if (!selection?.rangeCount) {
+    const end = readEditable(el).length;
+    return { start: end, end };
+  }
+  const range = selection.getRangeAt(0);
+  const start = offsetAt(el, range.startContainer, range.startOffset);
+  const end = offsetAt(el, range.endContainer, range.endOffset);
+  return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
+function offsetAt(el, node, offset) {
+  let count = 0;
+  let found = false;
+  const walk = (current) => {
+    if (found) return;
+    if (current === node) {
+      if (current.nodeType === Node.TEXT_NODE) count += Math.min(offset, current.textContent.length);
+      found = true;
+      return;
+    }
+    if (current.nodeType === Node.TEXT_NODE) {
+      count += current.textContent.length;
+      return;
+    }
+    if (current.dataset && current.dataset.raw) {
+      count += current.dataset.raw.length;
+      if (current.contains(node)) found = true;
+      return;
+    }
+    if (current.tagName === 'BR') count += 1;
+    for (const child of current.childNodes) walk(child);
+  };
+  walk(el);
+  return count;
+}
+
+function placeCaret(el, offset) {
+  el.focus();
+  const selection = getSelection();
+  const range = document.createRange();
+  let left = offset;
+  const walk = (current) => {
+    if (left < 0) return true;
+    if (current.nodeType === Node.TEXT_NODE) {
+      if (left <= current.textContent.length) {
+        range.setStart(current, left);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
+      left -= current.textContent.length;
+      return false;
+    }
+    if (current.dataset && current.dataset.raw) {
+      left -= current.dataset.raw.length;
+      return false;
+    }
+    if (current.tagName === 'BR') {
+      left -= 1;
+      return false;
+    }
+    for (const child of current.childNodes) {
+      if (walk(child)) return true;
+    }
+    return false;
+  };
+  if (!walk(el)) {
+    range.selectNodeContents(el);
+    range.collapse(false);
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function showSlash(el, found) {
@@ -1089,6 +1238,7 @@ async function saveNow() {
 async function openCanvas(file) {
   const canvas = await tool('canvas.read', { path: file });
   state.view = 'canvas';
+  state.treeFocus = 'canvas';
   state.canvasPath = canvas.path;
   state.canvasDoc = canvas.document;
   state.canvasRevision = canvas.revision;
@@ -1166,6 +1316,7 @@ async function openNote(file, options = {}) {
   if (state.active && state.doc && !state.conflict && state.active !== file) await saveNow();
   const note = await tool('note.read', { path: file });
   state.active = note.path;
+  state.treeFocus = 'note';
   state.view = 'note';
   state.doc = Doc.parseDocument(note.body);
   state.revision = note.revision;

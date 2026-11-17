@@ -36,6 +36,15 @@ test('a prévia do cartão não mostra o Markdown cru da tarefa', () => {
   assert.equal(html.includes('⏫'), false);
 });
 
+test('a árvore marca só o item ativo', () => {
+  const both = { active: 'Estudos/Leitura.md', selectedShelf: 'Estudos', canvasPath: null };
+  assert.equal(commands.treeMarked('note', 'Estudos/Leitura.md', both), true);
+  assert.equal(commands.treeMarked('shelf', 'Estudos', both), false);
+  const shelf = { ...both, treeFocus: 'shelf' };
+  assert.equal(commands.treeMarked('shelf', 'Estudos', shelf), true);
+  assert.equal(commands.treeMarked('note', 'Estudos/Leitura.md', shelf), false);
+});
+
 test('a estante conhecida tem ícone fixo e a nota fica no nível 2', () => {
   assert.equal(commands.shelfMark('Estudos').icon, 'capelo');
   assert.equal(commands.shelfMark('Diário').icon, 'nota-diaria');

@@ -248,6 +248,14 @@
     return chunks.join('');
   }
 
+  function treeMarked(kind, id, focus = {}) {
+    const mode =
+      focus.treeFocus || (focus.active ? 'note' : focus.canvasPath ? 'canvas' : 'shelf');
+    if (mode === 'shelf') return kind === 'shelf' && id === focus.selectedShelf;
+    if (mode === 'canvas') return kind === 'canvas' && id === focus.canvasPath;
+    return kind === 'note' && id === focus.active;
+  }
+
   function noteIndent(path) {
     const depth = String(path || '')
       .split('/')
@@ -376,6 +384,7 @@
     shelfMark,
     kitTaskStatus,
     taskBlockClass,
+    treeMarked,
     notePreviewHtml,
     noteIndent,
     uniqueTitle,

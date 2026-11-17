@@ -231,6 +231,138 @@
     return raw.replace(/^(\s*(?:[-*+]|\d+\.) )\[([ xX/\-])\]/, `$1[${status}]`);
   }
 
+  function visibleOf(block) {
+    const raw = String(block.raw || '').replace(/\n$/, '');
+    if (block.type === 'heading') return raw.replace(/^#{1,6}\s?/, '');
+    if (block.type === 'task' && block.task) return block.task.title;
+    if (block.type === 'item') return raw.replace(/^\s*(?:[-*+]|\d+\.)\s?/, '');
+    if (block.type === 'quote')
+      return raw
+        .split('\n')
+        .map((line) => line.replace(/^>\s?/, ''))
+        .join('\n');
+    if (block.type === 'code') return raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
+    if (block.type === 'blank') return '';
+    return raw;
+  }
+
+  function rewriteVisible(block, text) {
+    const clean = text.replace(/\n$/, '');
+    if (block.type === 'heading')
+      return { ...block, raw: `${'#'.repeat(block.level || 1)} ${clean.replace(/\n/g, ' ')}\n` };
+    if (block.type === 'task' && block.task) {
+      const task = { ...block.task, title: clean.replace(/\n/g, ' ') };
+      return { ...block, task, raw: `${serializeTask(task)}\n` };
+    }
+    if (block.type === 'item') {
+      const marker = (block.raw.match(/^\s*(?:[-*+]|\d+\.)/) || ['-'])[0];
+      return { ...block, raw: `${marker} ${clean}\n` };
+    }
+    if (block.type === 'quote')
+      return {
+        ...block,
+        raw:
+          clean
+            .split('\n')
+            .map((line) => `> ${line}`)
+            .join('\n') + '\n',
+      };
+    if (block.type === 'blank' && clean === '') return { type: 'blank', raw: '\n' };
+    if (clean === '') return { type: 'paragraph', raw: '\n' };
+    return { type: block.type === 'paragraph' || block.type === 'blank' ? 'paragraph' : block.type, raw: `${clean}\n` };
+  }
+
+  function withBlocks(doc, blocks) {
+    return { ...doc, blocks, body: blocks.map((block) => block.raw).join('') };
+  }
+
+  function splitBlock(doc, index, offset) {
+    const block = doc.blocks[index];
+    const text = visibleOf(block);
+    const before = text.slice(0, offset);
+    const after = text.slice(offset);
+    const left = rewriteVisible(block, before);
+    const right = { type: 'paragraph', raw: `${after}\n` };
+    const blocks = doc.blocks.slice();
+    const separate = block.type === 'paragraph' || block.type === 'heading' || block.type === 'blank';
+    if (separate) blocks.splice(index, 1, left, { type: 'blank', raw: '\n' }, right);
+    else blocks.splice(index, 1, left, right);
+    return {
+      doc: withBlocks(doc, blocks),
+      caret: { index: index + (separate ? 2 : 1), offset: 0 },
+    };
+  }
+
+  function joinBlocks(doc, index) {
+    if (index <= 0) return { doc, caret: { index: 0, offset: 0 } };
+    let target = index - 1;
+    let removeFrom = target;
+    if (doc.blocks[target]?.type === 'blank' && target > 0) {
+      target -= 1;
+      removeFrom = target;
+    }
+    const offset = visibleOf(doc.blocks[target]).length;
+    const merged = visibleOf(doc.blocks[target]) + visibleOf(doc.blocks[index]);
+    const blocks = doc.blocks.slice();
+    blocks.splice(removeFrom, index - removeFrom + 1, rewriteVisible(doc.blocks[target], merged));
+    return { doc: withBlocks(doc, blocks), caret: { index: removeFrom, offset } };
+  }
+
+  function pasteLines(doc, index, offset, pasted) {
+    const lines = String(pasted).replace(/\r\n/g, '\n').split('\n');
+    const block = doc.blocks[index];
+    const text = visibleOf(block);
+    lines[0] = text.slice(0, offset) + lines[0];
+    lines[lines.length - 1] += text.slice(offset);
+    const created = [];
+    lines.forEach((line, position) => {
+      if (position === 0) created.push(rewriteVisible(block, line));
+      else {
+        created.push({ type: 'blank', raw: '\n' });
+        created.push(line === '' ? { type: 'paragraph', raw: '\n' } : { type: 'paragraph', raw: `${line}\n` });
+      }
+    });
+    const blocks = doc.blocks.slice();
+    blocks.splice(index, 1, ...created);
+    const caretIndex = index + created.length - 1;
+    return {
+      doc: withBlocks(doc, blocks),
+      caret: { index: caretIndex, offset: visibleOf(blocks[caretIndex]).length - text.slice(offset).length },
+    };
+  }
+
+  function insertInBlock(doc, index, offset, chunk) {
+    const block = doc.blocks[index];
+    const text = visibleOf(block);
+    const next = text.slice(0, offset) + chunk + text.slice(offset);
+    const blocks = doc.blocks.slice();
+    blocks[index] = rewriteVisible(block.type === 'blank' ? { type: 'paragraph', raw: '\n' } : block, next);
+    return { doc: withBlocks(doc, blocks), caret: { index, offset: offset + chunk.length } };
+  }
+
+  function wrapPlain(text, start, end, prefix, suffix = prefix) {
+    const from = Math.min(start, end);
+    const to = Math.max(start, end);
+    if (from === to) {
+      return {
+        text: text.slice(0, from) + prefix + suffix + text.slice(to),
+        cursor: from + prefix.length,
+      };
+    }
+    return {
+      text: text.slice(0, from) + prefix + text.slice(from, to) + suffix + text.slice(to),
+      cursor: to + prefix.length + suffix.length,
+    };
+  }
+
+  function wrapBlock(doc, index, start, end, prefix, suffix) {
+    const block = doc.blocks[index];
+    const wrapped = wrapPlain(visibleOf(block), start, end, prefix, suffix);
+    const blocks = doc.blocks.slice();
+    blocks[index] = rewriteVisible(block.type === 'blank' ? { type: 'paragraph', raw: '\n' } : block, wrapped.text);
+    return { doc: withBlocks(doc, blocks), caret: { index, offset: wrapped.cursor } };
+  }
+
   return {
     parseDocument,
     serializeDocument,
@@ -242,5 +374,12 @@
     setTaskStatus,
     linkLabel,
     linkTarget,
+    visibleOf,
+    splitBlock,
+    joinBlocks,
+    pasteLines,
+    insertInBlock,
+    wrapPlain,
+    wrapBlock,
   };
 });

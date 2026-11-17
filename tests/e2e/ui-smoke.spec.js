@@ -228,6 +228,46 @@ test('Canvas na árvore cria um quadro vazio', async () => {
   await app.close();
 });
 
+test('Enter cria bloco, Ctrl+B formata e a árvore marca um item', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
+  const note = page.locator('#arvore [data-open="Estudos/Leitura.md"]');
+  const shelf = page.locator('#arvore [data-shelf="Estudos"]');
+  await expect(note).toHaveAttribute('aria-selected', 'true');
+  await expect(shelf).toHaveAttribute('aria-selected', 'false');
+  await shelf.click();
+  await expect(shelf).toHaveAttribute('aria-selected', 'true');
+  await expect(note).toHaveAttribute('aria-selected', 'false');
+  await note.click();
+  const paragraph = page.locator('.bloco--texto').first();
+  await paragraph.click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Segunda linha');
+  const file = path.join(root, 'Estudos', 'Leitura.md');
+  await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('Segunda linha');
+  const saved = fs.readFileSync(file, 'utf8');
+  expect(saved).not.toContain('incompleto.Segunda');
+  expect(saved).toMatch(/incompleto\.\r?\n\r?\nSegunda linha/);
+  await paragraph.click();
+  await paragraph.evaluate((el) => {
+    const text = [...el.childNodes].find((node) => node.nodeType === 3 && node.textContent.includes('memó'));
+    const start = text.textContent.indexOf('memó');
+    const range = document.createRange();
+    range.setStart(text, start);
+    range.setEnd(text, start + 6);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Control+B');
+  await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('**');
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();
