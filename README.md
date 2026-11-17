@@ -89,9 +89,9 @@ Limites iniciais: notas até 8 MB, prévias de imagens até 20 MB, árvore até 
 
 ## MCP local
 
-O servidor MCP da engine usa transporte stdio e a biblioteca indicada. Execute `npm run mcp -- --biblioteca /caminho/da/biblioteca`, ou configure o cliente para iniciar `node --experimental-strip-types` com `engine/cli.ts` e os argumentos `mcp --biblioteca`. O protocolo usa stdin/stdout; mensagens de diagnóstico vão para stderr.
+O servidor MCP da engine usa transporte stdio e a biblioteca indicada. Por padrão ele é somente leitura: lista, lê e busca, e recusa gravar, mover, importar, exportar e os comandos de interface. Para gravar, passe `--escrita`. Execute `npm run mcp -- --biblioteca /caminho/da/biblioteca` ou, para alterar a biblioteca, `npm run mcp -- --biblioteca /caminho/da/biblioteca --escrita`. O cliente pode iniciar `node --experimental-strip-types` com `engine/cli.ts` e os argumentos `mcp --biblioteca` (e `--escrita` quando a gravação for intencional). O protocolo usa stdin/stdout; mensagens de diagnóstico vão para stderr.
 
-As tools da engine listam, leem, buscam, criam e editam notas, canvas, tarefas e links. Escritas exigem a revisão obtida na leitura. O servidor não apaga de forma permanente: a lixeira é a do sistema quando a janela está aberta, e uma cópia para a lixeira local quando o arquivo está em outro disco.
+No modo `--escrita`, as tools criam e editam notas, canvas, tarefas e links. Escritas exigem a revisão obtida na leitura. O servidor não apaga de forma permanente: a lixeira é a do sistema quando a janela está aberta, e uma cópia para a lixeira local quando o arquivo está em outro disco.
 
 ## Links internos
 

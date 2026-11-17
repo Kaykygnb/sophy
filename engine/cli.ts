@@ -32,6 +32,7 @@ type Parsed = {
   biblioteca: string | undefined;
   texto: string | undefined;
   somenteLeitura: boolean;
+  escrita: boolean;
 };
 
 const SHORTCUTS = new Set([
@@ -65,8 +66,8 @@ export async function execute(argv: string[], io: Io): Promise<number> {
     }
     if (parsed.command === 'mcp') {
       if (parsed.positionals.length)
-        throw new CliError('Uso: sophy mcp [--biblioteca <pasta>] [--somente-leitura]', 1);
-      await serveMcp(findLibrary(io, parsed.biblioteca), { readonly: parsed.somenteLeitura });
+        throw new CliError('Uso: sophy mcp [--biblioteca <pasta>] [--escrita]', 1);
+      await serveMcp(findLibrary(io, parsed.biblioteca), { readonly: !parsed.escrita || parsed.somenteLeitura });
       return 0;
     }
     if (parsed.command === 'init') return initLibrary(parsed, io);
@@ -101,6 +102,7 @@ function parseArgv(argv: string[]): Parsed {
   let biblioteca: string | undefined;
   let texto: string | undefined;
   let somenteLeitura = false;
+  let escrita = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
@@ -109,6 +111,10 @@ function parseArgv(argv: string[]): Parsed {
     }
     if (arg === '--somente-leitura') {
       somenteLeitura = true;
+      continue;
+    }
+    if (arg === '--escrita') {
+      escrita = true;
       continue;
     }
     if (arg === '--biblioteca' || arg.startsWith('--biblioteca=')) {
@@ -161,6 +167,7 @@ function parseArgv(argv: string[]): Parsed {
     biblioteca,
     texto,
     somenteLeitura,
+    escrita,
   };
 }
 
@@ -422,7 +429,7 @@ Uso:
   sophy desfazer
   sophy tools
   sophy help <tool>
-  sophy mcp [--somente-leitura]
+  sophy mcp [--escrita]
   sophy <tool> [--campo valor] [--json '{...}']
 
 A biblioteca vem de --biblioteca, de SOPHY_LIBRARY, ou da pasta atual

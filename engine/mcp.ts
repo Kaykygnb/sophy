@@ -11,9 +11,10 @@ import { callTool, toolMutates, tools, type Tool } from './tools.ts';
  */
 export function createMcpServer(libraryPath: string, options: { readonly?: boolean } = {}) {
   const library = openLibrary(libraryPath).root;
+  const readonly = options.readonly !== false;
   const server = new McpServer({ name: 'sophy', version: '0.1.0' });
   for (const tool of tools) {
-    if (options.readonly && toolMutates(tool.name)) {
+    if (readonly && (toolMutates(tool.name) || tool.name.startsWith('ui.'))) {
       server.registerTool(
         tool.name,
         { description: tool.description, inputSchema: publicSchema(tool) },
@@ -74,7 +75,7 @@ export function createMcpServer(libraryPath: string, options: { readonly?: boole
 }
 
 export async function serveMcp(libraryPath: string, options: { readonly?: boolean } = {}) {
-  const server = createMcpServer(libraryPath, options);
+  const server = createMcpServer(libraryPath, { readonly: options.readonly !== false });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   await new Promise<void>((resolve) => {

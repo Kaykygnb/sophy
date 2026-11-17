@@ -21,8 +21,11 @@ export function agentTools() {
 export function agentConfirmation(name: string, args: Record<string, unknown>) {
   if (name === 'history.undo') return 'Desfazer a última ação da biblioteca?';
   if (name === 'note.write') return `Sobrescrever a nota ${String(args.path || '')}?`;
-  if (name === 'entry.move' && typeof args.from === 'string' && !args.from.includes('/'))
-    return `Mover ou renomear a estante ${args.from}?`;
+  if (name === 'entry.move') {
+    const from = String(args.from || '');
+    return from.includes('/') ? `Mover a nota ${from}?` : `Mover ou renomear a estante ${from}?`;
+  }
+  if (name.startsWith('canvas.') && name !== 'canvas.read') return `Alterar o canvas ${String(args.path || '')}?`;
   return '';
 }
 

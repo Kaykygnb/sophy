@@ -39,6 +39,7 @@ const state = {
 
 const slash = Cmd.createSlashSession();
 let saveTimer = 0;
+let saveJob = Promise.resolve();
 let lottiePromise = null;
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -1496,6 +1497,9 @@ function inlineHtml(text) {
 
 function bindBlock(el) {
   el.addEventListener('input', () => onBlockInput(el));
+  el.addEventListener('beforeinput', (event) => {
+    if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') event.preventDefault();
+  });
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('paste', (event) => onBlockPaste(event, el));
   el.addEventListener('mousedown', (event) => {
@@ -1737,11 +1741,15 @@ function rememberCaret() {
   state.editorCaret = { index: Number(el.dataset.block), offset: modelOffset(el) };
 }
 
+function editorSnap() {
+  return JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+}
+
 function checkpoint(force) {
   if (!state.doc || state.restoring) return;
   rememberCaret();
   if (state.undoOpen && !force) return;
-  const snap = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+  const snap = editorSnap();
   state.editorPast = state.editorPast || [];
   state.editorFuture = state.editorFuture || [];
   if (state.editorPast.at(-1) !== snap) state.editorPast.push(snap);
@@ -1749,9 +1757,14 @@ function checkpoint(force) {
   state.editorFuture.length = 0;
   state.undoOpen = !force;
   clearTimeout(state.undoTimer);
-  state.undoTimer = setTimeout(() => {
-    state.undoOpen = false;
-  }, 700);
+  if (!force) {
+    state.undoTimer = setTimeout(() => {
+      state.undoOpen = false;
+      if (!state.doc || state.restoring) return;
+      const latest = editorSnap();
+      if (state.editorPast.at(-1) !== latest) state.editorPast.push(latest);
+    }, 700);
+  }
 }
 
 function applyEditorSnap(snap) {
@@ -2397,6 +2410,12 @@ function scheduleSave() {
 }
 
 async function saveNow() {
+  const run = saveJob.then(() => saveNowBody());
+  saveJob = run.catch(() => {});
+  return run;
+}
+
+async function saveNowBody() {
   if (!state.active || !state.doc || state.conflict) return;
   const path = state.active;
   const revision = state.revision;
@@ -2527,15 +2546,57 @@ async function redoCanvas() {
   await openCanvas(state.canvasPath);
 }
 
+function askConflict() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Conflito"><p>Esta nota mudou fora do Sophy. Manter a minha versão grava o texto da tela por cima do arquivo.</p><button type="button" id="conflito-manter">Manter a minha</button><button type="button" id="conflito-descartar">Descartar a minha</button><button type="button" id="conflito-ficar">Ficar nesta nota</button></div>`;
+  return new Promise((resolve) => {
+    const done = (choice) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.hidden = true;
+      resolve(choice);
+    };
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      done('ficar');
+    };
+    document.addEventListener('keydown', onKey, true);
+    $('#conflito-manter').onclick = () => done('manter');
+    $('#conflito-descartar').onclick = () => done('descartar');
+    $('#conflito-ficar').onclick = () => done('ficar');
+  });
+}
+
 async function openNote(file, options = {}) {
   const token = ++state.openSeq;
   const same = state.active === file;
   const unsaved = !!saveTimer || state.dirty;
-  if (window.__sophySlowOpen) {
+  if (sophy.testing && window.__sophySlowOpen) {
     const wait = window.__sophySlowOpen;
     window.__sophySlowOpen = 0;
     await new Promise((resolve) => setTimeout(resolve, wait));
     if (token !== state.openSeq) return;
+  }
+  if (state.conflict && state.active && state.active !== file && !options.force) {
+    const choice = await askConflict();
+    if (token !== state.openSeq) return;
+    if (choice === 'ficar') return;
+    if (choice === 'manter') {
+      const disk = await tool('note.read', { path: state.active });
+      const body = Doc.serializeBlocks(state.doc.blocks);
+      const kept = await tool('note.write', {
+        path: state.active,
+        body,
+        expectedRevision: disk.revision,
+      });
+      if (kept.conflict) return;
+    }
+    state.conflict = false;
+    state.dirty = false;
+    clearTimeout(saveTimer);
+    saveTimer = 0;
   }
   if (state.active && state.doc && !state.conflict && (!same || unsaved)) await saveNow();
   if (token !== state.openSeq) return;

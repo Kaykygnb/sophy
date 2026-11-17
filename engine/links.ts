@@ -59,20 +59,30 @@ export function syncLinks(library: Library) {
   for (const note of notes) {
     seen.add(note.path);
     const current = cache.get(note.path);
-    if (!current || current.mtime !== note.modifiedAt || current.size !== note.size)
-      cache.set(
-        note.path,
-        loadNote(library, note.path, note.workspace, note.modifiedAt, note.size),
-      );
+    if (!current || current.mtime !== note.modifiedAt || current.size !== note.size) {
+      try {
+        cache.set(
+          note.path,
+          loadNote(library, note.path, note.workspace, note.modifiedAt, note.size),
+        );
+      } catch {
+        cache.delete(note.path);
+      }
+    }
   }
   for (const canvas of canvases) {
     seen.add(canvas.path);
     const current = cache.get(canvas.path);
-    if (!current || current.mtime !== canvas.modifiedAt || current.size !== canvas.size)
-      cache.set(
-        canvas.path,
-        loadCanvas(library, canvas.path, canvas.workspace, canvas.modifiedAt, canvas.size),
-      );
+    if (!current || current.mtime !== canvas.modifiedAt || current.size !== canvas.size) {
+      try {
+        cache.set(
+          canvas.path,
+          loadCanvas(library, canvas.path, canvas.workspace, canvas.modifiedAt, canvas.size),
+        );
+      } catch {
+        cache.delete(canvas.path);
+      }
+    }
   }
   for (const cached of cache.keys()) if (!seen.has(cached)) cache.delete(cached);
   return cache;

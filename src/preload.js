@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld(
   'sophy',
   Object.freeze({
+    testing: process.argv.some((arg) => arg.startsWith('--test-user-data=')),
     boot: () => ipcRenderer.invoke('sophy:boot'),
     tool: (name, input) => ipcRenderer.invoke('sophy:tool', name, input),
     chooseFolder: () => ipcRenderer.invoke('sophy:choose-folder'),

@@ -107,13 +107,21 @@ export function resolveInside(
   let current = root;
   for (let index = 0; index < parts.length; index++) {
     const segment = parts[index];
-    validateSegment(segment, 'entry');
+    if (!segment || segment === '.' || segment === '..' || segment.startsWith('.'))
+      validateSegment(segment, 'entry');
+    let nameError: EngineError | null = null;
+    try {
+      validateSegment(segment, 'entry');
+    } catch (error) {
+      nameError = error instanceof EngineError ? error : new EngineError('invalid-path', 'Caminho inválido.');
+    }
     const next = path.join(current, segment);
     const last = index === parts.length - 1;
     let listed: fs.Stats;
     try {
       listed = fs.lstatSync(next);
     } catch (error) {
+      if (nameError) throw nameError;
       if (
         error &&
         typeof error === 'object' &&

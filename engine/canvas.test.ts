@@ -156,7 +156,7 @@ test('o MCP cria o canvas pela tool do registro', { timeout: 30000 }, async () =
   }
   const transport = new StdioClientTransport({
     command: bin,
-    args: ['mcp', '--biblioteca', root],
+    args: ['mcp', '--biblioteca', root, '--escrita'],
     cwd: os.tmpdir(),
     env,
     stderr: 'pipe',

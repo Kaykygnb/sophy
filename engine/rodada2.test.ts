@@ -9,8 +9,10 @@ import { agentConfirmation, runAgentTurn } from './agent.ts';
 import { importVault } from './extras.ts';
 import { queryGraph } from './graph.ts';
 import { capture, diff, pushHistory, undoLast } from './history.ts';
-import { createNote, listNotes, openLibrary } from './library.ts';
-import { backlinks } from './links.ts';
+import { moveEntry, createNote, listNotes, openLibrary } from './library.ts';
+import { callTool } from './tools.ts';
+import { listTasks } from './tasks.ts';
+import { backlinks, outgoingLinks } from './links.ts';
 import { exportSite, listVersions, saveVersionPoint } from './study.ts';
 import { uiDirectory } from './ui-bridge.ts';
 
@@ -79,6 +81,36 @@ test('importar pula con.md e a terceira cópia ganha sufixo', () => {
   assert.equal(fs.existsSync(path.join(opened.root, 'Importado', 'a (importado 2).md')), true);
 });
 
+test('um nome inválido não impede gravar, abrir nem renomear', () => {
+  const opened = library();
+  fs.mkdirSync(path.join(opened.root, 'Estudos'));
+  createNote(opened, 'Estudos/A.md', '# A\n\nTexto.\n');
+  fs.writeFileSync(path.join(opened.root, 'Estudos', 'nome?.md'), '# Pergunta\n\n');
+  fs.mkdirSync(path.join(opened.root, `Ab'c"d`));
+  fs.writeFileSync(path.join(opened.root, 'con.md'), '# con\n');
+  const read = callTool('note.read', { libraryPath: opened.root, path: 'Estudos/A.md' }) as {
+    revision: string;
+  };
+  const written = callTool('note.write', {
+    libraryPath: opened.root,
+    path: 'Estudos/A.md',
+    body: '# A\n\nSalvo.\n',
+    expectedRevision: read.revision,
+    origin: 'ui',
+  }) as { conflict: boolean };
+  assert.equal(written.conflict, false);
+  assert.match(fs.readFileSync(path.join(opened.root, 'Estudos', 'A.md'), 'utf8'), /Salvo/);
+  assert.doesNotThrow(() => outgoingLinks(opened, 'Estudos/A.md'));
+  assert.doesNotThrow(() => queryGraph(opened));
+  assert.doesNotThrow(() => listTasks(opened));
+  const bad = callTool('note.read', { libraryPath: opened.root, path: 'Estudos/nome?.md' }) as {
+    body: string;
+  };
+  assert.match(bad.body, /Pergunta/);
+  moveEntry(opened, 'Estudos/nome?.md', 'Estudos/nome.md');
+  assert.equal(fs.existsSync(path.join(opened.root, 'Estudos', 'nome.md')), true);
+});
+
 test('nota com ? continua na lista, marcada', () => {
   const opened = library();
   fs.writeFileSync(path.join(opened.root, 'nome?.md'), '# Pergunta\n');
@@ -112,7 +144,8 @@ test('a Sofi pede confirmação para sobrescrever, desfazer e mover estante', as
   assert.equal(fs.readFileSync(path.join(opened.root, 'Estudos.md'), 'utf8').includes('Original'), true);
   assert.equal(fs.existsSync(path.join(opened.root, 'Estudos')), true);
   assert.equal(denied.results.filter((result) => result.skipped).length, 3);
-  assert.match(agentConfirmation('entry.move', { from: 'Estudos/Nota.md', to: 'Outro.md' }), /^$/);
+  assert.match(agentConfirmation('entry.move', { from: 'Estudos/Nota.md', to: 'Outro.md' }), /Mover a nota/);
+  assert.match(agentConfirmation('canvas.update', { path: 'Mapa.canvas' }), /Alterar o canvas/);
 });
 
 test('o MCP somente leitura recusa note.create', async () => {
@@ -125,7 +158,7 @@ test('o MCP somente leitura recusa note.create', async () => {
   env.SOPHY_UI_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-mcp-'));
   const transport = new StdioClientTransport({
     command: path.resolve('engine/bin/sophy'),
-    args: ['mcp', '--biblioteca', root, '--somente-leitura'],
+    args: ['mcp', '--biblioteca', root],
     cwd: os.tmpdir(),
     env,
     stderr: 'pipe',
@@ -135,7 +168,9 @@ test('o MCP somente leitura recusa note.create', async () => {
   try {
     const result = await client.callTool({ name: 'note.create', arguments: { path: 'Nota.md', body: '# N\n' } });
     assert.equal(result.isError, true);
-    const text = JSON.stringify(result);
+    const theme = await client.callTool({ name: 'ui.setTheme', arguments: { theme: 'dark' } });
+    assert.equal(theme.isError, true);
+    const text = JSON.stringify(result) + JSON.stringify(theme);
     assert.match(text, /somente leitura/);
     assert.equal(fs.existsSync(path.join(root, 'Nota.md')), false);
   } finally {
