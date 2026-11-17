@@ -32,6 +32,13 @@ A memória se liga a [[Estudos/Grafo|o grafo]] e também a um [[ incompleto.
     path.join(root, 'Livro', 'Capitulo.md'),
     '# Capítulo\n\nVoltar para [[Estudos/Leitura]].\n',
   );
+  for (const shelf of ['Pesquisa', 'Trabalho', 'Diário', 'Leituras']) {
+    fs.mkdirSync(path.join(root, shelf), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, shelf, 'Nota.md'),
+      `# ${shelf}\n\nLiga com [[Estudos/Leitura]].\n`,
+    );
+  }
   return root;
 }
 
@@ -59,13 +66,27 @@ test('a janela abre a biblioteca e mostra a nota', async () => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   await expect(page.locator('.titulo')).toBeVisible();
-  await page.getByRole('button', { name: 'Leitura' }).click();
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
   await expect(page.locator('.coluna')).toContainText('memória se liga');
   await expect(page.locator('.wikilink')).toContainText('o grafo');
+  await expect(page.locator('.nota__meta')).toContainText('#estudo');
   await expect(page.locator('body')).toContainText('2026-11-20');
+  const fontsReady = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return (
+      document.fonts.check('600 32px Fraunces') &&
+      document.fonts.check('400 16px Inter') &&
+      document.fonts.check('400 14px "JetBrains Mono"')
+    );
+  });
+  expect(fontsReady).toBe(true);
+  await expect(page.locator('.arvore__ponto').first()).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-editor-claro.png') });
   await page.getByRole('button', { name: 'Mostrar grafo' }).click();
   await expect(page.locator('#grafo-canvas')).toBeVisible();
+  await expect(page.locator('.grafo__legenda')).toContainText('Estudos');
+  await expect(page.locator('#conexoes')).toContainText('Leitura');
+  await expect(page.locator('#conexoes')).not.toContainText('Abra uma nota');
   await page.screenshot({ path: path.join(artifacts, 'ui-grafo-claro.png') });
   expect(errors).toEqual([]);
   await app.close();
@@ -76,17 +97,21 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   const welcome = await launch([]);
   const page = await welcome.firstWindow();
   await expect(page.getByRole('heading', { name: 'Olá, eu sou a Sofi.' })).toBeVisible();
+  await expect(page.locator('body')).toContainText('Só funciona se você conectar uma chave.');
+  await expect(page.locator('body')).not.toContainText('etapa seguinte');
+  await expect(page.getByRole('button', { name: 'Voltar' })).toHaveCount(0);
   await page.screenshot({ path: path.join(artifacts, 'ui-boas-vindas-claro.png') });
   await welcome.close();
 
   const root = library();
   const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
   const darkPage = await dark.firstWindow();
-  await darkPage.getByRole('button', { name: 'Leitura' }).click();
+  await darkPage.getByRole('button', { name: 'Leitura', exact: true }).click();
   await expect(darkPage.locator('.coluna')).toContainText('memória se liga');
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-editor-escuro.png') });
   await darkPage.getByRole('button', { name: 'Mostrar grafo' }).click();
   await expect(darkPage.locator('#grafo-canvas')).toBeVisible();
+  await expect(darkPage.locator('#conexoes')).toContainText('Leitura');
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-grafo-escuro.png') });
   await dark.close();
 

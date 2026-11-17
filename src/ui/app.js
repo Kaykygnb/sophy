@@ -12,12 +12,13 @@ const state = {
   view: 'empty',
   doc: null,
   revision: null,
-  frontmatterText: '',
+  frontmatter: null,
   outgoing: [],
   backlinks: [],
   conflict: false,
   graphWorkspace: '',
   graphTag: '',
+  graphCamera: { x: 0, y: 0, zoom: 1 },
   step: 1,
   folderMode: 'criar',
   folder: '',
@@ -41,11 +42,18 @@ function escapeHtml(value) {
 function baseName(file) {
   return file.split('/').pop().replace(/\.md$/i, '');
 }
-function formatMatter(matter) {
+function tagChips(matter) {
   if (!matter || typeof matter !== 'object') return '';
-  return Object.entries(matter)
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
-    .join('\n');
+  const raw = matter.tags;
+  const tags = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return tags
+    .map((tag) => `<span class="chip">#${escapeHtml(String(tag).replace(/^#/, ''))}</span>`)
+    .join('');
+}
+function noteCrumb(file) {
+  const parts = String(file || '').split('/');
+  if (parts.length < 2) return 'Biblioteca';
+  return escapeHtml(parts.slice(0, -1).join(' / '));
 }
 function themeName() {
   const choice = state.settings.theme || 'system';
@@ -129,19 +137,26 @@ function paintOnboarding() {
   const root = $('#onboarding');
   root.hidden = false;
   $('#shell').hidden = true;
+  const names = ['Boas-vindas', 'Biblioteca', 'Tema', 'Agente'];
   const steps = [1, 2, 3, 4]
     .map(
       (n) =>
         `<i class="${n < state.step ? 'is-feito' : ''} ${n === state.step ? 'is-atual' : ''}"></i>`,
     )
     .join('');
+  const stepNames = names
+    .map(
+      (name, index) => `<span class="${index + 1 === state.step ? 'is-atual' : ''}">${name}</span>`,
+    )
+    .join('');
   const bodies = {
     1: `<div class="sofi" data-sofi="pronta"></div>
       <h1>Olá, eu sou a Sofi.</h1>
-      <div class="onboarding__cartoes">
-        <div class="opcao">${icon('pasta')}<div><strong>Arquivos seus</strong><p>A biblioteca é uma pasta. Cada estante é uma subpasta. A nota é um .md comum.</p></div></div>
-        <div class="opcao">${icon('link')}<div><strong>Notas ligadas</strong><p>Wikilinks, backlinks e o grafo nascem do texto, sem um formato fechado.</p></div></div>
-        <div class="opcao">${icon('agente')}<div><strong>Agente opcional</strong><p>Dá para usar o Sophy sem chave nenhuma. O agente entra numa etapa seguinte.</p></div></div>
+      <p class="onboarding__lead">O Sophy guarda suas notas como arquivos Markdown numa pasta sua.<br />Eu ajudo a organizar, encontrar e ligar ideias.</p>
+      <div class="onboarding__cartoes onboarding__cartoes--tres">
+        <div class="opcao">${icon('pasta')}<div><strong>Arquivos seus, no seu disco</strong><p>Pastas e .md comuns, abra em qualquer editor.</p></div></div>
+        <div class="opcao">${icon('link')}<div><strong>Notas ligadas com [[ ]]</strong><p>Links, backlinks, grafo e canvas.</p></div></div>
+        <div class="opcao">${icon('agente')}<div><strong>Agente opcional</strong><p>Só funciona se você conectar uma chave.</p></div></div>
       </div>`,
     2: `<img alt="" src="ui/assets/ilustracoes/biblioteca-vazia-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Onde ficam as suas notas?</h1>
@@ -177,7 +192,7 @@ function paintOnboarding() {
       <label class="campo"><span><input type="checkbox" id="movimento" ${state.settings.reduceMotion ? 'checked' : ''} /> Reduzir animações da interface e da Sofi</span></label>`,
     4: `<img alt="" src="ui/assets/ilustracoes/agente-desconectado-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Quer ligar um agente agora?</h1>
-      <p class="nota-privacidade">Esta etapa só guarda a sua escolha. A chave não é gravada na biblioteca nem no cofre — o agente em si vem depois.</p>
+      <p class="nota-privacidade">${icon('cadeado')} A chave fica no cofre do sistema. Nada é gravado na biblioteca.</p>
       <label class="campo">Provedor
         <select id="provedor"><option>OpenAI</option><option>Anthropic</option><option>Outro</option></select>
       </label>
@@ -192,11 +207,15 @@ function paintOnboarding() {
         : state.step === 3
           ? 'Continuar'
           : 'Concluir';
+  const importar =
+    state.step === 1
+      ? '<button type="button" class="btn btn--fantasma" id="importar">Já usa outra ferramenta? Importar do Obsidian</button>'
+      : '';
   root.innerHTML = `<section class="onboarding">
-    <div class="onboarding__topo"><div class="onboarding__passos">${steps}</div><span>Passo ${state.step} de 4</span></div>
+    <div class="onboarding__topo"><div><div class="onboarding__passos">${steps}</div><div class="onboarding__nomes">${stepNames}</div></div><span>Passo ${state.step} de 4</span></div>
     <div class="onboarding__miolo">${bodies[state.step]}</div>
     <div class="onboarding__rodape">
-      <button type="button" class="btn btn--fantasma" id="voltar" ${state.step === 1 ? 'disabled' : ''}>Voltar</button>
+      ${state.step === 1 ? importar : '<button type="button" class="btn btn--fantasma" id="voltar">Voltar</button>'}
       <div>
         ${state.step === 4 ? '<button type="button" class="btn btn--secundario" id="pular">Pular por agora</button>' : ''}
         <button type="button" class="btn btn--primario" id="avancar">${primary}</button>
@@ -205,10 +224,19 @@ function paintOnboarding() {
   </section>`;
   const sofi = $('[data-sofi]', root);
   if (sofi) mountSofi(sofi, 'pronta');
-  $('#voltar', root).onclick = () => {
-    state.step = Math.max(1, state.step - 1);
-    paintOnboarding();
-  };
+  const back = $('#voltar', root);
+  if (back)
+    back.onclick = () => {
+      state.step = Math.max(1, state.step - 1);
+      paintOnboarding();
+    };
+  const importer = $('#importar', root);
+  if (importer)
+    importer.onclick = () => {
+      state.folderMode = 'abrir';
+      state.step = 2;
+      paintOnboarding();
+    };
   const advance = $('#avancar', root);
   advance.onclick = () => nextStep(false);
   const skip = $('#pular', root);
@@ -397,6 +425,9 @@ function paintTree() {
       if (filter && notes.length === 0 && !workspace.name.toLocaleLowerCase().includes(filter))
         return '';
       const color = mark.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+      const dot = mark.color
+        ? `<span class="arvore__ponto" style="background: var(--shelf-${mark.color})"></span>`
+        : '';
       const children = notes
         .map(
           (
@@ -406,7 +437,7 @@ function paintTree() {
         )
         .join('');
       return `<li><button type="button" class="arvore__linha" aria-expanded="true"${color}>
-          ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}<span class="arvore__nome">${escapeHtml(workspace.name)}</span>
+          ${icon('chevron-direita', 'arvore__seta')}${dot}${icon(mark.icon, 'icon--estante')}<span class="arvore__nome">${escapeHtml(workspace.name)}</span>
           <span class="arvore__conta">${notes.length}</span></button><ul>${children}</ul></li>`;
     })
     .join('');
@@ -463,11 +494,15 @@ function paintCenter() {
   const conflict = state.conflict
     ? `<div class="aviso" role="alert">${icon('erro')} <span>A nota mudou desde a leitura. Nada foi gravado.</span> <button type="button" class="btn btn--secundario" id="recarregar">Recarregar</button></div>`
     : '';
-  const matter = state.frontmatterText
-    ? `<pre class="frontmatter">${escapeHtml(state.frontmatterText)}</pre>`
-    : '';
-  const blocks = state.doc.blocks.map((block, index) => renderBlock(block, index)).join('');
-  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${matter}${blocks}</article>`;
+  const chips = tagChips(state.frontmatter);
+  const crumb = noteCrumb(state.active);
+  const firstIsTitle = state.doc.blocks[0]?.type === 'heading';
+  const title = firstIsTitle ? renderBlock(state.doc.blocks[0], 0) : '';
+  const blocks = state.doc.blocks
+    .slice(firstIsTitle ? 1 : 0)
+    .map((block, index) => renderBlock(block, index + (firstIsTitle ? 1 : 0)))
+    .join('');
+  center.innerHTML = `${conflict}<article class="coluna" id="coluna"><p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   $('#coluna')
@@ -860,7 +895,7 @@ async function openNote(file, options = {}) {
   state.view = 'note';
   state.doc = Doc.parseDocument(note.body);
   state.revision = note.revision;
-  state.frontmatterText = formatMatter(note.frontmatter);
+  state.frontmatter = note.frontmatter;
   state.conflict = false;
   if (!state.tabs.includes(note.path) || options.force) {
     if (!state.tabs.includes(note.path)) state.tabs.push(note.path);
@@ -906,7 +941,7 @@ async function fillEmbeds() {
 function paintLinks() {
   const host = $('#conexoes');
   if (!host) return;
-  if (state.view !== 'note' || !state.active) {
+  if (!state.active) {
     host.innerHTML =
       '<h3>Conexões</h3><p class="nota-privacidade">Abra uma nota para ver os links.</p>';
     return;
@@ -925,7 +960,7 @@ function paintLinks() {
           `<button type="button" class="link" data-go="${escapeHtml(link.from)}">${escapeHtml(baseName(link.from))}</button>`,
       )
       .join('') || '<p class="nota-privacidade">Nenhuma nota aponta para cá.</p>';
-  host.innerHTML = `<h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}
+  host.innerHTML = `<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}
     <h3>Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
   host.querySelectorAll('[data-go]').forEach((button) => {
     button.onclick = () => {
@@ -1016,6 +1051,13 @@ async function showGraph(workspace) {
 }
 
 async function paintGraph(center) {
+  const legend = state.workspaces
+    .map((item) => {
+      const mark = Cmd.shelfMark(item.name);
+      const color = mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
+      return `<span class="chip"><span class="arvore__ponto" style="background:${color}"></span>${escapeHtml(item.name)}</span>`;
+    })
+    .join('');
   center.innerHTML = `<div class="grafo">
     <div class="grafo__barra">
       <label>Estante <select id="grafo-estante"><option value="">Todas</option>${state.workspaces
@@ -1027,7 +1069,15 @@ async function paintGraph(center) {
       <label>Tag <input id="grafo-tag" value="${escapeHtml(state.graphTag)}" placeholder="filtrar" /></label>
       <span class="nota-privacidade" id="grafo-foco">${state.active ? `Foco: ${escapeHtml(baseName(state.active))}` : ''}</span>
     </div>
-    <canvas id="grafo-canvas"></canvas>
+    <div class="grafo__palco">
+      <canvas id="grafo-canvas"></canvas>
+      <div class="grafo__legenda">${legend}</div>
+      <div class="grafo__zoom">
+        <button type="button" class="btn btn--icone" id="grafo-mais" aria-label="Aproximar">${icon('zoom-mais')}</button>
+        <button type="button" class="btn btn--icone" id="grafo-menos" aria-label="Afastar">${icon('zoom-menos')}</button>
+        <button type="button" class="btn btn--icone" id="grafo-ajustar" aria-label="Ajustar">1</button>
+      </div>
+    </div>
   </div>`;
   $('#grafo-estante').onchange = (event) => {
     state.graphWorkspace = event.target.value;
@@ -1047,51 +1097,149 @@ async function paintGraph(center) {
 function drawGraph(graph) {
   const canvas = $('#grafo-canvas');
   if (!canvas) return;
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = Math.max(320, rect.width);
-  canvas.height = Math.max(320, rect.height - 56);
-  const styles = getComputedStyle(document.documentElement);
-  const nodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height);
-  const byPath = new Map(nodes.map((node) => [node.path, node]));
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = styles.getPropertyValue('--line-strong').trim() || '#D9D5CE';
-  ctx.lineWidth = 1.4;
+  const stage = canvas.parentElement;
+  const fit = () => {
+    const rect = stage.getBoundingClientRect();
+    canvas.width = Math.max(320, Math.floor(rect.width));
+    canvas.height = Math.max(280, Math.floor(rect.height));
+  };
+  fit();
+  const degree = new Map();
   for (const edge of graph.edges) {
-    const from = byPath.get(edge.from);
-    const to = byPath.get(edge.to);
-    if (!from || !to) continue;
-    ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
+    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
+    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
   }
-  for (const node of nodes) {
-    const mark = Cmd.shelfMark(node.workspace || '');
-    const color = mark.color
+  const nodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height).map((node) => ({
+    ...node,
+    degree: degree.get(node.path) || 0,
+  }));
+  const byPath = new Map(nodes.map((node) => [node.path, node]));
+  const styles = getComputedStyle(document.documentElement);
+  const colorOf = (workspace) => {
+    const mark = Cmd.shelfMark(workspace || '');
+    return mark.color
       ? styles.getPropertyValue(`--shelf-${mark.color}`).trim()
       : styles.getPropertyValue('--ink-3').trim();
-    const focused = node.path === state.active;
-    ctx.beginPath();
-    ctx.fillStyle = color || '#6E72B0';
-    ctx.arc(node.x, node.y, focused ? 9 : 6, 0, Math.PI * 2);
-    ctx.fill();
-    if (focused) {
-      ctx.strokeStyle = styles.getPropertyValue('--accent').trim();
-      ctx.lineWidth = 2;
-      ctx.stroke();
+  };
+  const project = (node) => {
+    const camera = state.graphCamera;
+    return {
+      x: canvas.width / 2 + (node.x - canvas.width / 2 + camera.x) * camera.zoom,
+      y: canvas.height / 2 + (node.y - canvas.height / 2 + camera.y) * camera.zoom,
+    };
+  };
+  const redraw = () => {
+    const ctx = canvas.getContext('2d');
+    const ink = styles.getPropertyValue('--ink').trim();
+    const dot = styles.getPropertyValue('--canvas-dot').trim() || '#D9D5CE';
+    const bg = styles.getPropertyValue('--bg').trim();
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let x = 12; x < canvas.width; x += 22) {
+      for (let y = 12; y < canvas.height; y += 22) {
+        ctx.fillStyle = dot;
+        ctx.fillRect(x, y, 1.4, 1.4);
+      }
     }
-    ctx.fillStyle = styles.getPropertyValue('--ink').trim();
-    ctx.font = '12px Inter, sans-serif';
-    ctx.fillText(node.title || baseName(node.path), node.x + 12, node.y + 4);
-  }
-  canvas.onclick = (event) => {
+    for (const edge of graph.edges) {
+      const from = byPath.get(edge.from);
+      const to = byPath.get(edge.to);
+      if (!from || !to) continue;
+      const a = project(from);
+      const b = project(to);
+      ctx.beginPath();
+      ctx.strokeStyle = colorOf(from.workspace);
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1.4;
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    for (const node of nodes) {
+      const at = project(node);
+      const focused = node.path === state.active;
+      const radius = (4 + Math.min(node.degree, 8) * 1.7) * state.graphCamera.zoom;
+      const color = colorOf(node.workspace);
+      if (focused) {
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.18;
+        ctx.arc(at.x, at.y, radius + 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.beginPath();
+      ctx.fillStyle = color || '#6E72B0';
+      ctx.arc(at.x, at.y, focused ? radius + 3 : radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = ink;
+      ctx.font = `${focused ? 600 : 400} 13px Inter, sans-serif`;
+      ctx.fillText(node.title || baseName(node.path), at.x + radius + 8, at.y + 4);
+    }
+  };
+  state.graphRedraw = redraw;
+  redraw();
+  const zoomBy = (factor) => {
+    state.graphCamera.zoom = Math.min(2.4, Math.max(0.4, state.graphCamera.zoom * factor));
+    redraw();
+  };
+  $('#grafo-mais').onclick = () => zoomBy(1.2);
+  $('#grafo-menos').onclick = () => zoomBy(1 / 1.2);
+  $('#grafo-ajustar').onclick = () => {
+    state.graphCamera = { x: 0, y: 0, zoom: 1 };
+    redraw();
+  };
+  canvas.onwheel = (event) => {
+    event.preventDefault();
+    zoomBy(event.deltaY > 0 ? 1 / 1.08 : 1.08);
+  };
+  let drag = null;
+  canvas.onpointerdown = (event) => {
+    drag = { x: event.clientX, y: event.clientY, moved: false };
+    canvas.setPointerCapture(event.pointerId);
+  };
+  canvas.onpointermove = (event) => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 3) drag.moved = true;
+    state.graphCamera.x += dx / state.graphCamera.zoom;
+    state.graphCamera.y += dy / state.graphCamera.zoom;
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    redraw();
+  };
+  canvas.onpointerup = (event) => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    if (moved) return;
     const bounds = canvas.getBoundingClientRect();
     const x = ((event.clientX - bounds.left) / bounds.width) * canvas.width;
     const y = ((event.clientY - bounds.top) / bounds.height) * canvas.height;
-    const hit = nodes.find((node) => Math.hypot(node.x - x, node.y - y) < 14);
-    if (hit) openNote(hit.path);
+    const hit = nodes.find((node) => {
+      const at = project(node);
+      return Math.hypot(at.x - x, at.y - y) < 18;
+    });
+    if (hit) focusGraphNote(hit.path);
   };
+}
+
+async function focusGraphNote(path) {
+  state.active = path;
+  if (!state.tabs.includes(path)) state.tabs.push(path);
+  const note = await tool('note.read', { path });
+  state.frontmatter = note.frontmatter;
+  state.revision = note.revision;
+  state.doc = Doc.parseDocument(note.body);
+  await loadLinks();
+  const focus = $('#grafo-foco');
+  if (focus) focus.textContent = `Foco: ${baseName(path)}`;
+  paintTabs();
+  paintLinks();
+  paintStatus();
+  if (state.graphRedraw) state.graphRedraw();
 }
 
 function layout(nodes, edges, width, height) {
