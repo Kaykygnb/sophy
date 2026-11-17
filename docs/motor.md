@@ -1,6 +1,6 @@
 # Motor do Sophy
 
-O motor fica em `engine/` e não usa Electron, DOM nem a interface em `src/`. O app atual continua como está.
+O motor fica em `engine/` e não usa Electron nem DOM. A janela em `src/` chama o mesmo registro de tools. O desenho dela está em `docs/interface.md`.
 
 ## Nomes
 
@@ -122,7 +122,7 @@ Conflito de revisão, link ambíguo e caminho proibido voltam como resultado de 
 
 Notas são resources `sophy://nota/<caminho>`, por exemplo `sophy://nota/Estudos/Nota.md`.
 
-`ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` estão no registro. Elas publicam num canal em processo (`subscribeUi`). Sem a interface assinando esse canal, a resposta é `A interface não está aberta.` A janela entra na etapa 5.
+`ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` estão no registro. Elas publicam num canal em processo (`subscribeUi`). A janela do Electron assina esse canal. Se o `sophy mcp` for outro processo, ele entrega o pedido numa pasta temporária que a janela lê, desde que ela esteja aberta. Sem a janela, a resposta continua `A interface não está aberta.`
 
 Exemplo para Claude Desktop ou Cursor:
 
@@ -153,4 +153,6 @@ Na raiz do repositório, com Node 22:
 npm run test:engine
 ```
 
-O comando é `node --experimental-strip-types --test engine/*.test.ts`. Não há passo de compilação. Os testes do app em `tests/` continuam em `npm test` e não carregam o motor.
+O comando é `node --experimental-strip-types --test engine/*.test.ts`. Não há passo de compilação. `npm test` cobre o app anterior e a camada da interface que não precisa de janela (`tests/ui-*.test.js`), e esse script também usa `--experimental-strip-types` para falar com o motor. O smoke do Electron é `npm run test:e2e`.
+
+A janela está descrita em `docs/interface.md`.
