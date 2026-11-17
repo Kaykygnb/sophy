@@ -407,9 +407,7 @@ function paintShell() {
         <div class="lateral__busca"><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
         <div class="lateral__acoes">
-          <button type="button" class="btn btn--secundario" id="nova-nota">${icon('nota-nova')} Nota</button>
-          <button type="button" class="btn btn--fantasma" id="nova-estante">${icon('pasta-nova')} Estante</button>
-          <button type="button" class="btn btn--fantasma" id="novo-canvas">${icon('canvas')} Canvas</button>
+          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('mais')} Novo</button>
         </div>
       </aside>
       <main class="centro" id="centro"></main>
@@ -425,9 +423,7 @@ function paintShell() {
   $('#ver-grafo').onclick = () => showGraph();
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
-  $('#nova-nota').onclick = () => createNote();
-  $('#novo-canvas').onclick = () => createCanvasFile();
-  $('#nova-estante').onclick = () => createWorkspace();
+  $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
   $('#filtro-arvore').oninput = () => paintTree();
   paintTree();
   paintCenter();
@@ -1105,14 +1101,7 @@ async function openCanvas(file) {
       const note = await tool('note.read', { path: notePath });
       const preview = {
         title: baseName(note.path),
-        body: note.body
-          .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-          .replace(/!?\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
-          .replace(/!?\[\[([^\]]+)\]\]/g, '$1')
-          .replace(/^#.+\n?/gm, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 160),
+        html: Cmd.notePreviewHtml(note.body),
         path: note.path,
       };
       state.canvasPreviews[node.file] = preview;
@@ -1278,6 +1267,40 @@ function paintStatus() {
   if (theme) theme.textContent = themeName() === 'dark' ? 'Escuro' : 'Claro';
   const estado = $('#st-estado');
   if (estado && state.conflict) estado.textContent = 'Conflito';
+}
+
+function openNewMenu(anchor) {
+  closeMenus();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = [
+    ['nota', 'nota-nova', 'Nova nota'],
+    ['estante', 'pasta-nova', 'Nova estante'],
+    ['canvas', 'canvas', 'Novo canvas'],
+  ]
+    .map(
+      ([id, glyph, label]) =>
+        `<button type="button" class="menu__item" role="menuitem" data-novo="${id}">${icon(glyph)} ${label}</button>`,
+    )
+    .join('');
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.left}px`;
+  menu.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+  menu.querySelector('[data-novo="nota"]').onclick = () => {
+    closeMenus();
+    createNote();
+  };
+  menu.querySelector('[data-novo="estante"]').onclick = () => {
+    closeMenus();
+    createWorkspace();
+  };
+  menu.querySelector('[data-novo="canvas"]').onclick = () => {
+    closeMenus();
+    createCanvasFile();
+  };
 }
 
 function openLibraryMenu(anchor) {

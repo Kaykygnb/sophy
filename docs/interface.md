@@ -14,7 +14,7 @@ Claro e escuro vêm de `src/ui/assets/tokens.css`. “Sistema” segue `prefers-
 
 A primeira abertura tem quatro passos: boas-vindas, pasta da biblioteca, tema, agente. O passo do agente não grava chave. O agente em si é a etapa 7.
 
-`ui.openCanvas` abre o `.canvas`. Canvas, na base da árvore, e Novo canvas na paleta criam um quadro vazio na estante selecionada (ou em Entrada). O quadro tem pan e zoom, cartões de texto com `[[`, cartão de nota com prévia, cartão de link, grupos, setas com rótulo, seleção, encaixe na grade, arrastar uma nota da árvore, minimapa e desfazer. O arquivo continua JSON Canvas.
+O botão Novo, na base da lateral, abre nota, estante ou canvas. Canvas na paleta também cria um quadro vazio na estante selecionada (ou em Entrada). O cartão de nota do quadro mostra a prévia como o editor: checkbox, wikilink e chips de prazo e prioridade. `ui.openCanvas` abre o `.canvas`. O quadro tem pan e zoom, cartões de texto com `[[`, cartão de nota com prévia, cartão de link, grupos, setas com rótulo, seleção, encaixe na grade, arrastar uma nota da árvore, minimapa e desfazer. O arquivo continua JSON Canvas.
 
 ## Fora desta etapa
 

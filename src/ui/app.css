@@ -616,7 +616,21 @@ button.arvore__linha[aria-selected='true'] {
   padding: 12px;
 }
 .lateral__acoes .btn {
-  flex: 1 1 calc(50% - 8px);
+  width: 100%;
+}
+.cv-cartao__texto .tarefa {
+  grid-template-columns: 18px minmax(0, 1fr);
+  padding: 2px 0;
+  max-width: none;
+  gap: 2px 8px;
+}
+.cv-cartao__texto .tarefa__meta {
+  grid-row: auto;
+  grid-column: 2;
+  justify-content: flex-start;
+}
+.cv-cartao__texto p {
+  margin: 0 0 6px;
 }
 .lateral__biblioteca {
   padding: 8px 12px 0;

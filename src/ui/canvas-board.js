@@ -128,7 +128,7 @@
             const color = shelf?.color ? ` style="--estante-cor: var(--shelf-${shelf.color})"` : '';
             return `<article class="cv-cartao" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}"${color}>
               <div class="cv-cartao__titulo">${options.icon('nota')}<span>${escape(preview.title || node.file)}</span><button type="button" class="btn btn--icone" data-open="${escape(preview.path || node.file)}" aria-label="Abrir nota">${options.icon('externo')}</button></div>
-              <p class="cv-cartao__texto">${escape(preview.body || '')}</p>
+              <div class="cv-cartao__texto">${preview.html || escape(preview.body || '')}</div>
               <div class="cv-cartao__caminho">${escape(preview.path || node.file || '')}</div>
               ${ports()}
             </article>`;

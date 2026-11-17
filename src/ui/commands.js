@@ -184,6 +184,70 @@
     return `${base} ${index}`;
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function previewTask(line) {
+    const match = String(line).match(/^(\s*)([-*+]|\d+\.) \[([ xX/\-])\]\s?(.*)$/);
+    if (!match) return null;
+    const rest = match[4];
+    const emoji = rest.search(/📅|🛫|⏳|✅|⏫|🔼|🔽/);
+    const title = (emoji < 0 ? rest : rest.slice(0, emoji)).replace(/\s+$/, '');
+    const suffix = emoji < 0 ? '' : rest.slice(emoji);
+    const due = suffix.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+    let priority = null;
+    if (suffix.includes('⏫')) priority = 'alta';
+    else if (suffix.includes('🔼')) priority = 'media';
+    else if (suffix.includes('🔽')) priority = 'baixa';
+    return { title, due: due ? due[1] : null, priority, status: match[3] };
+  }
+
+  function previewInline(text) {
+    const pattern = /!?\[\[([^\]\n]*)\]\]/g;
+    let html = '';
+    let last = 0;
+    for (const match of text.matchAll(pattern)) {
+      const at = match.index ?? 0;
+      html += escapeHtml(text.slice(last, at));
+      const inner = match[1];
+      const label = inner.includes('|') ? inner.split('|').pop() : inner.split('/').pop();
+      html += `<a class="wikilink" href="#">${escapeHtml((label || inner).replace(/#.*$/, ''))}</a>`;
+      last = at + match[0].length;
+    }
+    return html + escapeHtml(text.slice(last));
+  }
+
+  function notePreviewHtml(body) {
+    const source = String(body || '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+    const chunks = [];
+    for (const line of source.split(/\r?\n/)) {
+      if (chunks.length >= 8) break;
+      const task = previewTask(line);
+      if (task) {
+        const kit = kitTaskStatus(task.status);
+        const chips = [
+          task.due ? `<span class="chip">${escapeHtml(task.due)}</span>` : '',
+          task.priority === 'alta' ? '<span class="chip chip--alta">Alta</span>' : '',
+          task.priority === 'media' ? '<span class="chip chip--media">Média</span>' : '',
+          task.priority === 'baixa' ? '<span class="chip chip--baixa">Baixa</span>' : '',
+        ].join('');
+        chunks.push(
+          `<div class="${taskBlockClass(task.status)}"><span class="check" data-status="${kit}"></span><span class="tarefa__texto">${previewInline(task.title)}</span><span class="tarefa__meta">${chips}</span></div>`,
+        );
+        continue;
+      }
+      const text = line.trim();
+      if (!text || /^#{1,6}\s/.test(text)) continue;
+      chunks.push(`<p>${previewInline(text)}</p>`);
+    }
+    return chunks.join('');
+  }
+
   function noteIndent(path) {
     const depth = String(path || '')
       .split('/')
@@ -312,6 +376,7 @@
     shelfMark,
     kitTaskStatus,
     taskBlockClass,
+    notePreviewHtml,
     noteIndent,
     uniqueTitle,
     filterSlash,
