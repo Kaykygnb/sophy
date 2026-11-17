@@ -248,6 +248,25 @@
     return chunks.join('');
   }
 
+  const COMMANDS = [
+    { id: 'nota', rotulo: 'Nova nota', grupo: 'Criar', icone: 'nota-nova', atalho: 'Ctrl+N', quando: 'biblioteca' },
+    { id: 'estante', rotulo: 'Nova estante', grupo: 'Criar', icone: 'pasta-nova', atalho: 'Ctrl+Shift+N', quando: 'biblioteca' },
+    { id: 'canvas', rotulo: 'Novo canvas', grupo: 'Criar', icone: 'canvas', atalho: '', quando: 'biblioteca' },
+    { id: 'modelo', rotulo: 'A partir de modelo', grupo: 'Criar', icone: 'modelo', atalho: '', quando: 'biblioteca' },
+    { id: 'buscar', rotulo: 'Buscar', grupo: 'Navegar', icone: 'busca', atalho: 'Ctrl+K', quando: 'sempre' },
+    { id: 'comandos', rotulo: 'Comandos', grupo: 'Navegar', icone: 'comando', atalho: 'Ctrl+Shift+P', quando: 'sempre' },
+    { id: 'biblioteca', rotulo: 'Trocar biblioteca', grupo: 'Navegar', icone: 'alternar', atalho: 'Ctrl+Shift+O', quando: 'sempre' },
+    { id: 'grafo', rotulo: 'Mostrar grafo', grupo: 'Navegar', icone: 'grafo', atalho: '', quando: 'biblioteca' },
+    { id: 'hoje', rotulo: 'Nota do dia', grupo: 'Navegar', icone: 'nota-diaria', atalho: 'Alt+D', quando: 'biblioteca' },
+    { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
+    { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
+    { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'tachado', atalho: 'Ctrl+Shift+X', quando: 'editor' },
+    { id: 'destacar', rotulo: 'Destacar', grupo: 'Editar', icone: 'marca-texto', atalho: 'Ctrl+Shift+H', quando: 'editor' },
+    { id: 'link', rotulo: 'Link', grupo: 'Editar', icone: 'link', atalho: 'Ctrl+L', quando: 'editor' },
+    { id: 'tarefa', rotulo: 'Virar tarefa', grupo: 'Editar', icone: 'lista-tarefas', atalho: 'Ctrl+Enter', quando: 'editor' },
+    { id: 'sofi', rotulo: 'Pedir à Sofi', grupo: 'Editar', icone: 'faisca', atalho: 'Ctrl+J', quando: 'editor' },
+  ];
+
   function treeMarked(kind, id, focus = {}) {
     const mode =
       focus.treeFocus || (focus.active ? 'note' : focus.canvasPath ? 'canvas' : 'shelf');
@@ -384,6 +403,7 @@
     shelfMark,
     kitTaskStatus,
     taskBlockClass,
+    COMMANDS,
     treeMarked,
     notePreviewHtml,
     noteIndent,

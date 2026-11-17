@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -50,8 +50,8 @@ function rememberLibrary(folder) {
     ...(Array.isArray(settings.libraries) ? settings.libraries : []).filter(
       (item) => typeof item === 'string' && item !== folder,
     ),
-  ].slice(0, 12);
-  return writeSettings({ libraryPath: folder, onboarded: true, libraries });
+  ].slice(0, 5);
+  return writeSettings({ libraryPath: folder, onboarded: true, libraries, recentLibraries: libraries });
 }
 
 function broadcast(command) {
@@ -174,6 +174,30 @@ function setupIpc() {
       gate('library.watch', { enabled: true });
     }
     return { libraryPath: nextPath, libraries };
+  });
+
+  handle('sophy:library-list', () => {
+    const settings = readSettings();
+    const source = Array.isArray(settings.recentLibraries) ? settings.recentLibraries : settings.libraries;
+    return (Array.isArray(source) ? source : [])
+      .filter((item) => typeof item === 'string')
+      .slice(0, 5)
+      .map((folder) => ({ name: path.basename(folder), path: folder }));
+  });
+
+  handle('sophy:library-pick', async () => {
+    const window = BrowserWindow.getFocusedWindow() || windows[0];
+    const chosen = await dialog.showOpenDialog(window, {
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return null;
+    return chosen.filePaths[0];
+  });
+
+  handle('sophy:library-reveal', (_event, folder) => {
+    if (typeof folder !== 'string' || !folder) throw new Error('Escolha a biblioteca.');
+    shell.showItemInFolder(folder);
+    return true;
   });
 
   handle('sophy:settings', (_event, patch) => {
