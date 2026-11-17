@@ -13,6 +13,7 @@ import {
 } from './canvas.ts';
 import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
+import { readShelfStyles, writeShelfStyle } from './shelves.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
 import { backlinks, brokenLinks, outgoingLinks, relocate, watchLibrary } from './links.ts';
@@ -250,6 +251,27 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'shelf.style.list',
+    'Lê a cor e o ícone escolhidos de cada estante, gravados em .sophy/estantes.json.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => readShelfStyles(openLibrary(folder)),
+  ),
+  define(
+    'shelf.style.set',
+    'Grava a cor (1 a 8) e o ícone de uma estante. A Entrada não recebe cor.',
+    z.object({
+      libraryPath,
+      name: z.string().min(1),
+      color: z.number().int().min(1).max(8),
+      icon: z.string().min(1),
+      origin,
+    }),
+    ({ libraryPath: folder, name, color, icon, origin: source }) =>
+      tracked(folder, source, 'shelf.style.set', `Estilo ${name}`, (library) =>
+        writeShelfStyle(library, name, { color, icon }),
+      ),
   ),
   define(
     'task.query',

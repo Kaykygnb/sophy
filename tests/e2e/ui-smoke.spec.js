@@ -322,6 +322,31 @@ test('Canvas da navegação lista sem criar e a busca não duplica', async () =>
   await app.close();
 });
 
+test('Configurações e Início', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('[data-nav="inicio"]').click();
+  await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+  await expect(page.locator('.cartao-estante', { hasText: 'Estudos' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-inicio-claro.png') });
+  await page.keyboard.press('Control+Comma');
+  await expect(page.getByRole('heading', { name: 'Configurações' })).toBeVisible();
+  await page.getByRole('button', { name: 'Azul' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-accent', 'azul');
+  await page.screenshot({ path: path.join(artifacts, 'ui-config-claro.png') });
+  await app.close();
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  await darkPage.locator('[data-nav="inicio"]').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-inicio-escuro.png') });
+  await darkPage.keyboard.press('Control+Comma');
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-config-escuro.png') });
+  await dark.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

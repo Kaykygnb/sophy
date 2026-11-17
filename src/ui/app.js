@@ -88,6 +88,8 @@ function themeName() {
 }
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+  if (state.settings.accent) document.documentElement.dataset.accent = state.settings.accent;
+  else delete document.documentElement.dataset.accent;
   const logo = $('.titulo__marca img');
   if (logo)
     logo.src = `ui/assets/logo/logo-horizontal-${theme === 'dark' ? 'escuro' : 'claro'}.svg`;
@@ -478,6 +480,18 @@ async function refreshLibrary() {
   state.notes = await tool('note.list', {});
   const files = await tool('file.list', {});
   state.canvases = files.filter((file) => file.kind === 'canvas');
+  try {
+    state.shelfStyles = await tool('shelf.style.list', {});
+  } catch {
+    state.shelfStyles = {};
+  }
+}
+
+function markFor(name) {
+  const base = Cmd.shelfMark(name);
+  const saved = state.shelfStyles?.[name];
+  if (!saved || name === 'Entrada') return base;
+  return { icon: saved.icon || base.icon, color: saved.color || base.color };
 }
 
 function treeNotes(workspace) {
@@ -490,7 +504,7 @@ function paintTree() {
   if (!host) return;
   const shelves = state.workspaces
     .map((workspace) => {
-      const mark = Cmd.shelfMark(workspace.name);
+      const mark = markFor(workspace.name);
       const notes = treeNotes(workspace.name).filter(
         (note) => !filter || note.path.toLocaleLowerCase().includes(filter),
       );
@@ -661,6 +675,111 @@ function paintTabs() {
   });
 }
 
+function coverBand() {
+  const capa = state.frontmatter?.capa;
+  if (typeof capa !== 'string' || !/^sophy:[1-6]$/.test(capa)) return '';
+  return `<div class="capa" data-sophy="${capa.slice(6)}" role="img" aria-label="Capa ${escapeHtml(capa)}"></div>`;
+}
+
+async function setCover(capa) {
+  if (!state.active || !state.doc) return;
+  const frontmatter = { ...(state.frontmatter || {}), capa };
+  const result = await tool('note.write', {
+    path: state.active,
+    body: state.doc.body,
+    frontmatter,
+    expectedRevision: state.revision,
+  });
+  if (result.conflict) {
+    state.conflict = true;
+    paintCenter();
+    return;
+  }
+  state.revision = result.note.revision;
+  state.frontmatter = result.note.frontmatter;
+  paintCenter();
+}
+
+function paintHome(center) {
+  const cards = (state.workspaces || [])
+    .map((workspace) => {
+      const mark = markFor(workspace.name);
+      const notes = state.notes.filter((note) => note.workspace === workspace.name).length;
+      const boards = state.canvases.filter((file) => file.workspace === workspace.name).length;
+      const color = mark.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+      return `<button type="button" class="cartao-estante" data-home="${escapeHtml(workspace.name)}"${color}>${icon(mark.icon, 'icon--estante')}<strong>${escapeHtml(workspace.name)}</strong><span>${notes} notas · ${boards} canvas</span></button>`;
+    })
+    .join('');
+  center.innerHTML = `<div class="inicio"><h2>Início</h2><p>As estantes desta biblioteca. Escolha uma ou crie uma nota.</p><div class="inicio__cartoes">${cards || '<p>Nenhuma estante ainda. Use Novo.</p>'}</div><div class="vazio-ensina__atalhos"><span><kbd class="kbd">Ctrl N</kbd> nota</span><span><kbd class="kbd">Ctrl ,</kbd> configurações</span><span><kbd class="kbd">Ctrl K</kbd> buscar</span></div></div>`;
+  center.querySelectorAll('[data-home]').forEach((button) => {
+    button.onclick = () => {
+      state.selectedShelf = button.dataset.home;
+      state.treeFocus = 'shelf';
+      state.view = 'shelf';
+      state.nav = '';
+      paintTree();
+      paintCenter();
+    };
+  });
+}
+
+function paintSettings(center) {
+  const accent = state.settings.accent || 'indigo';
+  const accents = ['indigo', 'azul', 'verde-agua', 'musgo', 'ambar', 'vinho', 'grafite'];
+  const labels = {
+    indigo: 'Índigo',
+    azul: 'Azul',
+    'verde-agua': 'Verde-água',
+    musgo: 'Musgo',
+    ambar: 'Âmbar',
+    vinho: 'Vinho',
+    grafite: 'Grafite',
+  };
+  center.innerHTML = `<div class="config"><h2>Configurações</h2>
+    <section><h3>Aparência</h3>
+      <div class="segmentado" role="radiogroup" aria-label="Tema">
+        ${['light', 'dark', 'system'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''}><span>${value === 'light' ? 'Claro' : value === 'dark' ? 'Escuro' : 'Sistema'}</span></label>`).join('')}
+      </div>
+      <div class="segmentado" role="radiogroup" aria-label="Fonte">
+        ${['inter', 'literata'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-fonte" value="${value}" ${(state.settings.readingFont || 'inter') === value ? 'checked' : ''}><span>${value === 'inter' ? 'Inter' : 'Literata'}</span></label>`).join('')}
+      </div>
+      <label class="alternar"><input type="checkbox" id="cfg-motion" ${state.settings.reduceMotion ? 'checked' : ''}><span>Reduzir animações</span></label>
+    </section>
+    <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><p class="nota-privacidade">A cor do sistema fica desligada. O acento escolhido vale nesta janela.</p></section>
+  </div>`;
+  center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
+    input.onchange = async () => {
+      state.settings.theme = input.value;
+      applyTheme(themeName());
+      syncMotion();
+      await sophy.saveSettings({ theme: input.value });
+      paintStatus();
+    };
+  });
+  center.querySelectorAll('[name="cfg-fonte"]').forEach((input) => {
+    input.onchange = async () => {
+      state.settings.readingFont = input.value;
+      document.documentElement.dataset.font = input.value;
+      await sophy.saveSettings({ readingFont: input.value });
+    };
+  });
+  const motion = $('#cfg-motion');
+  if (motion)
+    motion.onchange = async () => {
+      state.settings.reduceMotion = motion.checked;
+      syncMotion();
+      await sophy.saveSettings({ reduceMotion: motion.checked });
+    };
+  center.querySelectorAll('[data-accent]').forEach((button) => {
+    button.onclick = async () => {
+      state.settings.accent = button.dataset.accent;
+      applyTheme(themeName());
+      await sophy.saveSettings({ accent: button.dataset.accent });
+      paintCenter();
+    };
+  });
+}
+
 function paintCenter() {
   const center = $('#centro');
   if (!center || state.painting) return;
@@ -725,6 +844,14 @@ function paintCenterBody(center) {
     paintCalendar(center);
     return;
   }
+  if (state.view === 'home') {
+    paintHome(center);
+    return;
+  }
+  if (state.view === 'settings') {
+    paintSettings(center);
+    return;
+  }
   if (state.view === 'shelf') {
     const notes = state.notes.filter((note) => note.workspace === state.selectedShelf);
     const boards = state.canvases.filter((file) => file.workspace === state.selectedShelf);
@@ -755,7 +882,7 @@ function paintCenterBody(center) {
         state.canvasPreviews[file] || state.canvasPreviews[file?.replace(/\.md$/i, '')],
       shelf: (file) => {
         const parts = String(file || '').split('/');
-        return parts.length > 1 ? Cmd.shelfMark(parts[0]) : null;
+        return parts.length > 1 ? markFor(parts[0]) : null;
       },
       icon,
       nextId: () => Math.random().toString(16).slice(2, 10),
@@ -787,9 +914,19 @@ function paintCenterBody(center) {
     .slice(firstIsTitle ? 1 : 0)
     .map((block, index) => renderBlock(block, index + (firstIsTitle ? 1 : 0)))
     .join('');
-  center.innerHTML = `${conflict}<article class="coluna" id="coluna"><p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${blocks}</article>`;
+  const cover = coverBand();
+  const capas = [1, 2, 3, 4, 5, 6]
+    .map(
+      (number) =>
+        `<button type="button" class="capa-opcao" data-capa="sophy:${number}" aria-label="Capa ${number}"></button>`,
+    )
+    .join('');
+  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<span class="capa-opcoes" aria-label="Capas">${capas}</span></div>${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
+  $('#coluna').querySelectorAll('[data-capa]').forEach((button) => {
+    button.onclick = () => setCover(button.dataset.capa);
+  });
   $('#coluna')
     .querySelectorAll('[data-block]')
     .forEach((el) => bindBlock(el));
@@ -1884,9 +2021,8 @@ function runCommand(id) {
     grafo: () => showGraph(),
     hoje: () => openDaily(),
     inicio: () => {
-      state.view = 'empty';
+      state.view = 'home';
       state.active = null;
-      state.treeFocus = 'shelf';
       paintTree();
       paintCenter();
       paintTabs();
@@ -2046,6 +2182,40 @@ async function applyLibrary(root, libraries) {
   paintStatus();
 }
 
+function openShelfStyle(name) {
+  const current = markFor(name);
+  const icons = ['capelo', 'livro', 'lampada', 'maleta', 'leitura', 'coracao', 'estante', 'pasta'];
+  const pop = document.createElement('div');
+  pop.className = 'menu menu-flutuante';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Cor e ícone');
+  pop.innerHTML = `<p>Cor e ícone de ${escapeHtml(name)}</p>
+    <div class="acentos">${[1, 2, 3, 4, 5, 6, 7, 8].map((color) => `<button type="button" class="acento ${current.color === color ? 'is-escolhida' : ''}" data-cor="${color}" aria-label="Cor ${color}" style="--amostra: var(--shelf-${color})"></button>`).join('')}</div>
+    <div class="inicio__cartoes">${icons.map((iconName) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}">${icon(iconName)} ${iconName}</button>`).join('')}</div>`;
+  document.body.append(pop);
+  pop.style.position = 'fixed';
+  pop.style.left = '280px';
+  pop.style.top = '120px';
+  let color = current.color || 1;
+  pop.querySelectorAll('[data-cor]').forEach((button) => {
+    button.onclick = async () => {
+      color = Number(button.dataset.cor);
+      await tool('shelf.style.set', { name, color, icon: current.icon });
+      await refreshLibrary();
+      paintTree();
+      closeMenus();
+    };
+  });
+  pop.querySelectorAll('[data-icone]').forEach((button) => {
+    button.onclick = async () => {
+      await tool('shelf.style.set', { name, color, icon: button.dataset.icone });
+      await refreshLibrary();
+      paintTree();
+      closeMenus();
+    };
+  });
+}
+
 function openTreeMenu(event, kind, target) {
   event.preventDefault();
   closeMenus();
@@ -2056,6 +2226,7 @@ function openTreeMenu(event, kind, target) {
     kind === 'shelf'
       ? [
           ['nota', 'Nova nota aqui'],
+          ['cor', 'Cor e ícone…'],
           ['renomear', 'Renomear'],
           ['lixo', 'Mover para a lixeira'],
         ]
@@ -2082,6 +2253,12 @@ function openTreeMenu(event, kind, target) {
       closeMenus();
       state.selectedShelf = target;
       createNote();
+    };
+  const color = menu.querySelector('[data-arvore="cor"]');
+  if (color)
+    color.onclick = () => {
+      closeMenus();
+      openShelfStyle(target);
     };
   menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
     closeMenus();
@@ -2337,7 +2514,7 @@ async function showGraph(workspace) {
 async function paintGraph(center) {
   const legend = state.workspaces
     .map((item) => {
-      const mark = Cmd.shelfMark(item.name);
+      const mark = markFor(item.name);
       const color = mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
       return `<span class="chip"><span class="arvore__ponto" style="background:${color}"></span>${escapeHtml(item.name)}</span>`;
     })
@@ -2400,7 +2577,7 @@ function drawGraph(graph) {
   const byPath = new Map(nodes.map((node) => [node.path, node]));
   const styles = getComputedStyle(document.documentElement);
   const colorOf = (workspace) => {
-    const mark = Cmd.shelfMark(workspace || '');
+    const mark = markFor(workspace || '');
     return mark.color
       ? styles.getPropertyValue(`--shelf-${mark.color}`).trim()
       : styles.getPropertyValue('--ink-3').trim();
@@ -2625,7 +2802,7 @@ function openPalette() {
       const excerpt = (hit.segments || [])
         .map((part) => (part.match ? `<mark>${escapeHtml(part.text)}</mark>` : escapeHtml(part.text)))
         .join('');
-      const shelf = hit.workspace ? Cmd.shelfMark(hit.workspace) : null;
+      const shelf = hit.workspace ? markFor(hit.workspace) : null;
       const dot = shelf?.color
         ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
         : '';
@@ -2723,6 +2900,13 @@ document.addEventListener('mousedown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeMenus();
+  if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+    event.preventDefault();
+    state.view = 'settings';
+    state.nav = 'config';
+    paintCenter();
+    return;
+  }
   if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'd') {
     event.preventDefault();
     runCommand('hoje');

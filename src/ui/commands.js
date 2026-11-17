@@ -22,6 +22,7 @@
     'canvas.edge.put',
     'canvas.edge.remove',
     'task.update',
+    'shelf.style.set',
   ]);
 
   function slashQuery(text, cursor) {
