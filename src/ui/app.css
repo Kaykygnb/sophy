@@ -145,7 +145,7 @@ button.nav__item {
 .gaveta-veu {
   display: none;
 }
-@media (max-width: 1023px) {
+@media (max-width: 1024px) {
   .titulo__marca {
     width: auto;
     max-width: 128px;
@@ -158,7 +158,7 @@ button.nav__item {
   }
   .lateral {
     position: absolute;
-    z-index: 30;
+    z-index: 16;
     top: 0;
     bottom: 0;
     transform: translateX(-105%);
@@ -169,9 +169,10 @@ button.nav__item {
   }
   .gaveta-veu:not([hidden]) {
     display: block;
-    position: absolute;
+    position: fixed;
     inset: 0;
-    z-index: 25;
+    z-index: 15;
+    margin: 0;
     border: 0;
     padding: 0;
     background: var(--overlay);
@@ -182,7 +183,8 @@ button.nav__item {
     padding-bottom: calc(var(--statusbar-h) + 16px);
   }
 }
-html.motion-reduce .lateral {
+html.motion-reduce .lateral,
+.motion-reduce .lateral {
   transition: none;
 }
 .lateral.is-fechada {
@@ -775,6 +777,15 @@ button.arvore__linha[aria-selected='true'] {
 .lateral__acoes #novo { flex: 1; width: auto; }
 .lateral__acoes #filtrar,
 .lateral__topo #recolher { width: auto; flex: none; }
+.seletor-capa .opcao-cartao {
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+.seletor-capa .opcao-cartao b,
+.seletor-capa .opcao-cartao small {
+  white-space: nowrap;
+}
+.capa--cor { background: var(--capa-tinta, var(--accent-soft)); }
+.capa__acoes { position: absolute; right: 12px; bottom: 12px; z-index: 2; display: flex; gap: 8px; }
 .site-previa { padding: 16px; border-radius: 12px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
 .site-previa[data-theme="dark"] { background: #14131a; color: #f4f1ea; }
 .agente { position: relative; }

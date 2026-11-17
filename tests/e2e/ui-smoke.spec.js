@@ -664,6 +664,61 @@ test('acabamento da rodada 3', async () => {
   await dark.close();
 });
 
+test('rodada 4: capa da estante, semana, prévia e restaurar', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  fs.writeFileSync(
+    path.join(root, 'Estudos', 'Cor.md'),
+    '---\ncapa: cor:estante\n---\n# Cor\n\nA faixa usa a cor da estante.\n',
+    'utf8',
+  );
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('#arvore').getByRole('button', { name: 'Cor', exact: true }).click();
+  const paint = await page.locator('.capa--cor').getAttribute('style');
+  expect(paint).toContain('--shelf-');
+  expect(paint).not.toContain('var(--estante-cor');
+  await expect(page.locator('.coluna .capa-galeria')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Trocar capa' }).click();
+  await expect(page.getByRole('dialog', { name: 'Capa da nota' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Usar arquivo do computador…' })).toBeVisible();
+  await expect(page.locator('[data-cor="estante"]')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-capa-seletor-claro.png') });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('input[name="cfg-semana"][value="0"]').check();
+  await page.locator('[data-nav="calendario"]').click();
+  await expect(page.locator('.cal-semana span').first()).toHaveText('dom');
+  await expect(page.locator('.cal-dia strong').first()).toHaveText('1');
+  await page.screenshot({ path: path.join(artifacts, 'ui-semana-domingo-claro.png') });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', altKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.semana-diaria__dia').first()).toContainText('dom');
+  await page.locator('#arvore').getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#cfg-pdf').click();
+  await expect(page.locator('.pdf-pagina')).toContainText('memória');
+  const wrap = await page.locator('.opcao-cartao b').first().evaluate((el) => getComputedStyle(el).whiteSpace);
+  expect(wrap).toBe('nowrap');
+  await page.screenshot({ path: path.join(artifacts, 'ui-exportar-previa-claro.png') });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
+  );
+  await page.locator('#comando-q').fill('Histórico');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Histórico de versões' }).click();
+  await page.getByRole('button', { name: 'Gravar ponto agora' }).click();
+  await page.locator('[data-restaurar]').first().click();
+  await expect(page.locator('#st-estado')).not.toHaveText('Conflito');
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

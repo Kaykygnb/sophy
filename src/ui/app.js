@@ -399,7 +399,7 @@ async function finishOnboarding() {
 }
 
 function drawerNarrow() {
-  return window.innerWidth < 1024;
+  return window.innerWidth <= 1024;
 }
 
 function openDrawer(opener) {
@@ -721,37 +721,106 @@ function paintTabs() {
   });
 }
 
+function noteShelfColor() {
+  const shelf = state.active && state.active.includes('/') ? state.active.split('/')[0] : state.selectedShelf || '';
+  const mark = markFor(shelf);
+  return mark.color ? `var(--shelf-${mark.color})` : 'var(--accent-soft)';
+}
+
 function coverArt(id, y) {
-  return `<div class="capa" style="--capa-y:${y}" role="img" aria-label="Capa ${escapeHtml(Cmd.COVER_NAMES?.[id] || id)}"><div class="capa__recorte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${escapeHtml(id)}"/></svg></div></div>`;
+  return `<div class="capa" style="--capa-y:${y}" role="img" aria-label="Capa ${escapeHtml(Cmd.COVER_NAMES?.[id] || id)}"><div class="capa__recorte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${escapeHtml(id)}"/></svg></div>${coverActions()}</div>`;
 }
 
 function coverBand() {
   const cover = Cmd.resolveCover(state.frontmatter);
   if (!cover) return '';
   if (cover.kind === 'cor') {
-    const paint = cover.color === 'estante' ? 'var(--estante-cor, var(--accent-soft))' : `var(--shelf-${cover.color}, var(--accent-soft))`;
-    return `<div class="capa capa--cor" style="--capa-y:${cover.y};--estante-cor:${paint}" role="img" aria-label="Capa cor ${escapeHtml(cover.color)}"></div>`;
+    const paint = cover.color === 'estante' ? noteShelfColor() : `var(--shelf-${cover.color}, var(--accent-soft))`;
+    return `<div class="capa capa--cor" style="--capa-y:${cover.y};--capa-tinta:${paint}" role="img" aria-label="Capa cor ${escapeHtml(cover.color)}">${coverActions()}</div>`;
   }
   if (cover.kind === 'arquivo')
-    return `<div class="capa" style="--capa-y:${cover.y}" data-arquivo="${escapeHtml(cover.src)}"><div class="capa__recorte"><img class="capa__img" alt="" src="${escapeHtml(cover.src)}"></div></div>`;
+    return `<div class="capa" style="--capa-y:${cover.y}" data-arquivo="${escapeHtml(cover.src)}"><div class="capa__recorte"><img class="capa__img" alt="" src="${escapeHtml(cover.src)}"></div>${coverActions()}</div>`;
   return coverArt(cover.id, cover.y);
 }
 
-function coverPicker() {
+function coverActions() {
   const daily = /^Diário\/\d{4}-\d{2}-\d{2}\.md$/.test(state.active || '');
   if (daily && !Cmd.resolveCover(state.frontmatter)) return '';
+  return `<div class="capa__acoes"><button type="button" class="btn btn--secundario btn--pequeno" id="trocar-capa">Trocar capa</button></div>`;
+}
+
+const COVER_GROUPS = {
+  Todas: null,
+  Natureza: ['ondas', 'montanhas', 'folhas', 'campo', 'nuvens', 'jardim', 'horizonte'],
+  Céu: ['ceu-noturno', 'constelacao'],
+  Cerrado: ['cerrado', 'vereda', 'ipe'],
+  Geometria: ['grade', 'papel-dobrado', 'arcos', 'topografia'],
+  Estudo: ['estante', 'pautado', 'rede'],
+  Cidade: ['cidade'],
+  Sofi: ['sofi-galho', 'sofi-livros', 'sofi-noite', 'sofi-folhas'],
+};
+
+function openCoverPicker() {
+  closeMenus();
   const current = Cmd.resolveCover(state.frontmatter);
-  const options = Cmd.COVER_IDS.map((id) => {
-    const checked = current?.kind === 'arte' && current.id === id ? 'checked' : '';
-    return `<label class="capa-opcao"><input type="radio" name="capa" value="sophy:${id}" ${checked}><span class="capa-opcao__arte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${id}"/></svg></span><span class="capa-opcao__nome">${escapeHtml(Cmd.COVER_NAMES[id] || id)}</span></label>`;
-  }).join('');
   const y = Math.round((current?.y ?? 0.5) * 100);
-  return `<fieldset class="capa-galeria"><legend>Capas</legend>${options}</fieldset><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label>`;
+  const pop = document.createElement('div');
+  pop.className = 'seletor-capa';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Capa da nota');
+  const filters = Object.keys(COVER_GROUPS)
+    .map((name, index) => `<button type="button" class="chip" data-filtro-capa="${escapeHtml(name)}" aria-pressed="${index === 0}">${escapeHtml(name)}</button>`)
+    .join('');
+  const arts = Cmd.COVER_IDS.map((id) => `<button type="button" class="capa-opcao" data-capa="sophy:${id}" data-grupo="${escapeHtml(Object.entries(COVER_GROUPS).find(([, ids]) => ids && ids.includes(id))?.[0] || '')}"><span class="capa-opcao__arte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${id}"/></svg></span><span class="capa-opcao__nome">${escapeHtml(Cmd.COVER_NAMES[id] || id)}</span></button>`).join('');
+  const colors = ['estante', '1', '2', '3', '4', '5', '6']
+    .map((color) => {
+      const paint = color === 'estante' ? noteShelfColor() : `var(--shelf-${color})`;
+      return `<button type="button" class="acento" data-cor="${color}" aria-label="Cor ${color}" style="--amostra:${paint}"></button>`;
+    })
+    .join('');
+  pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--fantasma" id="fechar-capa" aria-label="Fechar">×</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
+  document.body.append(pop);
+  pop.querySelector('#fechar-capa').onclick = () => pop.remove();
+  pop.querySelectorAll('[data-filtro-capa]').forEach((button) => {
+    button.onclick = () => {
+      const group = button.dataset.filtroCapa;
+      pop.querySelectorAll('[data-capa]').forEach((card) => {
+        card.hidden = group !== 'Todas' && card.dataset.grupo !== group;
+      });
+    };
+  });
+  pop.querySelectorAll('[data-capa]').forEach((button) => {
+    button.onclick = () => setCover(button.dataset.capa, pop.querySelector('#capa-y').value);
+  });
+  pop.querySelectorAll('[data-cor]').forEach((button) => {
+    button.onclick = () => setCover(`cor:${button.dataset.cor}`, pop.querySelector('#capa-y').value);
+  });
+  pop.querySelector('#capa-arquivo').onclick = () => {
+    const input = document.createElement('input');
+    input.placeholder = 'assets/foto.png';
+    input.setAttribute('aria-label', 'Caminho do arquivo');
+    pop.querySelector('#capa-arquivo').after(input);
+    input.onkeydown = (event) => {
+      if (event.key !== 'Enter') return;
+      setCover(input.value.trim(), pop.querySelector('#capa-y').value);
+    };
+    input.focus();
+  };
+  pop.querySelector('#capa-remover').onclick = () => setCover('', y);
+  pop.querySelector('#capa-y').oninput = (event) => {
+    event.target.parentElement.querySelector('output').textContent = `${event.target.value}%`;
+  };
+}
+
+function coverPicker() {
+  return '';
 }
 
 async function setCover(capa, y) {
   if (!state.active || !state.doc) return;
-  const frontmatter = { ...(state.frontmatter || {}), capa };
+  const frontmatter = { ...(state.frontmatter || {}) };
+  if (capa) frontmatter.capa = capa;
+  else delete frontmatter.capa;
   if (y != null) frontmatter.capa_y = `${y}%`;
   const result = await tool('note.write', {
     path: state.active,
@@ -1115,26 +1184,12 @@ function paintCenterBody(center) {
     .join('');
   const cover = coverBand();
   const strip = dailyStrip(state.active);
-  const capas = coverPicker();
+  const capas = cover ? '' : coverActions();
   center.innerHTML = `${conflict}<article class="coluna${state.reading ? ' is-leitura' : ''}" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="modo-leitura">${state.reading ? 'Editar' : 'Modo leitura'}</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
-  $('#coluna').querySelectorAll('[name="capa"]').forEach((input) => {
-    input.onchange = () => setCover(input.value, $('#capa-y')?.value);
-  });
-  const y = $('#capa-y');
-  if (y)
-    y.oninput = () => {
-      const output = y.parentElement?.querySelector('output');
-      if (output) output.textContent = `${y.value}%`;
-      const band = $('#coluna .capa');
-      if (band) band.style.setProperty('--capa-y', String(Number(y.value) / 100));
-    };
-  if (y)
-    y.onchange = () => {
-      const chosen = $('#coluna [name="capa"]:checked');
-      if (chosen) setCover(chosen.value, y.value);
-    };
+  const changeCover = $('#trocar-capa');
+  if (changeCover) changeCover.onclick = () => openCoverPicker();
   $('#coluna').querySelectorAll('[data-dia]').forEach((button) => {
     button.onclick = () => openDailyOn(button.dataset.dia);
   });
@@ -1651,7 +1706,7 @@ function openMenu(anchor, className, html, onPick) {
 }
 
 function closeMenus() {
-  document.querySelectorAll('.menu-flutuante').forEach((menu) => menu.remove());
+  document.querySelectorAll('.menu-flutuante, .seletor-capa').forEach((menu) => menu.remove());
 }
 
 function insertAt(el, start, end, text) {
@@ -2048,12 +2103,24 @@ function isoTodayFrom(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function weekStartsOn() {
+  return Number(state.settings.weekStartsOn ?? 1) === 0 ? 0 : 1;
+}
+
+function weekdayLabels() {
+  return weekStartsOn() === 0
+    ? ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+    : ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+}
+
+function weekOffset(date) {
+  return weekStartsOn() === 0 ? date.getDay() : (date.getDay() + 6) % 7;
+}
+
 function weekStart(iso) {
   const [year, month, day] = iso.split('-').map(Number);
   const date = new Date(year, month - 1, day);
-  const startsOn = Number(state.settings.weekStartsOn ?? 1) === 0 ? 0 : 1;
-  const offset = startsOn === 0 ? date.getDay() : (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - offset);
+  date.setDate(date.getDate() - weekOffset(date));
   return isoTodayFrom(date);
 }
 
@@ -2168,7 +2235,7 @@ function paintCalendar(center) {
   const start = mode === 'semana' ? weekStart(cursor) : (() => {
     const [year, month] = cursor.split('-').map(Number);
     const first = new Date(year, month - 1, 1);
-    const offset = (first.getDay() + 6) % 7;
+    const offset = weekOffset(first);
     first.setDate(1 - offset);
     return isoTodayFrom(first);
   })();
@@ -2194,7 +2261,7 @@ function paintCalendar(center) {
     .join('');
   const [year, month] = cursor.split('-').map(Number);
   const monthName = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  const weekdays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
+  const weekdays = weekdayLabels()
     .map((name) => `<span>${name}</span>`)
     .join('');
   const agenda = (state.calendarItems || [])
@@ -2344,15 +2411,11 @@ function dailyStrip(notePath) {
   const match = String(notePath || '').match(/^Diário\/(\d{4}-\d{2}-\d{2})\.md$/);
   if (!match) return '';
   const current = match[1];
-  const date = new Date(`${current}T12:00:00`);
-  const monday = new Date(date);
-  monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-  const labels = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+  const start = weekStart(current);
+  const labels = weekdayLabels();
   const days = labels.map((label, index) => {
-    const day = new Date(monday);
-    day.setDate(monday.getDate() + index);
-    const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-    return `<button type="button" class="semana-diaria__dia${iso === current ? ' is-hoje' : ''}" data-dia="${iso}">${label}<span>${day.getDate()}</span></button>`;
+    const iso = addIso(start, index);
+    return `<button type="button" class="semana-diaria__dia${iso === current ? ' is-hoje' : ''}" data-dia="${iso}">${label}<span>${Number(iso.slice(8))}</span></button>`;
   });
   return `<div class="semana-diaria" aria-label="Semana">${days.join('')}</div>`;
 }
@@ -2566,22 +2629,37 @@ function paintVersions(center) {
     };
   center.querySelectorAll('[data-restaurar]').forEach((button) => {
     button.onclick = async () => {
+      clearTimeout(saveTimer);
       await tool('version.restore', { id: button.dataset.restaurar });
       await refreshLibrary();
+      if (state.active) await openNote(state.active, { force: true });
+      else paintTree();
+      state.conflict = false;
+      paintStatus();
       toast('Versão restaurada.');
-      paintTree();
     };
   });
+}
+
+function exportPreview(kind) {
+  const title = state.active ? baseName(state.active) : 'Biblioteca';
+  const paragraphs = String(state.doc?.body || '')
+    .split(/\n+/)
+    .map((line) => line.replace(/^#{1,6}\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((line) => `<p>${escapeHtml(line)}</p>`)
+    .join('');
+  if (kind === 'pdf')
+    return `<div class="pdf-pagina" role="img" aria-label="Prévia do PDF"><h3>${escapeHtml(title)}</h3>${paragraphs}<footer>Sophy · 1</footer></div>`;
+  return `<div class="site-previa" data-theme="${themeName()}"><h3>${escapeHtml(title)}</h3>${paragraphs}</div>`;
 }
 
 function openExport(kind) {
   const overlay = $('#overlay');
   overlay.hidden = false;
   const title = state.active ? baseName(state.active) : 'Biblioteca';
-  const preview = kind === 'pdf'
-    ? `<div class="pdf-pagina" role="img" aria-label="Prévia do PDF"><h3>${escapeHtml(title)}</h3><p>Papel claro, mesmo no tema escuro.</p><footer>Sophy · 1</footer></div>`
-    : `<div class="site-previa" data-theme="${themeName()}"><h3>${escapeHtml(title)}</h3><p>O site usa o tema de quem está lendo.</p></div>`;
-  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Exportar"><h3>Exportar</h3><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="nota" checked><b>Esta nota</b><small>${escapeHtml(title)}</small></label><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="estante"><b>A estante</b><small>${escapeHtml(state.selectedShelf || 'Biblioteca')}</small></label>${preview}<button type="button" class="btn btn--primario" id="exportar-seguir">Continuar</button></div>`;
+  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Exportar"><h3>Exportar</h3><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="nota" checked><b>Esta nota</b><small>${escapeHtml(title)}</small></label><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="estante"><b>A estante</b><small>${escapeHtml(state.selectedShelf || 'Biblioteca')}</small></label>${exportPreview(kind)}<button type="button" class="btn btn--primario" id="exportar-seguir">Continuar</button></div>`;
   $('#exportar-seguir').onclick = async () => {
     overlay.hidden = true;
     if (kind === 'pdf') {
@@ -3512,7 +3590,7 @@ function applyCommand(command) {
 }
 
 document.addEventListener('mousedown', (event) => {
-  if (!event.target.closest('.menu-flutuante, #seletor-biblioteca, .barra-formato')) closeMenus();
+  if (!event.target.closest('.menu-flutuante, .seletor-capa, #seletor-biblioteca, .barra-formato, #trocar-capa')) closeMenus();
 });
 
 document.addEventListener('keydown', (event) => {
