@@ -12,6 +12,7 @@ import {
   labelOf,
   plainText,
   resolveFile,
+  indexPaths,
   resolvePath,
   scan,
   type LinkFormat,
@@ -81,15 +82,16 @@ export function outgoingLinks(library: Library, relative: string): OutgoingLink[
   const cache = syncLinks(library);
   const note = cache.get(relative);
   if (!note) throw new EngineError('not-found', 'Nota não encontrada.');
-  return decorate(note, cache, library);
+  return decorate(note, cache, library, sharedIndex(library, cache));
 }
 
 export function backlinks(library: Library, relative: string) {
   const cache = syncLinks(library);
   if (!cache.has(relative)) throw new EngineError('not-found', 'Nota não encontrada.');
   const found = [];
+  const index = sharedIndex(library, cache);
   for (const note of cache.values()) {
-    for (const link of decorate(note, cache, library)) {
+    for (const link of decorate(note, cache, library, index)) {
       if (link.status === 'resolved' && link.path === relative)
         found.push({
           from: note.path,
@@ -107,8 +109,9 @@ export function backlinks(library: Library, relative: string) {
 export function brokenLinks(library: Library) {
   const cache = syncLinks(library);
   const found = [];
+  const index = sharedIndex(library, cache);
   for (const note of cache.values()) {
-    for (const link of decorate(note, cache, library)) {
+    for (const link of decorate(note, cache, library, index)) {
       if (link.status === 'resolved') continue;
       found.push({
         from: note.path,
@@ -213,19 +216,32 @@ function loadNote(
   };
 }
 
+const sharedIndexes = new Map<string, { stamp: string; index: ReturnType<typeof indexPaths>; paths: string[] }>();
+
+function sharedIndex(library: Library, cache: Map<string, CachedNote>) {
+  const stamp = [...cache.values()].map((note) => `${note.path}:${note.mtime}:${note.size}`).join('|');
+  const current = sharedIndexes.get(library.root);
+  if (current && current.stamp === stamp) return current.index;
+  const paths = [...cache.keys()];
+  const index = indexPaths(paths);
+  sharedIndexes.set(library.root, { stamp, index, paths });
+  return index;
+}
+
 function decorate(
   note: CachedNote,
   cache: Map<string, CachedNote>,
   library: Library,
+  index = sharedIndex(library, cache),
 ): OutgoingLink[] {
-  const notePaths = [...cache.keys()];
+  const paths = sharedIndexes.get(library.root)?.paths ?? [...cache.keys()];
   const files = listFiles(library).map((file) => file.path);
   return note.scanned.map((link) => {
     const fileLike =
       link.format === 'embed' && /\.[^/]+$/.test(link.note) && !/\.md$/i.test(link.note);
     const resolved = fileLike
       ? resolveFile(link.note, note.path, files)
-      : resolvePath(link.note, note.path, notePaths);
+      : resolvePath(link.note, note.path, paths, index);
     let status: LinkStatus = 'broken';
     if (resolved.invalid || (!resolved.path && resolved.candidates.length === 0)) status = 'broken';
     else if (!resolved.path) status = 'ambiguous';

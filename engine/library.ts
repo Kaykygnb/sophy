@@ -54,7 +54,7 @@ export function openLibrary(folder: string, options?: OpenOptions): Library {
 
 export function listWorkspaces(library: Library): WorkspaceInfo[] {
   return readRoot(library)
-    .filter((entry) => entry.kind === 'directory')
+    .filter((entry) => entry.kind === 'directory' && safeSegment(entry.name, 'workspace'))
     .map((entry) => ({ name: entry.name, path: entry.name }))
     .sort(byName);
 }
@@ -286,6 +286,8 @@ function walkFiles(library: Library, workspace?: string) {
       if (++count > MAX_TREE_ENTRIES)
         throw new EngineError('too-large', 'A biblioteca ultrapassou o limite de 20 mil itens.');
       const relative = prefix ? prefix + '/' + entry.name : entry.name;
+      if (!relative.split('/').every((part, index) => safeSegment(part, index === 0 ? 'workspace' : 'entry')))
+        continue;
       if (entry.isSymbolicLink()) continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) visit(full, relative, depth + 1);
@@ -307,6 +309,15 @@ function readRoot(library: Library) {
     if (!entry.isDirectory() && !entry.isFile()) return [];
     return [{ name: entry.name, kind: entry.isDirectory() ? 'directory' : 'file' }];
   });
+}
+
+function safeSegment(name: string, kind: 'workspace' | 'entry') {
+  try {
+    validateSegment(name, kind);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function describe(relative: string, stat: fs.Stats, workspaces: Set<string>): NoteInfo {

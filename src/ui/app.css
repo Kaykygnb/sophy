@@ -212,6 +212,9 @@ html.motion-reduce .lateral,
   overflow: auto;
   padding-bottom: var(--statusbar-h);
 }
+#abrir-conexoes { display: none; }
+.aba-wrap { display: inline-flex; align-items: center; }
+.aba-fechar { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
 .conexoes {
   width: 280px;
   flex: none;
@@ -522,8 +525,11 @@ button.arvore__linha[aria-selected='true'] {
   color: var(--ink-3);
 }
 .canvas-ferramentas {
+  top: 12px;
   left: 50%;
-  bottom: 16px;
+  bottom: auto;
+  display: flex;
+  flex-direction: row;
   transform: translateX(-50%);
   z-index: 3;
 }
@@ -1137,6 +1143,17 @@ button.arvore__linha[aria-selected='true'] {
   .conexoes {
     display: none;
   }
+  .conexoes.is-gaveta {
+    display: block;
+    position: absolute;
+    z-index: 16;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(280px, 100%);
+    overflow: auto;
+  }
+  #abrir-conexoes { display: inline-flex; }
   .lateral.is-fechada {
     display: none;
   }

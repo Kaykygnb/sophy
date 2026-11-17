@@ -7,10 +7,11 @@ type FetchLike = (url: string, init: { method: string; headers: Record<string, s
 }>;
 
 const blocked = /key|chave|secret|token|senha/i;
+const unsafe = new Set(['site.export', 'vault.import', 'entry.trash', 'version.restore']);
 
 export function agentTools() {
   return listTools()
-    .filter((tool) => !tool.name.startsWith('ui.') && !blocked.test(tool.name))
+    .filter((tool) => !tool.name.startsWith('ui.') && !blocked.test(tool.name) && !unsafe.has(tool.name))
     .map((tool) => ({
       type: 'function' as const,
       function: { name: tool.name, description: tool.description },
@@ -51,7 +52,7 @@ export async function runAgentTurn(options: {
   const results = [];
   for (const call of (message?.tool_calls || []).slice(0, 4)) {
     const name = call.function?.name || '';
-    if (!name || blocked.test(name) || name.startsWith('ui.')) continue;
+    if (!name || blocked.test(name) || name.startsWith('ui.') || unsafe.has(name)) continue;
     let args: Record<string, unknown> = {};
     try {
       args = JSON.parse(call.function?.arguments || '{}') as Record<string, unknown>;

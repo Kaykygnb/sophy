@@ -119,11 +119,23 @@ export function importVault(library: Library, source: string, shelf: string) {
       const child = path.join(directory, entry.name);
       const next = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) walk(child, next);
-      else if (/\.(md|canvas)$/i.test(entry.name)) {
-        const relativeFile = `${shelf}/${next}`;
-        ensureParents(library, relativeFile);
-        const destination = resolveInside(library.root, relativeFile, { allowMissing: true });
-        fs.copyFileSync(child, destination);
+      else if (/\.(md|canvas|png|jpe?g|gif|webp|pdf)$/i.test(entry.name)) {
+        const safe = next.replace(/[<>:"|?*]/g, '-');
+        let relativeFile = `${shelf}/${safe}`;
+        try {
+          ensureParents(library, relativeFile);
+        } catch {
+          continue;
+        }
+        let destination = resolveInside(library.root, relativeFile, { allowMissing: true });
+        if (fs.existsSync(destination)) {
+          const extension = path.extname(safe);
+          const stem = safe.slice(0, safe.length - extension.length);
+          relativeFile = `${shelf}/${stem} (importado)${extension}`;
+          ensureParents(library, relativeFile);
+          destination = resolveInside(library.root, relativeFile, { allowMissing: true });
+        }
+        fs.copyFileSync(child, destination, fs.constants.COPYFILE_EXCL);
         copied += 1;
       }
     }

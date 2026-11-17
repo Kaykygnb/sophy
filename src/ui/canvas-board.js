@@ -344,6 +344,10 @@
       state.selected = new Set([id]);
       paint();
       commit();
+      if (type === 'text') {
+        const created = id;
+        setTimeout(() => world.querySelector(`[data-text="${created}"]`)?.focus(), 0);
+      }
     };
 
     area.addEventListener('pointerdown', (event) => {
@@ -475,11 +479,15 @@
 
     function inline(text) {
       return window.SophyDoc.parseInlines(text)
-        .map((part) =>
-          part.type === 'text'
-            ? escape(part.text)
-            : `<a href="#" class="wikilink" contenteditable="false" data-raw="${escape(part.raw)}" data-target="${escape(part.target)}">${escape(part.label)}</a>`,
-        )
+        .map((part) => {
+          if (part.type === 'text') return escape(part.text);
+          if (part.type === 'bold') return `<strong>${escape(part.text)}</strong>`;
+          if (part.type === 'italic') return `<em>${escape(part.text)}</em>`;
+          if (part.type === 'strike') return `<s>${escape(part.text)}</s>`;
+          if (part.type === 'highlight') return `<mark>${escape(part.text)}</mark>`;
+          if (part.type === 'code') return `<code>${escape(part.text)}</code>`;
+          return `<a href="#" class="wikilink" contenteditable="false" data-raw="${escape(part.raw || '')}" data-target="${escape(part.target || '')}">${escape(part.label || part.text || '')}</a>`;
+        })
         .join('');
     }
 

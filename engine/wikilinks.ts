@@ -139,22 +139,51 @@ export function anchorExists(headings: string[], blockIds: string[], anchor: str
  * Vários arquivos com o mesmo nome, sem caminho, ficam ambíguos — exceto se
  * houver um na mesma pasta da nota de origem.
  */
-export function resolvePath(note: string, source: string, paths: string[]): ResolvedPath {
+export type PathIndex = {
+  exact: Map<string, string[]>;
+  byBase: Map<string, string[]>;
+};
+
+export function indexPaths(paths: string[]): PathIndex {
+  const exact = new Map<string, string[]>();
+  const byBase = new Map<string, string[]>();
+  for (const file of paths) {
+    const key = norm(file);
+    const same = exact.get(key) ?? [];
+    same.push(file);
+    exact.set(key, same);
+    const base = norm(basename(file));
+    const names = byBase.get(base) ?? [];
+    names.push(file);
+    byBase.set(base, names);
+  }
+  return { exact, byBase };
+}
+
+export function resolvePath(
+  note: string,
+  source: string,
+  paths: string[],
+  index?: PathIndex,
+): ResolvedPath {
   if (!note) return { path: source, candidates: [source], invalid: false };
   if (/[\\:\x00-\x1f]/.test(note) || note.startsWith('/'))
     return { path: null, candidates: [], invalid: true };
   const suffixed = /\.md$/i.test(note) || hasOtherExtension(note) ? note : note + '.md';
   const folder = source.includes('/') ? source.slice(0, source.lastIndexOf('/')) : '';
-  const sameFolder = lookup(normalizePath(suffixed, folder), paths);
+  const resolvedIndex = index ?? indexPaths(paths);
+  const sameFolder = lookup(normalizePath(suffixed, folder), paths, resolvedIndex);
   if (note.includes('/') || sameFolder.length) {
-    const found = note.includes('/') ? lookup(normalizePath(suffixed, ''), paths) : sameFolder;
+    const found = note.includes('/')
+      ? lookup(normalizePath(suffixed, ''), paths, resolvedIndex)
+      : sameFolder;
     return {
       path: found.length === 1 ? found[0] : null,
       candidates: found,
       invalid: normalizePath(suffixed, note.includes('/') ? '' : folder) === null,
     };
   }
-  const byName = paths.filter((file) => norm(basename(file)) === norm(basename(note)));
+  const byName = resolvedIndex.byBase.get(norm(basename(note))) ?? [];
   return { path: byName.length === 1 ? byName[0] : null, candidates: byName, invalid: false };
 }
 
@@ -175,9 +204,10 @@ function hasOtherExtension(note: string) {
   return /\.[^/]+$/.test(note) && !/\.md$/i.test(note);
 }
 
-function lookup(filePath: string | null, paths: string[]) {
+function lookup(filePath: string | null, paths: string[], index?: PathIndex) {
   if (filePath === null) return [];
-  return paths.filter((item) => norm(item) === norm(filePath));
+  const resolved = index ?? indexPaths(paths);
+  return resolved.exact.get(norm(filePath)) ?? [];
 }
 
 function normalizePath(filePath: string, base: string) {

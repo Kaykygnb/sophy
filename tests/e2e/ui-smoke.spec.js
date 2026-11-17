@@ -717,7 +717,9 @@ test('rodada 4: capa da estante, semana, prévia e restaurar', async () => {
   await page.locator('#comando-q').fill('Histórico');
   await page.locator('#comando-lista .menu__item', { hasText: 'Histórico de versões' }).click();
   await page.getByRole('button', { name: 'Gravar ponto agora' }).click();
-  await page.locator('[data-restaurar]').first().click();
+  await page.locator('[data-versao]').first().click();
+  await page.getByRole('button', { name: 'Restaurar esta versão' }).click();
+  await page.getByRole('button', { name: 'Restaurar', exact: true }).click();
   await expect(page.locator('#st-estado')).not.toHaveText('Conflito');
   await app.close();
 });
@@ -1034,6 +1036,7 @@ test('editor visual o tempo todo e os fluxos da janela sem erro', async () => {
   await expect.poll(() => fs.readdirSync(path.join(root, 'Arquivo')).some((name) => name.endsWith('.md'))).toBe(true);
   await page.locator('#arvore [data-shelf="Arquivo"]').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Mover para a lixeira' }).click();
+  await page.getByRole('button', { name: 'Mover', exact: true }).click();
   await expect(page.locator('#arvore [data-shelf="Arquivo"]')).toHaveCount(0);
 
   await page.locator('#novo').click();

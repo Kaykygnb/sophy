@@ -307,18 +307,28 @@ export function exportSite(library: Library, destination: string, theme: 'light'
       throw new EngineError('invalid-path', 'O site não é gravado dentro da biblioteca.');
   }
   fs.mkdirSync(target, { recursive: true });
+  const existing = fs.readdirSync(target).filter((name) => !name.startsWith('.'));
+  const dir = existing.length ? path.join(target, `Sophy-site-${Date.now()}`) : target;
+  if (dir !== target) fs.mkdirSync(dir, { recursive: true });
   const notes = listNotes(library);
+  const used = new Set<string>();
   const pages = notes.map((note) => {
     const doc = readNote(library, note.path);
-    const name = `${note.path.replace(/\.md$/i, '').replaceAll('/', '-')}.html`;
+    let name = `${note.path.replace(/\.md$/i, '').replaceAll('/', '-')}.html`;
+    let suffix = 2;
+    while (used.has(name)) {
+      name = `${note.path.replace(/\.md$/i, '').replaceAll('/', '-')}-${suffix}.html`;
+      suffix += 1;
+    }
+    used.add(name);
     const html = pageHtml(note.path, doc.body, theme);
-    fs.writeFileSync(path.join(target, name), html);
+    fs.writeFileSync(path.join(dir, name), html);
     return { href: name, title: note.name.replace(/\.md$/i, '') };
   });
   const index = `<!doctype html><html data-theme="${theme}"><head><meta charset="utf-8"><title>Biblioteca</title>${siteStyle()}</head><body><h1>Biblioteca</h1><ul>${pages
     .map((page) => `<li><a href="${escape(page.href)}">${escape(page.title)}</a></li>`)
     .join('')}</ul></body></html>\n`;
-  fs.writeFileSync(path.join(target, 'index.html'), index);
+  fs.writeFileSync(path.join(dir, 'index.html'), index);
   return { pages: pages.length, theme };
 }
 
@@ -327,9 +337,18 @@ export function lightPaperHtml(title: string, body: string) {
 }
 
 function pageHtml(title: string, body: string, theme: 'light' | 'dark') {
-  const blocks = body
-    .split(/\r?\n\r?\n/)
-    .map((block) => `<p>${escape(block)}</p>`)
+  const source = body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  const blocks = source
+    .split(/\n{2,}/)
+    .map((block) => {
+      const line = block.trim();
+      if (!line) return '';
+      const html = escape(line)
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      if (line.startsWith('# ')) return `<h2>${html.slice(2)}</h2>`;
+      return `<p>${html}</p>`;
+    })
     .join('');
   return `<!doctype html><html data-theme="${theme}"><head><meta charset="utf-8"><title>${escape(title)}</title>${siteStyle()}</head><body><article><h1>${escape(title)}</h1>${blocks}</article></body></html>\n`;
 }

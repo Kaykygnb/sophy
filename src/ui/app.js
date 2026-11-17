@@ -363,9 +363,14 @@ async function nextStep() {
       return;
     }
     try {
+      const libraryName = (state.libraryNameInput || 'Biblioteca').trim();
+      if (state.folderMode === 'criar' && (!libraryName || libraryName === '.' || libraryName === '..' || /[\\/]/.test(libraryName))) {
+        toast('Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
+        return;
+      }
       const target =
         state.folderMode === 'criar'
-          ? `${state.folder.replace(/\/$/, '')}/${(state.libraryNameInput || 'Biblioteca').trim()}`
+          ? `${state.folder.replace(/\/$/, '')}/${libraryName}`
           : state.folder;
       const opened =
         state.folderMode === 'criar'
@@ -427,6 +432,7 @@ function openDrawer(opener) {
 function closeDrawer() {
   $('#lateral')?.classList.remove('is-aberta');
   $('#sofi-gaveta')?.classList.remove('is-aberta');
+  $('#conexoes')?.classList.remove('is-gaveta');
   if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.remove();
   const opener = state.drawerOpener || $('#abrir-lateral');
@@ -619,7 +625,7 @@ function paintTree() {
       state.selectedShelf = button.dataset.open.includes('/')
         ? button.dataset.open.split('/')[0]
         : null;
-      openNote(button.dataset.open);
+      openNote(button.dataset.open).catch((error) => toast(error.message, 'erro'));
     };
     button.oncontextmenu = (event) => openTreeMenu(event, 'note', button.dataset.open);
   });
@@ -658,13 +664,22 @@ function paintTree() {
     bindNameField(
       noteRename,
       async (name) => {
+        if (name.includes('/') || name.includes('\\')) {
+          toast('O nome não pode conter /.', 'erro');
+          return;
+        }
         const from = state.renaming.path;
         const folder = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : '';
         state.renaming = null;
         const to = `${folder}${name}.md`;
-        if (to !== from) await tool('entry.move', { from, to });
-        await refreshLibrary();
-        await openNote(to);
+        try {
+          if (to !== from) await tool('entry.move', { from, to });
+          state.tabs = state.tabs.map((tab) => (tab === from ? to : tab));
+          await refreshLibrary();
+          await openNote(to);
+        } catch (error) {
+          toast(error.message, 'erro');
+        }
       },
       () => {
         state.renaming = null;
@@ -679,7 +694,11 @@ function paintTree() {
       async (name) => {
         const from = state.renaming.name;
         state.renaming = null;
-        if (name !== from) await tool('entry.move', { from, to: name });
+        if (name !== from) {
+          await tool('entry.move', { from, to: name });
+          state.tabs = state.tabs.map((tab) => (tab === from || tab.startsWith(`${from}/`) ? `${name}${tab.slice(from.length)}` : tab));
+          if (state.active?.startsWith(`${from}/`) || state.active === from) state.active = `${name}${state.active.slice(from.length)}`;
+        }
         state.selectedShelf = name;
         await refreshLibrary();
         paintTree();
@@ -719,19 +738,58 @@ function paintTabs() {
   const host = $('#abas');
   if (!host) return;
   host.innerHTML = state.tabs
-    .map(
-      (
-        file,
-      ) => `<button type="button" class="aba" role="tab" aria-selected="${file === state.active}" data-tab="${escapeHtml(file)}">
-        ${icon('nota')}<span>${escapeHtml(baseName(file))}</span></button>`,
-    )
+    .map((file) => {
+      const canvas = file.toLowerCase().endsWith('.canvas');
+      return `<span class="aba-wrap"><button type="button" class="aba" role="tab" aria-selected="${file === state.active || file === state.canvasPath}" data-tab="${escapeHtml(file)}">${icon(canvas ? 'canvas' : 'nota')}<span>${escapeHtml(baseName(file))}</span></button><button type="button" class="aba-fechar" data-fechar-aba="${escapeHtml(file)}" aria-label="Fechar ${escapeHtml(baseName(file))}">×</button></span>`;
+    })
     .join('');
   host.querySelectorAll('[data-tab]').forEach((button) => {
-    button.onclick = () =>
+    button.onclick = () => {
       button.dataset.tab.toLowerCase().endsWith('.canvas')
         ? openCanvas(button.dataset.tab)
-        : openNote(button.dataset.tab);
+        : openNote(button.dataset.tab).catch((error) => toast(error.message, 'erro'));
+    };
   });
+  host.querySelectorAll('[data-fechar-aba]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      closeTab(button.dataset.fecharAba);
+    };
+  });
+}
+
+function closeTab(file) {
+  state.tabs = state.tabs.filter((tab) => tab !== file);
+  if (state.active !== file && state.canvasPath !== file) {
+    paintTabs();
+    return;
+  }
+  state.active = null;
+  state.doc = null;
+  state.canvasPath = null;
+  state.view = 'home';
+  state.nav = 'inicio';
+  paintTabs();
+  paintTree();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+}
+
+function setFocusMode(on) {
+  state.focusMode = !!on;
+  document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
+  const button = $('#modo-foco');
+  if (button) button.textContent = state.focusMode ? 'Sair do foco' : 'Foco';
+}
+
+function openConnections() {
+  const panel = $('#conexoes');
+  if (!panel) return;
+  if (window.innerWidth > 1024) return;
+  panel.classList.add('is-gaveta');
+  ensureVeil();
+  state.drawerOpener = $('#abrir-conexoes');
 }
 
 const SHELF_COLOR_NAMES = ['Índigo', 'Azul', 'Verde-água', 'Oliva', 'Ocre', 'Terracota', 'Lavanda', 'Grafite'];
@@ -1237,7 +1295,7 @@ function paintCenterBody(center) {
   const cover = coverBand();
   const strip = dailyStrip(state.active);
   const capas = cover ? '' : coverActions();
-  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
+  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="abrir-conexoes">Conexões</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   const changeCover = $('#trocar-capa');
@@ -1246,12 +1304,9 @@ function paintCenterBody(center) {
     button.onclick = () => openDailyOn(button.dataset.dia);
   });
   const focusMode = $('#modo-foco');
-  if (focusMode)
-    focusMode.onclick = () => {
-      state.focusMode = !state.focusMode;
-      document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
-      paintCenter();
-    };
+  if (focusMode) focusMode.onclick = () => setFocusMode(!state.focusMode);
+  const openLinks = $('#abrir-conexoes');
+  if (openLinks) openLinks.onclick = () => openConnections();
   $('#coluna')
     .querySelectorAll('[data-block]:not(table)')
     .forEach((el) => bindBlock(el));
@@ -1522,7 +1577,7 @@ function onBlockInput(el) {
   paintStatus();
 }
 
-const LIVE_MARK = /(\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^)\n]+\)|\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+?`|(?<!\*)\*(?!\s)[^*\n]+?\*(?!\*))/;
+const LIVE_MARK = /(\[\[[^\[\]\n]+\]\]|\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+?`|(?<!\*)\*(?!\s)[^*\n]+?\*(?!\*))/;
 
 function renderClosedMarks(el) {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -1538,14 +1593,17 @@ function renderClosedMarks(el) {
     const start = match.index || 0;
     const html = inlineHtml(match[0]);
     const placed = replaceTextSlice(node, start, match[0].length, html);
-    if (placed) {
-      const range = document.createRange();
-      range.setStartAfter(placed);
-      range.collapse(true);
-      const selection = getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
+    const selection = getSelection();
+    const range = document.createRange();
+    if (placed) range.setStartAfter(placed);
+    else {
+      const next = node.parentNode?.childNodes[0];
+      if (next) range.setStart(next, Math.min(start + match[0].length, next.textContent?.length || 0));
+      else range.setStart(el, 0);
     }
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
     return;
   }
 }
@@ -1616,8 +1674,16 @@ function promoteBlock(el) {
     raw = `${text}\n\n\`\`\`\n`;
     caret = 0;
   } else if (text === '---' || text === '***' || text === '___') {
-    raw = '---\n';
-    caret = 0;
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, '---\n');
+    const blocks = state.doc.blocks.slice();
+    blocks.splice(index + 1, 0, { type: 'paragraph', raw: '\n' });
+    state.doc = { ...state.doc, blocks, body: Doc.serializeBlocks(blocks) };
+    state.caret = { index: index + 1, offset: 0 };
+    closeMenus();
+    paintCenter();
+    scheduleSave();
+    return true;
   } else return false;
   checkpoint(true);
   state.doc = Doc.replaceBlock(state.doc, index, raw);
@@ -1767,7 +1833,12 @@ function onBlockKey(event, el) {
     runCommand('sofi');
     return;
   }
-  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+    event.preventDefault();
+    setFocusMode(!state.focusMode);
+    return;
+  }
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
     event.preventDefault();
     const index = Number(el.dataset.block);
     const text = readEditable(el).replace(/\n$/, '');
@@ -2137,8 +2208,8 @@ function showWiki(el, found) {
     .filter(
       (note) =>
         !needle ||
-        note.path.toLocaleLowerCase().includes(needle) ||
-        baseName(note.path).toLocaleLowerCase().includes(needle),
+        foldText(note.path).includes(foldText(needle)) ||
+        foldText(baseName(note.path)).includes(foldText(needle)),
     )
     .slice(0, 8);
   const rows = matches
@@ -2156,6 +2227,10 @@ function showWiki(el, found) {
     }
     insertAt(el, found.start, found.start + 2 + found.query.length, button.dataset.insert);
   });
+}
+
+function foldText(value) {
+  return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 }
 
 function highlight(text, query) {
@@ -2316,7 +2391,12 @@ async function saveNow() {
     const status = $('#st-estado');
     if (status) status.textContent = 'Salvo';
     state.notes = await tool('note.list', {});
-    await loadLinks();
+    const signature = (state.doc?.blocks || []).map((block) => block.raw).join('\n');
+    const links = signature.match(/\[\[[^\[\]\n]+\]\]/g)?.join('|') || '';
+    if (links !== state.linkSig) {
+      state.linkSig = links;
+      await loadLinks();
+    }
   } catch (error) {
     toast(error.message, 'erro');
   }
@@ -2343,6 +2423,7 @@ async function openCanvas(file) {
   state.view = 'canvas';
   state.treeFocus = 'canvas';
   state.canvasPath = canvas.path;
+  state.nav = '';
   state.canvasDoc = canvas.document;
   state.canvasRevision = canvas.revision;
   state.canvasPreviews = {};
@@ -2876,10 +2957,7 @@ function runCommandNow(id) {
     visoes: () => showViews(),
     mencoes: () => showMentions(),
     importar: () => importObsidian(),
-    foco: () => {
-      state.focusMode = !state.focusMode;
-      document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
-    },
+    foco: () => setFocusMode(!state.focusMode),
     cartas: () => showCards(),
     config: () => {
       state.view = 'settings';
@@ -3209,11 +3287,11 @@ function paintVersions(center) {
   const items = rows
     .map(
       (row) =>
-        `<li><button type="button" class="versao${picked && picked.id === row.id ? ' is-escolhida' : ''}" data-versao="${escapeHtml(row.id)}" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(relativeWhen(row.id))}</b><span>${escapeHtml(row.label || 'ponto')}</span><small>${sizeLabel(row.bytes || 0)}</small></button></li>`,
+        `<li><button type="button" class="versao${picked && picked.id === row.id ? ' is-escolhida' : ''}" data-versao="${escapeHtml(row.id)}"><b>${escapeHtml(relativeWhen(row.id))}</b><span>${escapeHtml(row.label || 'ponto')}</span><small>${sizeLabel(row.bytes || 0)}</small></button></li>`,
     )
     .join('');
   const current = (state.doc?.blocks || []).map(blockPreview).filter(Boolean).slice(0, 6).join('') || '<p>Abra a nota para ver o agora.</p>';
-  center.innerHTML = `<div class="versoes-tela"><div class="versoes-diff"><article><h3>${picked ? escapeHtml(relativeWhen(picked.id)) : 'Versão'}</h3><div class="versoes__previa">${escapeHtml(picked?.preview || 'Sem prévia')}</div></article><article><h3>Agora</h3><div class="versoes__previa">${current}</div></article></div><aside><h2>Linha do tempo</h2><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><p>Guardadas 90 dias ou 1 GB.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></aside></div>`;
+  center.innerHTML = `<div class="versoes-tela"><div class="versoes-diff"><article><h3>${picked ? escapeHtml(relativeWhen(picked.id)) : 'Versão'}</h3><div class="versoes__previa">${escapeHtml(picked?.preview || 'Sem prévia')}</div></article><article><h3>Agora</h3><div class="versoes__previa">${current}</div></article></div><aside><h2>Linha do tempo</h2><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><p>Guardadas 90 dias ou 1 GB. O clique só mostra a prévia.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><button type="button" class="btn btn--fantasma" id="restaurar-versao" ${picked ? '' : 'disabled'}>Restaurar esta versão</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></aside></div>`;
   const save = $('#gravar-ponto');
   if (save)
     save.onclick = async () => {
@@ -3221,18 +3299,40 @@ function paintVersions(center) {
       toast('Ponto gravado.');
       await showVersions();
     };
-  center.querySelectorAll('[data-restaurar]').forEach((button) => {
-    button.onclick = async () => {
-      clearTimeout(saveTimer);
-      await tool('version.restore', { id: button.dataset.restaurar });
-      await refreshLibrary();
-      if (state.active) await openNote(state.active, { force: true });
-      else paintTree();
-      state.conflict = false;
-      paintStatus();
-      toast('Versão restaurada.');
+  center.querySelectorAll('[data-versao]').forEach((button) => {
+    button.onclick = () => {
+      state.versionPick = button.dataset.versao;
+      paintVersions(center);
     };
   });
+  const restore = $('#restaurar-versao');
+  if (restore && picked)
+    restore.onclick = () => {
+      const overlay = $('#overlay');
+      overlay.hidden = false;
+      overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Restaurar versão"><p>Restaurar ${escapeHtml(relativeWhen(picked.id))} substitui as notas e os canvas da biblioteca. Um ponto novo é gravado antes.</p><button type="button" id="confirma-sim">Restaurar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+      $('#confirma-nao').onclick = () => {
+        overlay.hidden = true;
+      };
+      $('#confirma-sim').onclick = async () => {
+        overlay.hidden = true;
+        clearTimeout(saveTimer);
+        await tool('version.point', { label: 'antes-de-restaurar' });
+        await tool('version.restore', { id: picked.id });
+        await refreshLibrary();
+        if (state.active) await openNote(state.active, { force: true });
+        else paintTree();
+        state.conflict = false;
+        paintStatus();
+        toast('Versão restaurada.');
+      };
+    };
+}
+
+async function pickedFolder() {
+  const picked = await sophy.chooseFolder();
+  if (!picked || picked.ok === false) return '';
+  return typeof picked === 'string' ? picked : picked.value || '';
 }
 
 function blockPreview(block) {
@@ -3274,16 +3374,20 @@ function openExport(kind) {
         toast('Abra uma nota para exportar o PDF.', 'erro');
         return;
       }
-      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(Doc.serializeBlocks(state.doc.blocks))}</pre></body></html>`;
+      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}h1,h2,h3{font-family:Georgia,serif}</style></head><body><h1>${escapeHtml(title)}</h1>${(state.doc?.blocks || []).map(blockPreview).join('')}</body></html>`;
       const saved = await sophy.exportPdf(html);
       if (saved) toast('PDF em papel claro.');
       return;
     }
-    const folder = await sophy.chooseFolder();
+    const folder = await pickedFolder();
     if (!folder) return;
     const theme = themeName() === 'dark' ? 'dark' : 'light';
-    const result = await tool('site.export', { destination: folder, theme });
-    toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+    try {
+      const result = await tool('site.export', { destination: folder, theme });
+      toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+    } catch (error) {
+      toast(error.message, 'erro');
+    }
   };
 }
 
@@ -3311,22 +3415,32 @@ function importObsidian() {
     const pick = $('#importar-cofre');
     if (pick)
       pick.onclick = async () => {
-        folder = await sophy.chooseFolder();
-        if (!folder) return;
-        step = 2;
-        paint();
+        try {
+          folder = await pickedFolder();
+          if (!folder) return;
+          step = 2;
+          paint();
+        } catch (error) {
+          toast(error.message, 'erro');
+        }
       };
     const go = $('#importar-seguir');
     if (go)
       go.onclick = async () => {
-        step = 3;
-        paint();
-        const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
-        step = 4;
-        paint();
-        await refreshLibrary();
-        paintTree();
-        toast(`${result.copied} arquivo(s) copiados. A origem não foi alterada.`);
+        try {
+          step = 3;
+          paint();
+          const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
+          step = 4;
+          paint();
+          await refreshLibrary();
+          paintTree();
+          toast(`${result.copied} arquivo(s) copiados. A origem não foi alterada.`);
+        } catch (error) {
+          step = 1;
+          paint();
+          toast(error.message, 'erro');
+        }
       };
   };
   paint();
@@ -3406,7 +3520,12 @@ async function chooseLibrary(create) {
   const chosen = await sophy.chooseFolder();
   if (!chosen?.ok || !chosen.value) return;
   if (create) {
-    const created = await sophy.createLibrary(chosen.value);
+    const name = (state.libraryNameInput || 'Biblioteca').trim();
+    if (!name || name === '.' || name === '..' || /[\\/]/.test(name)) {
+      toast('Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
+      return;
+    }
+    const created = await sophy.createLibrary(`${chosen.value.replace(/[/\\]$/, '')}/${name}`);
     if (!created.ok) {
       toast(created.error, 'erro');
       return;
@@ -3550,10 +3669,35 @@ function openTreeMenu(event, kind, target) {
     };
   menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
     closeMenus();
-    await tool('entry.trash', { path: target });
-    await refreshLibrary();
-    paintTree();
-    paintCenter();
+    try {
+      if (kind === 'shelf') {
+        const count = state.notes.filter((note) => note.workspace === target || note.path.startsWith(`${target}/`)).length;
+        const overlay = $('#overlay');
+        overlay.hidden = false;
+        overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Mover estante"><p>Mover a estante ${escapeHtml(target)} para a lixeira, com ${count} nota(s)?</p><button type="button" id="confirma-sim">Mover</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+        const ok = await new Promise((resolve) => {
+          $('#confirma-nao').onclick = () => { overlay.hidden = true; resolve(false); };
+          $('#confirma-sim').onclick = () => { overlay.hidden = true; resolve(true); };
+        });
+        if (!ok) return;
+      }
+      await tool('entry.trash', { path: target });
+      const prefix = kind === 'shelf' ? `${target}/` : target;
+      state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));
+      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(prefix))) {
+        state.active = null;
+        state.doc = null;
+        state.view = 'home';
+        state.nav = 'inicio';
+      }
+      await refreshLibrary();
+      paintTree();
+      paintTabs();
+      paintCenter();
+      toast('Movido para a lixeira.');
+    } catch (error) {
+      toast(error.message, 'erro');
+    }
   };
 }
 
@@ -4237,10 +4381,30 @@ document.addEventListener('keydown', (event) => {
       closePalette();
       return;
     }
-    if (drawerNarrow() && ($('#lateral')?.classList.contains('is-aberta') || $('#sofi-gaveta')?.classList.contains('is-aberta'))) {
+    if (drawerNarrow() && ($('#lateral')?.classList.contains('is-aberta') || $('#sofi-gaveta')?.classList.contains('is-aberta') || $('#conexoes')?.classList.contains('is-gaveta'))) {
       closeDrawer();
       return;
     }
+    if (state.focusMode) {
+      setFocusMode(false);
+      return;
+    }
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
+    event.preventDefault();
+    const current = state.active || state.canvasPath;
+    if (current) closeTab(current);
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'p') {
+    event.preventDefault();
+    openPalette();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    openPalette();
+    return;
   }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Space') {
     event.preventDefault();
@@ -4337,6 +4501,13 @@ async function boot() {
   host.hidden = true;
   host.innerHTML = covers;
   document.body.prepend(host);
+  sophy.onFlush?.(async () => {
+    try {
+      await flushNote();
+    } finally {
+      sophy.flushed?.();
+    }
+  });
   const started = await sophy.boot();
   if (!started.ok) {
     document.body.textContent = started.error || 'Não foi possível abrir.';

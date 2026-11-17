@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node scripts/start.js",
     "dev": "node scripts/start.js --dev",
-    "mcp": "node src/mcp.js",
+    "mcp": "node --experimental-strip-types engine/cli.ts mcp",
     "check": "node scripts/check.js",
     "test": "node --experimental-strip-types --test tests/*.test.js",
     "test:engine": "node --experimental-strip-types --test engine/*.test.ts",

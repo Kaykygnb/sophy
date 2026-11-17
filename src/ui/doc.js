@@ -300,7 +300,7 @@
 
   function parseInlines(text) {
     const parts = [];
-    const pattern = /!?\[\[[^\]\n]*\]\]/g;
+    const pattern = /!?\[\[[^\[\]\n]*\]\]/g;
     let last = 0;
     for (const match of text.matchAll(pattern)) {
       const at = match.index ?? 0;

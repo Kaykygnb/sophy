@@ -130,11 +130,24 @@ function setupIpc() {
     };
   });
 
-  handle('sophy:tool', (_event, name, input) => {
+  handle('sophy:tool', async (_event, name, input) => {
     if (typeof name !== 'string' || !/^[a-z]+(\.[A-Za-z]+)+$/.test(name))
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
-    return gate(name, input && typeof input === 'object' ? input : {});
+    const body = input && typeof input === 'object' ? input : {};
+    if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
+      const full = path.resolve(sessionPath, ...body.path.split('/').filter(Boolean));
+      const root = path.resolve(sessionPath) + path.sep;
+      if (full.startsWith(root)) {
+        try {
+          await shell.trashItem(full);
+          return { path: body.path, trashed: true, trashPath: '' };
+        } catch {
+          /* a engine copia e apaga quando a lixeira do sistema recusa */
+        }
+      }
+    }
+    return gate(name, body);
   });
 
   handle('sophy:agent-status', () => ({
@@ -290,10 +303,24 @@ function setupIpc() {
     else if (action === 'maximize') {
       if (window.isMaximized()) window.unmaximize();
       else window.maximize();
-    } else if (action === 'close') window.close();
+    } else if (action === 'close') requestClose(window);
     else throw new Error('Ação de janela desconhecida.');
     return true;
   });
+}
+
+function requestClose(window) {
+  if (window.__sophyClosing) return;
+  window.__sophyClosing = true;
+  const timer = setTimeout(() => window.destroy(), 1500);
+  const done = () => {
+    clearTimeout(timer);
+    if (!window.isDestroyed()) window.destroy();
+  };
+  ipcMain.once('sophy:flushed', (event) => {
+    if (event.sender === window.webContents) done();
+  });
+  window.webContents.send('sophy:flush-request');
 }
 
 function createWindow() {
@@ -316,6 +343,11 @@ function createWindow() {
     },
   });
   windows.add(window);
+  window.on('close', (event) => {
+    if (window.__sophyClosing) return;
+    event.preventDefault();
+    requestClose(window);
+  });
   window.on('closed', () => windows.delete(window));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());

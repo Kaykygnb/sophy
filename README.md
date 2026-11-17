@@ -10,7 +10,7 @@ A área de escrita tem uma única barra superior, navegação compacta por padr�
 
 A fonte Inter é distribuída localmente em `src/fonts/`, com licença OFL incluída, e funciona sem internet. Os estilos históricos permanecem em camadas de menor prioridade para que os estilos atuais controlem cores e medidas de forma previsível. `tests/e2e/writing-polish.spec.js` verifica texto longo, foco, leitura em janelas de 640 a 1440 pixels, retomada do cursor, desfazer entre abas e salvamento real.
 
-A primeira abertura apresenta as ações de criar e abrir uma biblioteca; bibliotecas e estantes exibem somente os dados locais cadastrados. O grafo oferece busca, nomes, filtro de notas isoladas, zoom e abertura por teclado, com estados de carregamento, vazio e falha recuperável. Os atalhos Ctrl+K, Ctrl+P e Ctrl+Shift+F também funcionam durante a escrita no editor.
+A primeira abertura apresenta as ações de criar e abrir uma biblioteca; bibliotecas e estantes exibem somente os dados locais cadastrados. O grafo oferece busca, nomes, filtro de notas isoladas, zoom e abertura por teclado, com estados de carregamento, vazio e falha recuperável. Os atalhos Ctrl+K, Ctrl+P e Ctrl+Shift+F abrem a busca.
 
 Os arquivos de revisão do FigCraft e suas imagens em `assets/` são referências de desenvolvimento e ficam fora do instalador. Execute `npm run test:e2e` para conferir os fluxos revisados, os temas e o salvamento em dados temporários.
 
@@ -89,7 +89,7 @@ Limites iniciais: notas até 8 MB, prévias de imagens até 20 MB, árvore até 
 
 ## MCP local
 
-O servidor MCP é independente da janela Electron e acessa o mesmo cadastro local de mundos. Ele usa transporte stdio: configure seu cliente MCP para iniciar `node` com o argumento absoluto `src/mcp.js` deste projeto. Ou execute `npm run mcp` para iniciar manualmente. O protocolo usa stdin/stdout; mensagens de diagnóstico vão para stderr.
+O servidor MCP da engine usa transporte stdio e a biblioteca indicada. Execute `npm run mcp -- --biblioteca /caminho/da/biblioteca`, ou configure o cliente para iniciar `node --experimental-strip-types` com `engine/cli.ts` e os argumentos `mcp --biblioteca`. O protocolo usa stdin/stdout; mensagens de diagnóstico vão para stderr.
 
 As ferramentas `sophy_*` permitem listar, criar e abrir mundos; listar, criar, cadastrar, abrir e renomear áreas; listar arquivos, buscar e ler notas; e criar, editar, mover ou criar notas-alvo para links. `sophy_show_app` abre ou focaliza a interface; `sophy_close_app` solicita o fechamento gracioso e deixa o servidor MCP ativo. Se houver alterações não salvas, a interface apresenta seu aviso habitual. Escritas exigem a revisão obtida na leitura, evitando sobrescrever alterações externas. O servidor não oferece exclusão permanente de arquivos ou pastas.
 

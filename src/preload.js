@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld(
     agentKeyClear: () => ipcRenderer.invoke('sophy:agent-key-clear'),
     agentAsk: (message) => ipcRenderer.invoke('sophy:agent-ask', message),
     window: (action) => ipcRenderer.invoke('sophy:window', action),
+    onFlush: (listener) => {
+      const wrapped = () => listener();
+      ipcRenderer.on('sophy:flush-request', wrapped);
+      return () => ipcRenderer.removeListener('sophy:flush-request', wrapped);
+    },
+    flushed: () => ipcRenderer.send('sophy:flushed'),
     onCommand: (listener) => {
       const wrapped = (_event, command) => listener(command);
       ipcRenderer.on('sophy:command', wrapped);
