@@ -862,7 +862,7 @@ async function setCover(capa, y) {
   if (y != null) frontmatter.capa_y = `${y}%`;
   const result = await tool('note.write', {
     path: state.active,
-    body: state.doc.body,
+    body: Doc.serializeBlocks(state.doc.blocks),
     frontmatter,
     expectedRevision: state.revision,
   });
@@ -2235,36 +2235,8 @@ function rawFromPlain(block, text) {
 
 function modelOffset(el) {
   const selection = getSelection();
-  if (!selection.rangeCount) return readEditable(el).length;
-  const node = selection.anchorNode;
-  const offset = selection.anchorOffset;
-  let count = 0;
-  let found = false;
-  const walk = (current) => {
-    if (found) return;
-    if (current === node) {
-      if (current.nodeType === Node.TEXT_NODE)
-        count += Math.min(offset, current.textContent.length);
-      found = true;
-      return;
-    }
-    if (current.nodeType === Node.TEXT_NODE) {
-      count += current.textContent.length;
-      return;
-    }
-    if (current.dataset && current.dataset.raw) {
-      if (current.contains(node)) {
-        count += current.dataset.raw.length;
-        found = true;
-        return;
-      }
-      count += current.dataset.raw.length;
-      return;
-    }
-    for (const child of current.childNodes) walk(child);
-  };
-  walk(el);
-  return count;
+  if (!selection?.rangeCount || !el.contains(selection.anchorNode)) return markdownFromDom(el).length;
+  return offsetAt(el, selection.anchorNode, selection.anchorOffset);
 }
 
 function today() {
@@ -2306,7 +2278,7 @@ function scheduleSave() {
 
 async function saveNow() {
   if (!state.active || !state.doc || state.conflict) return;
-  const body = state.doc.blocks.map((block) => block.raw).join('');
+  const body = Doc.serializeBlocks(state.doc.blocks);
   try {
     const result = await tool('note.write', {
       path: state.active,
@@ -3262,7 +3234,7 @@ function openExport(kind) {
         toast('Abra uma nota para exportar o PDF.', 'erro');
         return;
       }
-      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(state.doc.body)}</pre></body></html>`;
+      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(Doc.serializeBlocks(state.doc.blocks))}</pre></body></html>`;
       const saved = await sophy.exportPdf(html);
       if (saved) toast('PDF em papel claro.');
       return;

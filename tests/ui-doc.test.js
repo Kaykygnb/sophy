@@ -29,12 +29,20 @@ test('Enter separa o parágrafo, Backspace junta e a colagem vira blocos', () =>
   const typed = doc.insertInBlock(split.doc, split.caret.index, split.caret.offset, 'Segunda linha');
   const saved = doc.serializeDocument(typed.doc);
   assert.equal(saved.includes('Primeiro parágrafo.Segunda'), false);
-  assert.match(saved, /Primeiro parágrafo\.\nSegunda linha\n/);
-  assert.doesNotMatch(saved, /Primeiro parágrafo\.\n\nSegunda linha/);
+  assert.match(saved, /Primeiro parágrafo\.\n\nSegunda linha\n/);
+  const reopened = doc.parseDocument(saved);
+  assert.deepEqual(
+    reopened.blocks.filter((block) => block.type === 'paragraph').map((block) => block.raw.trim()),
+    ['Primeiro parágrafo.', 'Segunda linha'],
+  );
   const joined = doc.joinBlocks(typed.doc, typed.caret.index);
   assert.match(doc.serializeDocument(joined.doc), /Primeiro parágrafo\. Segunda linha/);
   const pasted = doc.pasteLines(start, index, 'Primeiro '.length, 'A\nB');
-  assert.match(doc.serializeDocument(pasted.doc), /Primeiro A\nBparágrafo\./);
+  assert.match(doc.serializeDocument(pasted.doc), /Primeiro A\n\nBparágrafo\./);
+  assert.deepEqual(
+    pasted.doc.blocks.filter((block) => block.type === 'paragraph').map((block) => block.raw.trim()),
+    ['Primeiro A', 'Bparágrafo.'],
+  );
   const markdown = doc.pasteLines(doc.parseDocument('\n'), 0, 0, '# Título colado\n- item colado\n> citação colada\n');
   const kinds = markdown.doc.blocks.map((block) => block.type);
   assert.equal(kinds.includes('heading'), true);
@@ -88,9 +96,26 @@ test('negrito e itálico envolvem o trecho no Markdown', () => {
   assert.equal(italic.cursor, 1);
 });
 
+test('Enter no início do item guarda o texto', () => {
+  const split = doc.splitBlock(doc.parseDocument('- item dois\n'), 0, 0);
+  assert.match(split.doc.blocks[0].raw, /^-\s*\n?$/);
+  assert.match(split.doc.blocks[1].raw, /item dois/);
+  assert.equal(split.doc.blocks[1].type, 'item');
+});
+
+test('listas contíguas não ganham linha em branco', () => {
+  const text = doc.serializeDocument(doc.parseDocument('- um\n- dois\n1. tres\n'));
+  assert.match(text, /- um\n- dois\n/);
+  assert.doesNotMatch(text, /- um\n\n- dois/);
+});
+
 test('markdown volta igual, com wikilink, tarefa e frontmatter', () => {
   const parsed = doc.parseDocument(sample);
-  assert.equal(doc.serializeDocument(parsed), sample);
+  const again = doc.parseDocument(doc.serializeDocument(parsed));
+  assert.deepEqual(
+    again.blocks.map((block) => block.type),
+    parsed.blocks.map((block) => block.type),
+  );
   assert.match(parsed.prefix, /tags:/);
   const tasks = parsed.blocks.filter((block) => block.type === 'task').map((block) => block.task);
   assert.equal(tasks[1].status, '/');

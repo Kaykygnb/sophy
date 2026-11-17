@@ -48,8 +48,7 @@
     const marker = before.lastIndexOf('[[');
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
-    if (query.includes(']]') || query.includes('\n') || query.includes('|') || query.includes('#'))
-      return null;
+    if (/[\]\n|#*.]/.test(query)) return null;
     return { start: marker, query };
   }
 

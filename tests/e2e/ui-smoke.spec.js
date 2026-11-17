@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const artifacts = '/opt/cursor/artifacts';
+const artifacts = process.env.SOPHY_ARTIFACTS || path.join(os.tmpdir(), 'sophy-ui-artifacts');
+fs.mkdirSync(artifacts, { recursive: true });
 
 function library() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-e2e-'));
@@ -250,8 +251,7 @@ test('Enter cria bloco, Ctrl+B formata e a árvore marca um item', async () => {
   await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('Segunda linha');
   const saved = fs.readFileSync(file, 'utf8');
   expect(saved).not.toContain('incompleto.Segunda');
-  expect(saved).toMatch(/incompleto\.\r?\nSegunda linha/);
-  expect(saved).not.toMatch(/incompleto\.\r?\n\r?\nSegunda linha/);
+  expect(saved).toMatch(/incompleto\.\r?\n\r?\nSegunda linha/);
   await paragraph.click();
   await paragraph.evaluate((el) => {
     const text = [...el.childNodes].find((node) => node.nodeType === 3 && node.textContent.includes('memó'));
@@ -728,6 +728,7 @@ test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
   const app = await launch([`--biblioteca=${root}`, '--theme=light']);
   const page = await app.firstWindow();
   fs.mkdirSync(artifacts, { recursive: true });
+  await expect(page.locator('#arvore')).toBeVisible();
   await page.evaluate(() =>
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
   );
@@ -1099,8 +1100,7 @@ test('rodada 6: barra, enter, atalhos, desfazer e capa', async () => {
   await page.keyboard.type('Alpha uma.');
   await page.keyboard.press('Enter');
   await page.keyboard.type('Bravo duas.');
-  await expect.poll(() => fs.readFileSync(file, 'utf8')).toMatch(/Alpha uma\.\nBravo duas\./);
-  await expect.poll(() => fs.readFileSync(file, 'utf8')).not.toMatch(/Alpha uma\.\n\nBravo duas\./);
+  await expect.poll(() => fs.readFileSync(file, 'utf8')).toMatch(/Alpha uma\.\n\nBravo duas\./);
   await page.keyboard.press('Home');
   await page.keyboard.press('Backspace');
   await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('Alpha uma. Bravo duas.');
@@ -1206,5 +1206,76 @@ test('rodada 6: seleção entre blocos e lista numerada', async () => {
   await page.keyboard.press('Backspace');
   await expect.poll(() => fs.readFileSync(file, 'utf8')).not.toContain('Alpha sel');
   await expect.poll(() => fs.readFileSync(file, 'utf8')).not.toContain('Bravo sel');
+  await app.close();
+});
+
+test('rodada 7: reabrir, item no início, cursor formatado, colar e canvas', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const formatted = path.join(root, 'Estudos', 'Formato.md');
+  fs.writeFileSync(
+    formatted,
+    '# Formato\n\nTexto com **negrito**, *itálico*, [[Estudos/Grafo|grafo]] e `codigo` no fim.\n',
+    'utf8',
+  );
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  await page.locator('#novo').click();
+  await page.getByRole('menuitem', { name: 'Nova nota' }).click();
+  const opened = await page.locator('#arvore [data-open][aria-selected="true"]').getAttribute('data-open');
+  const file = path.join(root, opened);
+  await page.locator('.bloco--titulo').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Paragrafo A da quebra');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Paragrafo B da quebra');
+  await expect.poll(() => fs.readFileSync(file, 'utf8')).toMatch(/Paragrafo A da quebra\n\nParagrafo B da quebra/);
+  await page.locator('#arvore').getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.locator(`#arvore [data-open="${opened}"]`).click();
+  await expect(page.locator('.bloco--texto', { hasText: 'Paragrafo A da quebra' })).toBeVisible();
+  await expect(page.locator('.bloco--texto', { hasText: 'Paragrafo B da quebra' })).toBeVisible();
+  await expect(page.locator('.bloco--texto', { hasText: 'Paragrafo A da quebra Paragrafo B da quebra' })).toHaveCount(0);
+
+  await page.locator('.bloco--texto', { hasText: 'Paragrafo B da quebra' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- item dois');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => fs.readFileSync(file, 'utf8')).toMatch(/item dois/);
+  const afterEnter = fs.readFileSync(file, 'utf8');
+  expect(afterEnter).toMatch(/- item dois/);
+
+  await page.evaluate(() => {
+    const target = document.querySelector('.bloco--texto, .bloco--item');
+    target.focus();
+    const data = new DataTransfer();
+    data.setData('text/plain', 'Colado linha um\n\nColado linha dois');
+    target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+  });
+  await expect(page.locator('.bloco--texto', { hasText: 'Colado linha um' })).toBeVisible();
+  await expect(page.locator('.bloco--texto', { hasText: 'Colado linha dois' })).toBeVisible();
+  await expect(page.locator('.bloco--texto', { hasText: 'Colado linha um Colado linha dois' })).toHaveCount(0);
+
+  await page.locator('#arvore').getByRole('button', { name: 'Formato', exact: true }).click();
+  const rich = page.locator('.bloco--texto').first();
+  await rich.click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Novo');
+  await expect.poll(() => fs.readFileSync(formatted, 'utf8')).toContain('no fim.');
+  await expect.poll(() => fs.readFileSync(formatted, 'utf8')).not.toMatch(/pará\n/);
+  await expect(page.locator('.bloco--texto', { hasText: 'Novo' })).toBeVisible();
+  await expect(rich.locator('strong')).toHaveText('negrito');
+  await expect(rich.locator('em')).toHaveText('itálico');
+  await expect(rich.locator('code')).toHaveText('codigo');
+  await expect(rich.locator('a.wikilink')).toContainText('grafo');
+
+  await page.locator('#arvore [data-canvas="Estudos/Mapa.canvas"]').click();
+  await expect(page.locator('.canvas-area')).toBeVisible();
+  await page.locator('[data-nav="canvas"]').click();
+  await page.locator('[data-abrir-canvas="Estudos/Mapa.canvas"]').click();
+  await expect(page.locator('.canvas-area')).toBeVisible();
   await app.close();
 });

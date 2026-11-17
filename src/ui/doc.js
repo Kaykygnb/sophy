@@ -112,27 +112,31 @@
         continue;
       }
       if (isBlank(line)) {
-        blocks.push({ type: 'blank', raw: line });
         index += 1;
         continue;
       }
-      const chunk = [];
-      while (
-        index < lines.length &&
-        !isBlank(lines[index]) &&
-        !isFence(lines[index]) &&
-        !isHeading(lines[index]) &&
-        !isRule(lines[index]) &&
-        !isList(lines[index]) &&
-        !isQuote(lines[index]) &&
-        !isTableLine(lines[index])
-      ) {
-        chunk.push(lines[index]);
-        index += 1;
-      }
-      blocks.push({ type: 'paragraph', raw: chunk.join('') });
+      blocks.push({ type: 'paragraph', raw: line.endsWith('\n') ? line : `${line}\n` });
+      index += 1;
     }
     return blocks;
+  }
+
+  function isListBlock(block) {
+    return block && (block.type === 'item' || block.type === 'task');
+  }
+
+  function serializeBlocks(blocks) {
+    let out = '';
+    for (let index = 0; index < blocks.length; index += 1) {
+      const block = blocks[index];
+      const prev = blocks[index - 1];
+      if (prev && !(isListBlock(prev) && isListBlock(block))) {
+        if (!out.endsWith('\n')) out += '\n';
+        if (!out.endsWith('\n\n')) out += '\n';
+      }
+      out += block.raw.endsWith('\n') || block.raw === '' ? block.raw : `${block.raw}\n`;
+    }
+    return out;
   }
 
   function parseDocument(markdown) {
@@ -156,7 +160,7 @@
   }
 
   function serializeDocument(doc) {
-    return doc.bom + (doc.prefix ?? '') + doc.blocks.map((block) => block.raw).join('');
+    return doc.bom + (doc.prefix ?? '') + serializeBlocks(doc.blocks);
   }
 
   function withBlockRaw(doc, index, raw) {
@@ -338,10 +342,36 @@
     const text = visibleOf(block);
     const before = text.slice(0, offset);
     const after = text.slice(offset);
-    if ((block.type === 'item' || block.type === 'task' || block.type === 'quote') && !before.trim()) {
-      const blocks = doc.blocks.slice();
-      blocks.splice(index, 1, { type: 'paragraph', raw: '\n' });
-      return { doc: withBlocks(doc, blocks), caret: { index, offset: 0 } };
+    if (block.type === 'item' || block.type === 'task' || block.type === 'quote') {
+      if (!before.trim() && !after.trim()) {
+        const blocks = doc.blocks.slice();
+        blocks.splice(index, 1, { type: 'paragraph', raw: '\n' });
+        return { doc: withBlocks(doc, blocks), caret: { index, offset: 0 } };
+      }
+      if (!before.trim()) {
+        const blocks = doc.blocks.slice();
+        if (block.type === 'task' && block.task) {
+          const emptyTask = {
+            indent: block.task.indent,
+            marker: block.task.marker,
+            status: ' ',
+            title: '',
+            suffix: '',
+            due: null,
+            priority: null,
+          };
+          const keptTask = { ...block.task, title: after.replace(/\n/g, ' ') };
+          blocks.splice(
+            index,
+            1,
+            { type: 'task', task: emptyTask, raw: `${serializeTask(emptyTask)}\n` },
+            { type: 'task', task: keptTask, raw: `${serializeTask(keptTask)}\n` },
+          );
+        } else {
+          blocks.splice(index, 1, rewriteVisible(block, ''), rewriteVisible(block, after));
+        }
+        return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+      }
     }
     if (block.type === 'task' && block.task) {
       const leftTask = { ...block.task, title: before.replace(/\n/g, ' ') };
@@ -429,7 +459,7 @@
   }
 
   function pasteLines(doc, index, offset, pasted) {
-    const block = doc.blocks[index];
+    const block = doc.blocks[index] || { type: 'paragraph', raw: '\n' };
     const text = visibleOf(block);
     const before = text.slice(0, offset);
     const after = text.slice(offset);
@@ -437,8 +467,9 @@
     const parsed = parseDocument(source.endsWith('\n') ? source : `${source}\n`).blocks;
     const created = parsed.length ? parsed : [{ type: 'paragraph', raw: '\n' }];
     const blocks = doc.blocks.slice();
-    blocks.splice(index, 1, ...created);
-    const caretIndex = index + created.length - 1;
+    const at = doc.blocks[index] ? index : blocks.length;
+    blocks.splice(at, doc.blocks[index] ? 1 : 0, ...created);
+    const caretIndex = at + created.length - 1;
     const last = visibleOf(blocks[caretIndex]);
     return {
       doc: withBlocks(doc, blocks),
@@ -481,6 +512,7 @@
   return {
     parseDocument,
     serializeDocument,
+    serializeBlocks,
     withBlockRaw,
     parseInlines,
     serializeInlines,
