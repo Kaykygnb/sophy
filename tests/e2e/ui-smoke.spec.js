@@ -908,3 +908,54 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   await welcomeDarkPage.screenshot({ path: path.join(artifacts, 'ui-boas-vindas-escuro.png') });
   await welcomeDark.close();
 });
+
+test('rodada 5: prévia, versões, agenda, cores e abas', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`]);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#cfg-pdf').click();
+  await expect(page.locator('.pdf-pagina a.wikilink')).toContainText('o grafo');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
+  );
+  await page.locator('#comando-q').fill('Histórico');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Histórico de versões' }).click();
+  await page.getByRole('button', { name: 'Gravar ponto agora' }).click();
+  await expect(page.locator('.versao').first()).toContainText('Hoje');
+  await page.screenshot({ path: path.join(artifacts, 'ui-versoes-diff-claro.png') });
+  await page.locator('[data-nav="calendario"]').click();
+  await page.getByRole('button', { name: 'Agenda' }).click();
+  await expect(page.locator('.painel-dia')).toBeVisible();
+  await expect(page.locator('.painel-dia')).toContainText('●');
+  await page.screenshot({ path: path.join(artifacts, 'ui-agenda-painel-claro.png') });
+  await page.locator('#arvore [data-shelf="Estudos"]').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Cor e ícone' }).click();
+  await expect(page.getByRole('button', { name: 'Índigo' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.config')).toContainText('começa na segunda');
+  await page.locator('input[name="cfg-semana"][value="0"]').check();
+  await expect(page.locator('.config')).toContainText('começa no domingo');
+  expect(await page.locator('#gaveta-veu').count()).toBe(0);
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setContentSize(800, 600));
+  await page.locator('#abrir-lateral').click();
+  await expect(page.locator('#gaveta-veu')).toBeVisible();
+  const gap = await page.evaluate(() => {
+    const tabs = document.querySelector('.titulo__abas').getBoundingClientRect();
+    const actions = document.querySelector('.titulo__acoes').getBoundingClientRect();
+    return actions.left - tabs.right;
+  });
+  expect(gap).toBeGreaterThan(8);
+  await page.screenshot({ path: path.join(artifacts, 'ui-abas-800-claro.png') });
+  await app.close();
+});

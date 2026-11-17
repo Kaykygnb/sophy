@@ -65,6 +65,7 @@
   --danger:  #B3402F;  --danger-bg:  #F7ECEA;
 
   /* ---- Pontos das estantes (só marcadores, nunca fundos grandes) ---- */
+  /* --shelf-1 Índigo, --shelf-2 Azul, --shelf-3 Verde-água, --shelf-4 Oliva, --shelf-5 Ocre, --shelf-6 Terracota, --shelf-7 Lavanda, --shelf-8 Grafite */
   --shelf-1: #6E72B0; --shelf-2: #5B82A6; --shelf-3: #5A8C83; --shelf-4: #78895A;
   --shelf-5: #A0804F; --shelf-6: #A5675B; --shelf-7: #8A7A9E; --shelf-8: #6B7280;
 

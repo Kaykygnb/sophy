@@ -833,7 +833,21 @@ button.arvore__linha[aria-selected='true'] {
 .is-leitura [data-block] { cursor: default; }
 .grafo__quadros { display: grid; grid-template-columns: repeat(3, minmax(80px, 1fr)); gap: 8px; }
 .visao-tabela { width: 100%; border-collapse: collapse; }
-.visao-lista { display: grid; gap: 6px; }
+.visao-lista button,
+.visao-tabela td {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.calendario__miolo { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; align-items: start; }
+.versoes-tela { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; padding: 32px; height: 100%; overflow: auto; }
+.versoes-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.versoes__previa { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface); }
+@media (max-width: 800px) {
+  .titulo__marca { max-width: 72px; }
+  .titulo__abas { margin-right: 20px; }
+  .titulo__acoes { margin-left: 20px; }
+}
 .inicio, .config { padding: 32px; overflow: auto; height: 100%; }
 .inicio__cartoes, .acentos { display: flex; flex-wrap: wrap; gap: 12px; }
 .cartao-estante {

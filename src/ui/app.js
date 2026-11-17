@@ -402,20 +402,33 @@ function drawerNarrow() {
   return window.innerWidth <= 1024;
 }
 
+function ensureVeil() {
+  let veil = $('#gaveta-veu');
+  if (veil) return veil;
+  veil = document.createElement('button');
+  veil.type = 'button';
+  veil.id = 'gaveta-veu';
+  veil.className = 'gaveta-veu';
+  veil.setAttribute('aria-label', 'Fechar a gaveta');
+  veil.onclick = () => closeDrawer();
+  $('.miolo')?.prepend(veil);
+  return veil;
+}
+
 function openDrawer(opener) {
   const lateral = $('#lateral');
   if (!lateral) return;
   state.drawerOpener = opener || $('#abrir-lateral');
   lateral.classList.remove('is-fechada');
   lateral.classList.add('is-aberta');
-  $('#gaveta-veu')?.removeAttribute('hidden');
+  ensureVeil();
 }
 
 function closeDrawer() {
   $('#lateral')?.classList.remove('is-aberta');
   $('#sofi-gaveta')?.classList.remove('is-aberta');
   if (drawerNarrow()) state.sofiOpen = false;
-  $('#gaveta-veu')?.setAttribute('hidden', '');
+  $('#gaveta-veu')?.remove();
   const opener = state.drawerOpener || $('#abrir-lateral');
   opener?.focus();
 }
@@ -429,7 +442,7 @@ function toggleSidebar(opener) {
     return;
   }
   lateral.classList.remove('is-aberta');
-  $('#gaveta-veu')?.setAttribute('hidden', '');
+  $('#gaveta-veu')?.remove();
   lateral.classList.toggle('is-fechada');
 }
 
@@ -450,7 +463,6 @@ function paintShell() {
       </div>
     </header>
     <div class="miolo">
-      <button type="button" class="gaveta-veu" id="gaveta-veu" hidden aria-label="Fechar a gaveta"></button>
       <aside class="lateral" id="lateral">
         <div class="lateral__topo">
           <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">
@@ -497,7 +509,6 @@ function paintShell() {
   $('#seletor-biblioteca').onclick = (event) => openLibraryMenu(event.currentTarget);
   $('#recolher').onclick = (event) => toggleSidebar(event.currentTarget);
   $('#abrir-lateral').onclick = (event) => toggleSidebar(event.currentTarget);
-  $('#gaveta-veu').onclick = () => closeDrawer();
   $('#filtrar').onclick = () => {
     const box = shell.querySelector('.lateral__busca');
     box.hidden = !box.hidden;
@@ -723,6 +734,12 @@ function paintTabs() {
   });
 }
 
+const SHELF_COLOR_NAMES = ['Índigo', 'Azul', 'Verde-água', 'Oliva', 'Ocre', 'Terracota', 'Lavanda', 'Grafite'];
+
+function shelfColorName(color) {
+  return SHELF_COLOR_NAMES[Number(color) - 1] || `Cor ${color}`;
+}
+
 function noteShelfColor() {
   const shelf = state.active && state.active.includes('/') ? state.active.split('/')[0] : state.selectedShelf || '';
   const mark = markFor(shelf);
@@ -777,7 +794,7 @@ function openCoverPicker() {
   const colors = ['estante', '1', '2', '3', '4', '5', '6']
     .map((color) => {
       const paint = color === 'estante' ? noteShelfColor() : `var(--shelf-${color})`;
-      return `<button type="button" class="acento" data-cor="${color}" aria-label="Cor ${color}" style="--amostra:${paint}"></button>`;
+      return `<button type="button" class="acento" data-cor="${color}" aria-label="${color === 'estante' ? 'Cor da estante' : shelfColorName(color)}" style="--amostra:${paint}"></button>`;
     })
     .join('');
   pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--fantasma" id="fechar-capa" aria-label="Fechar">×</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
@@ -902,7 +919,7 @@ function paintSettings(center) {
     </section>
     <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><label class="alternar"><input type="checkbox" id="cfg-sistema" ${state.settings.accentSystem ? 'checked' : ''}><span>Seguir a cor do sistema</span></label><p class="nota-privacidade">Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.</p></section>
     <section><h3>Busca por significado</h3><label class="alternar"><input type="checkbox" id="cfg-busca" ${state.settings.semantic ? 'checked' : ''}><span>${state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'}</span></label><p class="nota-privacidade">Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.</p></section>
-    <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa na segunda.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div><button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button></section>
+    <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa ${weekStartsOn() === 0 ? 'no domingo' : 'na segunda'}.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div><button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button></section>
     <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
   </div>`;
   center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
@@ -956,6 +973,7 @@ function paintSettings(center) {
     input.onchange = async () => {
       state.settings.weekStartsOn = Number(input.value);
       await sophy.saveSettings({ weekStartsOn: Number(input.value) });
+      paintCenter();
     };
   });
   const review = $('#abrir-revisao');
@@ -2292,8 +2310,9 @@ function paintCalendar(center) {
         .slice(0, 3)
         .map((item) => {
           if (item.kind === 'tarefa')
-            return `<button type="button" class="cal-item" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}">${escapeHtml(item.title)}</button>`;
-          return `<span class="cal-item">${escapeHtml(calendarLabel(item.title))}</span>`;
+            return `<button type="button" class="cal-item" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}" title="${escapeHtml(item.title)}">□</button>`;
+          const mark = item.kind === 'nota' ? '●' : '◆';
+          return `<span class="cal-item" title="${escapeHtml(calendarLabel(item.title))}">${mark}</span>`;
         })
         .join('');
       const outside = date.slice(0, 7) !== cursor.slice(0, 7) ? ' is-fora' : '';
@@ -2311,12 +2330,12 @@ function paintCalendar(center) {
     .join('');
   const previous = mode === 'mes' ? 'Mês anterior' : 'Semana anterior';
   const next = mode === 'mes' ? 'Próximo mês' : 'Próxima semana';
-  const dayPanel = state.dayFocus
-    ? `<aside class="painel-dia"><h3>${escapeHtml(readableDate(state.dayFocus))}</h3>${(state.calendarItems || []).filter((item) => item.date === state.dayFocus).map((item) => `<p>${escapeHtml(calendarLabel(item.title))}</p>`).join('') || '<p>Nada neste dia.</p>'}</aside>`
-    : '';
+  if (!state.dayFocus) state.dayFocus = isoToday();
+  const dayItems = (state.calendarItems || []).filter((item) => item.date === state.dayFocus);
+  const dayPanel = `<aside class="painel-dia"><h3>${escapeHtml(readableDate(state.dayFocus))}</h3><p class="nota-privacidade">● nota · □ tarefa · ◆ data</p>${dayItems.map((item) => `<p>${item.kind === 'tarefa' ? '□' : item.kind === 'nota' ? '●' : '◆'} ${escapeHtml(calendarLabel(item.title))}</p>`).join('') || '<p>Nada neste dia.</p>'}</aside>`;
   const body = mode === 'agenda'
-    ? `<ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}`
-    : `<div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div>${dayPanel}`;
+    ? `<div class="calendario__miolo"><ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}</div>`
+    : `<div class="calendario__miolo"><div><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>${dayPanel}</div>`;
   center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
@@ -2495,7 +2514,7 @@ function paintSofi(host) {
   $('#agente-fechar').onclick = () => {
     state.sofiOpen = false;
     $('#sofi-gaveta')?.classList.remove('is-aberta');
-    if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.setAttribute('hidden', '');
+    if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
     paintLinks();
   };
 }
@@ -2513,7 +2532,7 @@ function openAgent() {
     state.sofiOpen = true;
     paintSofi(panel);
     panel.classList.add('is-aberta');
-    $('#gaveta-veu')?.removeAttribute('hidden');
+    ensureVeil();
     state.drawerOpener = $('#abrir-lateral');
     return;
   }
@@ -2550,12 +2569,12 @@ async function createFromTemplate() {
   }
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Modelos"><h2>Modelos</h2>${models
+  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Modelos"><h2>Modelos</h2><div class="inicio__cartoes">${models
     .map(
       (note) =>
         `<button type="button" class="cartao-estante" data-modelo="${escapeHtml(note.path)}"><strong>${escapeHtml(baseName(note.path))}</strong><span>Modelo</span></button>`,
     )
-    .join('')}<label>Título <input id="modelo-titulo" value="Sem título" /></label></div>`;
+    .join('')}</div><label>Título <input id="modelo-titulo" value="Sem título" /></label></div>`;
   overlay.querySelectorAll('[data-modelo]').forEach((button) => {
     button.onclick = async () => {
       const titulo = $('#modelo-titulo').value.trim() || 'Sem título';
@@ -2701,18 +2720,42 @@ async function showVersions() {
   paintCenter();
 }
 
+function relativeWhen(id) {
+  const iso = String(id).replace(/T(\d{2})-(\d{2})-(\d{2})-(\d+)Z$/, 'T$1:$2:$3.$4Z');
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return id;
+  const day = new Date(time);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const when = day.toDateString() === today.toDateString()
+    ? 'Hoje'
+    : day.toDateString() === yesterday.toDateString()
+      ? 'Ontem'
+      : day.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+  return `${when}, ${day.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function sizeLabel(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${bytes} B`;
+}
+
 function paintVersions(center) {
   const rows = state.versionRows || [];
   const total = rows.reduce((sum, row) => sum + (row.bytes || 0), 0);
   const cap = 1024 * 1024 * 1024;
   const width = Math.min(100, Math.round((total / cap) * 100));
+  const picked = rows.find((row) => row.id === state.versionPick) || rows[0];
   const items = rows
     .map(
       (row) =>
-        `<li><button type="button" class="versao" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(row.label || 'ponto')}</b><span>${escapeHtml(row.preview || row.id)}</span><small>${row.bytes} B</small></button></li>`,
+        `<li><button type="button" class="versao${picked && picked.id === row.id ? ' is-escolhida' : ''}" data-versao="${escapeHtml(row.id)}" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(relativeWhen(row.id))}</b><span>${escapeHtml(row.label || 'ponto')}</span><small>${sizeLabel(row.bytes || 0)}</small></button></li>`,
     )
     .join('');
-  center.innerHTML = `<div class="inicio"><h2>Histórico</h2><p>90 dias ou 1 GB. A mais antiga sai primeiro.</p><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></div>`;
+  const current = (state.doc?.blocks || []).map(blockPreview).filter(Boolean).slice(0, 6).join('') || '<p>Abra a nota para ver o agora.</p>';
+  center.innerHTML = `<div class="versoes-tela"><div class="versoes-diff"><article><h3>${picked ? escapeHtml(relativeWhen(picked.id)) : 'Versão'}</h3><div class="versoes__previa">${escapeHtml(picked?.preview || 'Sem prévia')}</div></article><article><h3>Agora</h3><div class="versoes__previa">${current}</div></article></div><aside><h2>Linha do tempo</h2><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><p>Guardadas 90 dias ou 1 GB.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></aside></div>`;
   const save = $('#gravar-ponto');
   if (save)
     save.onclick = async () => {
@@ -2734,18 +2777,31 @@ function paintVersions(center) {
   });
 }
 
+function blockPreview(block) {
+  if (!block || block.type === 'blank') return '';
+  if (block.type === 'heading') {
+    const text = block.raw.replace(/^#{1,6}\s?/, '').replace(/\n$/, '');
+    return `<h3>${inlineHtml(text)}</h3>`;
+  }
+  if (block.type === 'code') {
+    const inner = block.raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```\n?$/, '');
+    return `<pre><code>${escapeHtml(inner)}</code></pre>`;
+  }
+  if (block.type === 'quote') {
+    const text = block.raw.replace(/^>\s?/gm, '').replace(/\n$/, '');
+    return `<blockquote>${inlineHtml(text)}</blockquote>`;
+  }
+  if (block.type === 'task' && block.task) return `<p>${inlineHtml(block.task.title)}</p>`;
+  const text = String(block.raw || '').replace(/^\s*(?:[-*+]|\d+\.)\s?/, '').replace(/\n$/, '');
+  return text.trim() ? `<p>${inlineHtml(text)}</p>` : '';
+}
+
 function exportPreview(kind) {
   const title = state.active ? baseName(state.active) : 'Biblioteca';
-  const paragraphs = String(state.doc?.body || '')
-    .split(/\n+/)
-    .map((line) => line.replace(/^#{1,6}\s*/, '').trim())
-    .filter(Boolean)
-    .slice(0, 4)
-    .map((line) => `<p>${escapeHtml(line)}</p>`)
-    .join('');
+  const body = (state.doc?.blocks || []).map(blockPreview).filter(Boolean).slice(0, 6).join('');
   if (kind === 'pdf')
-    return `<div class="pdf-pagina" role="img" aria-label="Prévia do PDF"><h3>${escapeHtml(title)}</h3>${paragraphs}<footer>Sophy · 1</footer></div>`;
-  return `<div class="site-previa" data-theme="${themeName()}"><h3>${escapeHtml(title)}</h3>${paragraphs}</div>`;
+    return `<div class="pdf-pagina" role="img" aria-label="Prévia do PDF"><h3>${escapeHtml(title)}</h3>${body}<footer>Sophy · 1</footer></div>`;
+  return `<div class="site-previa" data-theme="${themeName()}"><h3>${escapeHtml(title)}</h3>${body}</div>`;
 }
 
 function openExport(kind) {
@@ -2964,7 +3020,7 @@ function openShelfStyle(name) {
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', 'Cor e ícone');
   pop.innerHTML = `<p>Cor e ícone de ${escapeHtml(name)}</p>
-    <div class="acentos">${[1, 2, 3, 4, 5, 6, 7, 8].map((color) => `<button type="button" class="acento ${current.color === color ? 'is-escolhida' : ''}" data-cor="${color}" aria-label="Cor ${color}" style="--amostra: var(--shelf-${color})"></button>`).join('')}</div>
+    <div class="acentos">${[1, 2, 3, 4, 5, 6, 7, 8].map((color) => `<button type="button" class="acento ${current.color === color ? 'is-escolhida' : ''}" data-cor="${color}" aria-label="${shelfColorName(color)}" style="--amostra: var(--shelf-${color})"></button>`).join('')}</div>
     <div class="inicio__cartoes">${icons.map(([iconName, label]) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}">${icon(iconName)} ${label}</button>`).join('')}</div>`;
   document.body.append(pop);
   pop.style.position = 'fixed';
