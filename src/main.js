@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, safeStorage, session, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -52,6 +52,10 @@ function rememberLibrary(folder) {
     ),
   ].slice(0, 5);
   return writeSettings({ libraryPath: folder, onboarded: true, libraries, recentLibraries: libraries });
+}
+
+function agentKeyFile() {
+  return path.join(app.getPath('userData'), 'agent-key.bin');
 }
 
 function broadcast(command) {
@@ -127,9 +131,42 @@ function setupIpc() {
   });
 
   handle('sophy:tool', (_event, name, input) => {
-    if (typeof name !== 'string' || !/^[a-z]+\.[A-Za-z]+$/.test(name))
+    if (typeof name !== 'string' || !/^[a-z]+(\.[A-Za-z]+)+$/.test(name))
       throw new Error('Tool desconhecida.');
+    if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     return gate(name, input && typeof input === 'object' ? input : {});
+  });
+
+  handle('sophy:agent-status', () => ({
+    saved: fs.existsSync(agentKeyFile()),
+  }));
+
+  handle('sophy:agent-key-set', (_event, key) => {
+    if (typeof key !== 'string' || key.trim().length < 8) throw new Error('A chave é curta demais.');
+    if (!safeStorage.isEncryptionAvailable())
+      throw new Error('O cofre do sistema não está disponível.');
+    fs.writeFileSync(agentKeyFile(), safeStorage.encryptString(key.trim()));
+    return { saved: true };
+  });
+
+  handle('sophy:agent-key-clear', () => {
+    fs.rmSync(agentKeyFile(), { force: true });
+    return { saved: false };
+  });
+
+  handle('sophy:agent-ask', async (_event, message) => {
+    if (typeof message !== 'string' || !message.trim()) throw new Error('Escreva o pedido.');
+    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
+    if (!fs.existsSync(agentKeyFile())) throw new Error('Guarde a chave no cofre antes de pedir.');
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('O cofre do sistema não está disponível.');
+    const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
+    const turn = await engine.runAgentTurn({
+      libraryPath: sessionPath,
+      message: message.trim(),
+      key,
+      fetchImpl: fetch,
+    });
+    return { text: turn.text };
   });
 
   handle('sophy:choose-folder', async (event) => {

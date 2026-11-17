@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld(
     libraryReveal: (folder) => ipcRenderer.invoke('sophy:library-reveal', folder),
     saveSettings: (patch) => ipcRenderer.invoke('sophy:settings', patch),
     exportPdf: (html) => ipcRenderer.invoke('sophy:export-pdf', html),
+    agentStatus: () => ipcRenderer.invoke('sophy:agent-status'),
+    agentKeySet: (key) => ipcRenderer.invoke('sophy:agent-key-set', key),
+    agentKeyClear: () => ipcRenderer.invoke('sophy:agent-key-clear'),
+    agentAsk: (message) => ipcRenderer.invoke('sophy:agent-ask', message),
     window: (action) => ipcRenderer.invoke('sophy:window', action),
     onCommand: (listener) => {
       const wrapped = (_event, command) => listener(command);

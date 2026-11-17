@@ -2231,7 +2231,7 @@ function runCommand(id) {
     },
     tarefas: () => showTasks(),
     calendario: () => showCalendar(),
-    sofi: () => toast('A Sofi entra com o agente. A chave fica no cofre do sistema, não na biblioteca.'),
+    sofi: () => openAgent(),
   };
   runs[id]?.();
 }
@@ -2277,6 +2277,29 @@ function dailyStrip(notePath) {
     return `<button type="button" class="semana-diaria__dia${iso === current ? ' is-hoje' : ''}" data-dia="${iso}">${label}<span>${day.getDate()}</span></button>`;
   });
   return `<div class="semana-diaria" aria-label="Semana">${days.join('')}</div>`;
+}
+
+function openAgent() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Sofi"><h2>Sofi</h2><p class="nota-privacidade">A chave fica no cofre do sistema, nunca na biblioteca e nunca numa tool.</p><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
+  $('#agente-guardar').onclick = async () => {
+    const response = await sophy.agentKeySet($('#agente-chave').value);
+    $('#agente-chave').value = '';
+    $('#agente-resposta').textContent = response.ok ? 'Chave guardada no cofre.' : response.error;
+  };
+  $('#agente-apagar').onclick = async () => {
+    const response = await sophy.agentKeyClear();
+    $('#agente-resposta').textContent = response.ok ? 'Chave apagada do cofre.' : response.error;
+  };
+  $('#agente-enviar').onclick = async () => {
+    const response = await sophy.agentAsk($('#agente-pedido').value);
+    $('#agente-resposta').textContent = response.ok ? response.value.text : response.error;
+    if (response.ok) {
+      await refreshLibrary();
+      paintTree();
+    }
+  };
 }
 
 function openCapture() {
@@ -3313,6 +3336,11 @@ document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Space') {
     event.preventDefault();
     openCapture();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'j') {
+    event.preventDefault();
+    runCommand('sofi');
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key === ',') {
