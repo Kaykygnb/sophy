@@ -29,13 +29,43 @@ test('Enter separa o parágrafo, Backspace junta e a colagem vira blocos', () =>
   const typed = doc.insertInBlock(split.doc, split.caret.index, split.caret.offset, 'Segunda linha');
   const saved = doc.serializeDocument(typed.doc);
   assert.equal(saved.includes('Primeiro parágrafo.Segunda'), false);
-  assert.match(saved, /Primeiro parágrafo\.\n\nSegunda linha\n/);
+  assert.match(saved, /Primeiro parágrafo\.\nSegunda linha\n/);
+  assert.doesNotMatch(saved, /Primeiro parágrafo\.\n\nSegunda linha/);
   const joined = doc.joinBlocks(typed.doc, typed.caret.index);
-  assert.match(doc.serializeDocument(joined.doc), /Primeiro parágrafo\.Segunda linha/);
+  assert.match(doc.serializeDocument(joined.doc), /Primeiro parágrafo\. Segunda linha/);
   const pasted = doc.pasteLines(start, index, 'Primeiro '.length, 'A\nB');
-  assert.match(doc.serializeDocument(pasted.doc), /Primeiro A\n\nBparágrafo\./);
+  assert.match(doc.serializeDocument(pasted.doc), /Primeiro A\nBparágrafo\./);
+  const markdown = doc.pasteLines(doc.parseDocument('\n'), 0, 0, '# Título colado\n- item colado\n> citação colada\n');
+  const kinds = markdown.doc.blocks.map((block) => block.type);
+  assert.equal(kinds.includes('heading'), true);
+  assert.equal(kinds.includes('item'), true);
+  assert.equal(kinds.includes('quote'), true);
   const soft = doc.insertInBlock(start, index, 'Primeiro '.length, '\n');
   assert.match(doc.serializeDocument(soft.doc), /Primeiro \nparágrafo\./);
+});
+
+test('lista continua no Enter e o item vazio vira parágrafo', () => {
+  const start = doc.parseDocument('- item um\n');
+  const split = doc.splitBlock(start, 0, 'item um'.length);
+  assert.equal(split.doc.blocks[1].type, 'item');
+  assert.match(split.doc.blocks[1].raw, /^- /);
+  const numbered = doc.parseDocument('1. um\n');
+  const next = doc.splitBlock(numbered, 0, 'um'.length);
+  assert.match(next.doc.blocks[1].raw, /^2\. /);
+  const empty = doc.splitBlock(doc.parseDocument('- \n'), 0, 0);
+  assert.equal(empty.doc.blocks[0].type, 'paragraph');
+});
+
+test('Backspace no vazio não come o texto e Delete junta com espaço', () => {
+  const note = doc.parseDocument('Alpha uma.\n\nBravo duas.\n');
+  const bravo = note.blocks.findIndex((block) => block.raw.includes('Bravo'));
+  const cleared = doc.joinBlocks(note, bravo);
+  assert.equal(cleared.doc.blocks.some((block) => block.type === 'blank'), false);
+  assert.match(doc.serializeDocument(cleared.doc), /Alpha uma\./);
+  assert.match(doc.serializeDocument(cleared.doc), /Bravo duas\./);
+  const forward = doc.joinForward(doc.parseDocument('Primeiro\n\nSegundo\n'), 0);
+  assert.match(doc.serializeDocument(forward.doc), /Primeiro Segundo/);
+  assert.doesNotMatch(doc.serializeDocument(forward.doc), /PrimeiroSegundo/);
 });
 
 test('negrito, itálico, riscado, destaque e código voltam no Markdown', () => {

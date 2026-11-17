@@ -830,7 +830,12 @@ button.arvore__linha[aria-selected='true'] {
 .semana-diaria__dia { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; min-width: 44px; cursor: pointer; }
 .semana-diaria__dia.is-hoje { border-color: var(--accent); }
 .is-foco .lateral, .is-foco #conexoes { display: none; }
-.is-leitura [data-block] { cursor: default; }
+.bloco.is-selecionado,
+[data-block].is-selecionado { outline: 2px solid var(--accent); border-radius: 8px; }
+.bloco--tabela { width: 100%; border-collapse: collapse; }
+.bloco--tabela td { border: 1px solid var(--line); padding: 6px 8px; min-width: 4rem; }
+.bloco--destaque { background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; }
+.bloco--recolhivel { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
 .grafo__quadros { display: grid; grid-template-columns: repeat(3, minmax(80px, 1fr)); gap: 8px; }
 .visao-tabela { width: 100%; border-collapse: collapse; }
 .visao-lista button,

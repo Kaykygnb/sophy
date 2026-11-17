@@ -841,9 +841,13 @@ function openCoverPicker() {
     input.focus();
   };
   pop.querySelector('#capa-remover').onclick = () => setCover('', y);
-  pop.querySelector('#capa-y').oninput = (event) => {
+  const height = pop.querySelector('#capa-y');
+  height.oninput = (event) => {
     event.target.parentElement.querySelector('output').textContent = `${event.target.value}%`;
+    const cover = document.querySelector('#coluna .capa');
+    if (cover) cover.style.setProperty('--capa-y', String(Number(event.target.value) / 100));
   };
+  height.onchange = (event) => setCover(state.frontmatter?.capa || '', event.target.value);
 }
 
 function coverPicker() {
@@ -973,7 +977,7 @@ function paintSettings(center) {
     input.onchange = async () => {
       state.settings.weekStartsOn = Number(input.value);
       await sophy.saveSettings({ weekStartsOn: Number(input.value) });
-      paintCenter();
+      if (state.view === 'settings') paintCenter();
     };
   });
   const review = $('#abrir-revisao');
@@ -1230,7 +1234,7 @@ function paintCenterBody(center) {
   const cover = coverBand();
   const strip = dailyStrip(state.active);
   const capas = cover ? '' : coverActions();
-  center.innerHTML = `${conflict}<article class="coluna${state.reading ? ' is-leitura' : ''}" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="modo-leitura">${state.reading ? 'Editar' : 'Modo leitura'}</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
+  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   const changeCover = $('#trocar-capa');
@@ -1238,12 +1242,6 @@ function paintCenterBody(center) {
   $('#coluna').querySelectorAll('[data-dia]').forEach((button) => {
     button.onclick = () => openDailyOn(button.dataset.dia);
   });
-  const reading = $('#modo-leitura');
-  if (reading)
-    reading.onclick = () => {
-      state.reading = !state.reading;
-      paintCenter();
-    };
   const focusMode = $('#modo-foco');
   if (focusMode)
     focusMode.onclick = () => {
@@ -1252,7 +1250,7 @@ function paintCenterBody(center) {
       paintCenter();
     };
   $('#coluna')
-    .querySelectorAll('[data-block]')
+    .querySelectorAll('[data-block]:not(table)')
     .forEach((el) => bindBlock(el));
   $('#coluna')
     .querySelectorAll('[data-mais]')
@@ -1263,6 +1261,28 @@ function paintCenterBody(center) {
     ?.querySelectorAll('[data-menu]')
     .forEach((button) => {
       button.onclick = (event) => openBlockMenu(event.currentTarget, Number(button.dataset.menu));
+      button.draggable = true;
+      button.ondragstart = (event) => {
+        event.dataTransfer.setData('application/x-sophy-block', button.dataset.menu);
+        event.dataTransfer.effectAllowed = 'move';
+      };
+    });
+  $('#coluna')
+    ?.querySelectorAll('[data-block]')
+    .forEach((block) => {
+      block.addEventListener('dragover', (event) => {
+        if (event.dataTransfer.types.includes('application/x-sophy-block')) event.preventDefault();
+      });
+      block.addEventListener('drop', (event) => {
+        const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
+        const to = Number(block.dataset.block);
+        if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+        event.preventDefault();
+        checkpoint(true);
+        state.doc = Doc.moveBlock(state.doc, from, to);
+        paintCenter();
+        scheduleSave();
+      });
     });
   $('#coluna')
     .querySelectorAll('[data-target]')
@@ -1303,7 +1323,7 @@ function renderBlock(block, index) {
   if (block.type === 'hr') return `<hr data-block="${index}" />`;
   if (block.type === 'heading') {
     const text = block.raw.replace(/^#{1,6}\s?/, '').replace(/\n$/, '');
-    return `<h${Math.min(block.level, 6)} class="bloco bloco--titulo bloco--titulo${block.level}" data-block="${index}" contenteditable="true">${escapeHtml(text)}</h${Math.min(block.level, 6)}>`;
+    return `<h${Math.min(block.level, 6)} class="bloco bloco--titulo bloco--titulo${block.level}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</h${Math.min(block.level, 6)}>`;
   }
   if (block.type === 'code') {
     const inner = block.raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```\n?$/, '');
@@ -1328,7 +1348,7 @@ function renderBlock(block, index) {
     ].join('');
     return `<div class="${Cmd.taskBlockClass(task.status)}">
       <button type="button" class="check" data-task="${index}" data-status="${kit}" aria-label="Alternar tarefa"></button>
-      <div class="tarefa__texto" data-block="${index}" contenteditable="true">${escapeHtml(task.title)}</div>
+      <div class="tarefa__texto" data-block="${index}" contenteditable="true">${inlineHtml(task.title) || '<br>'}</div>
       <div class="tarefa__meta">${chips}</div></div>`;
   }
   if (block.type === 'item') {
@@ -1343,7 +1363,22 @@ function renderBlock(block, index) {
       .map((line) => line.replace(/^>\s?/, ''))
       .join('\n')
       .replace(/\n$/, '');
-    return `<blockquote class="bloco bloco--citacao" data-block="${index}" contenteditable="true">${inlineHtml(text)}</blockquote>`;
+    if (text.startsWith('[!toggle]')) {
+      const body = text.replace(/^\[!toggle\]\n?/, '');
+      return `<details class="bloco bloco--recolhivel" open><summary>Recolhível</summary><div class="bloco bloco--citacao" data-block="${index}" data-toggle="1" contenteditable="true">${inlineHtml(body) || '<br>'}</div></details>`;
+    }
+    const callout = text.startsWith('[!') ? ' bloco--destaque' : '';
+    return `<blockquote class="bloco bloco--citacao${callout}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</blockquote>`;
+  }
+  if (block.type === 'table') {
+    const rows = tableRows(block.raw);
+    const body = rows
+      .map(
+        (row, rowIndex) =>
+          `<tr>${row.map((cell, cellIndex) => `<td data-block="${index}" data-cell="${rowIndex}:${cellIndex}" contenteditable="true">${inlineHtml(cell) || '<br>'}</td>`).join('')}</tr>`,
+      )
+      .join('');
+    return `<table class="bloco bloco--tabela" data-block="${index}"><tbody>${body}</tbody></table>`;
   }
   const embed = block.raw.trim().match(/^!\[\[([^\]\n]+)\]\]$/);
   if (embed) {
@@ -1376,91 +1411,106 @@ function inlineHtml(text) {
 }
 
 function bindBlock(el) {
-  if (state.reading) el.contentEditable = 'false';
   el.addEventListener('input', () => onBlockInput(el));
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('paste', (event) => onBlockPaste(event, el));
-  el.addEventListener('focus', () => {
-    if (state.painting || el.dataset.fonte === '1') return;
-    const block = state.doc?.blocks[Number(el.dataset.block)];
-    if (!block || block.type === 'code') return;
-    const selection = getSelection();
-    let start = null;
-    let end = null;
-    if (selection?.rangeCount && el.contains(selection.anchorNode)) {
-      start = offsetAt(el, selection.anchorNode, selection.anchorOffset);
-      end = offsetAt(el, selection.focusNode, selection.focusOffset);
-    }
-    el.dataset.fonte = '1';
-    el.textContent = Doc.visibleOf(block);
-    if (start == null || end == null || !selection) return;
-    const node = [...el.childNodes].find((child) => child.nodeType === Node.TEXT_NODE);
-    if (!node) return;
-    const range = document.createRange();
-    const from = Math.max(0, Math.min(start, end, node.textContent.length));
-    const to = Math.max(from, Math.min(Math.max(start, end), node.textContent.length));
-    range.setStart(node, from);
-    range.setEnd(node, to);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  });
-  el.addEventListener('blur', () => {
-    if (state.painting || state.wrapping) return;
-    if (el.dataset.fonte === '1') {
+  el.addEventListener('mousedown', (event) => {
+    if (!event.shiftKey) state.blockRange = null;
+    else {
       const index = Number(el.dataset.block);
-      state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
-      el.dataset.fonte = '';
+      if (!state.blockRange) state.blockRange = { anchor: index, end: index };
+      else state.blockRange.end = index;
+      paintBlockSelection();
     }
-    closeMenus();
-    requestAnimationFrame(() => {
-      if (state.painting || state.wrapping) return;
-      paintCenter();
-    });
   });
 }
 
+function markdownFromDom(el) {
+  if (!el) return '';
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/\u200b/g, '');
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    if (node.dataset?.raw) return node.dataset.raw;
+    const tag = node.tagName;
+    if (tag === 'BR') return '\n';
+    const inner = [...node.childNodes].map(walk).join('');
+    if (tag === 'STRONG' || tag === 'B') return `**${inner}**`;
+    if (tag === 'EM' || tag === 'I') return `*${inner}*`;
+    if (tag === 'S' || tag === 'DEL') return `~~${inner}~~`;
+    if (tag === 'MARK') return `==${inner}==`;
+    if (tag === 'CODE') return `\`${inner}\``;
+    if (tag === 'A') {
+      const href = node.getAttribute('href') || '';
+      return `[${inner}](${href})`;
+    }
+    if (tag === 'DIV' || tag === 'P') return `\n${inner}`;
+    return inner;
+  };
+  return walk(el).replace(/^\n/, '');
+}
+
 function rawFromEditor(el, block) {
-  const ending = block.raw.endsWith('\n') ? '\n' : '';
+  if (!block) return '\n';
   if (block.type === 'heading') {
     const marks = '#'.repeat(block.level || 1);
-    return `${marks} ${el.textContent.replace(/\n/g, ' ').trim()}${ending || '\n'}`;
+    return `${marks} ${markdownFromDom(el).replace(/\n/g, ' ').trim()}\n`;
   }
   if (block.type === 'code') {
     const lang = (block.raw.match(/^```([^\n]*)/) || [, ''])[1];
     return '```' + lang + '\n' + el.textContent.replace(/\n$/, '') + '\n```\n';
   }
   if (block.type === 'task' && block.task) {
-    const task = { ...block.task, title: el.textContent.replace(/\n/g, ' ').trim() };
-    return Doc.serializeTask(task) + (block.raw.endsWith('\n') ? '\n' : '\n');
+    const task = { ...block.task, title: markdownFromDom(el).replace(/\n/g, ' ').trim() };
+    return `${Doc.serializeTask(task)}\n`;
   }
   if (block.type === 'item') {
     const marker = (block.raw.match(/^\s*(?:[-*+]|\d+\.)/) || ['-'])[0];
-    return `${marker} ${readEditable(el).trim()}\n`;
+    return `${marker} ${markdownFromDom(el).replace(/\n$/, '')}\n`;
   }
   if (block.type === 'quote') {
-    const lines = readEditable(el).split('\n');
-    return lines.map((line) => `> ${line}`).join('\n') + '\n';
+    const lines = markdownFromDom(el).replace(/\n$/, '').split('\n');
+    const body = el.dataset.toggle === '1' ? ['[!toggle]', ...lines] : lines;
+    return `${body.map((line) => `> ${line}`).join('\n')}\n`;
   }
-  return readEditable(el).replace(/\n$/, '') + '\n';
+  const text = markdownFromDom(el).replace(/\n$/, '');
+  return `${text}\n`;
 }
 
 function readEditable(el) {
-  let text = '';
-  for (const node of el.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
-    else if (node.dataset && node.dataset.raw) text += node.dataset.raw;
-    else if (node.tagName === 'BR') text += '\n';
-    else if (node.tagName === 'DIV' || node.tagName === 'P') text += `\n${node.textContent}`;
-    else text += node.textContent;
-  }
-  return text;
+  return markdownFromDom(el);
+}
+
+function tableRows(raw) {
+  return String(raw || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('|') && line.endsWith('|'))
+    .map((line) => line.slice(1, -1).split('|').map((cell) => cell.trim()))
+    .filter((cells) => cells.length && !cells.every((cell) => /^:?-+:?$/.test(cell)));
+}
+
+function wrapWidth(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) return [0, 0];
+  if (node.dataset?.raw) return [0, 0];
+  const tag = node.tagName;
+  if (tag === 'STRONG' || tag === 'B' || tag === 'S' || tag === 'DEL' || tag === 'MARK') return [2, 2];
+  if (tag === 'EM' || tag === 'I' || tag === 'CODE') return [1, 1];
+  if (tag === 'A' && !node.dataset?.raw) return [1, `](${node.getAttribute('href') || ''})`.length];
+  return [0, 0];
 }
 
 function onBlockInput(el) {
-  if (state.conflict) return;
+  if (state.conflict || !state.doc || state.restoring || state.painting) return;
+  checkpoint();
+  if (el.dataset.cell != null) {
+    syncTable(el.closest('table'));
+    return;
+  }
+  const block = state.doc.blocks[Number(el.dataset.block)];
+  if (block && block.type !== 'code') renderClosedMarks(el);
+  if (promoteBlock(el)) return;
   const index = Number(el.dataset.block);
-  const raw = rawFromEditor(el, state.doc.blocks[index]);
-  state.doc = Doc.withBlockRaw(state.doc, index, raw);
+  state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
   const cursor = modelOffset(el);
   const text = readEditable(el);
   const found = slash.offer(text, cursor);
@@ -1470,6 +1520,213 @@ function onBlockInput(el) {
   else closeMenus();
   scheduleSave();
   paintStatus();
+}
+
+const LIVE_MARK = /(\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^)\n]+\)|\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+?`|(?<!\*)\*(?!\s)[^*\n]+?\*(?!\*))/;
+
+function renderClosedMarks(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let current;
+  while ((current = walker.nextNode())) {
+    if (current.parentElement?.closest('strong, em, s, code, mark, a')) continue;
+    nodes.push(current);
+  }
+  for (const node of nodes) {
+    const match = node.textContent.match(LIVE_MARK);
+    if (!match) continue;
+    const start = match.index || 0;
+    const html = inlineHtml(match[0]);
+    const placed = replaceTextSlice(node, start, match[0].length, html);
+    if (placed) {
+      const range = document.createRange();
+      range.setStartAfter(placed);
+      range.collapse(true);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    return;
+  }
+}
+
+function replaceTextSlice(node, start, length, html) {
+  const text = node.textContent;
+  const holder = document.createElement('span');
+  holder.innerHTML = html;
+  const frag = document.createDocumentFragment();
+  if (start > 0) frag.append(document.createTextNode(text.slice(0, start)));
+  let placed = null;
+  [...holder.childNodes].forEach((child) => {
+    if (!placed && child.nodeType === Node.ELEMENT_NODE) placed = child;
+    frag.append(child);
+  });
+  if (start + length < text.length) frag.append(document.createTextNode(text.slice(start + length)));
+  node.parentNode.replaceChild(frag, node);
+  return placed;
+}
+
+function promoteBlock(el) {
+  const index = Number(el.dataset.block);
+  const block = state.doc?.blocks[index];
+  if (!block) return false;
+  const text = markdownFromDom(el).replace(/\n$/, '');
+  if (block.type === 'item') {
+    const task = text.match(/^\[([ xX]?)\] (.*)$/);
+    if (!task) return false;
+    const status = task[1].toLowerCase() === 'x' ? 'x' : ' ';
+    const indent = (block.raw.match(/^\s*/) || [''])[0];
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, `${indent}- [${status}] ${task[2]}\n`);
+    state.caret = { index, offset: task[2].length };
+    closeMenus();
+    paintCenter();
+    scheduleSave();
+    return true;
+  }
+  if (block.type !== 'paragraph' && block.type !== 'blank') return false;
+  let raw = '';
+  let caret = 0;
+  const heading = text.match(/^(#{1,6}) (.*)$/);
+  const taskLine = text.match(/^- \[([ xX]?)\] (.*)$/);
+  if (taskLine) {
+    const status = taskLine[1].toLowerCase() === 'x' ? 'x' : ' ';
+    raw = `- [${status}] ${taskLine[2]}\n`;
+    caret = taskLine[2].length;
+  } else if (heading) {
+    raw = `${heading[1]} ${heading[2]}\n`;
+    caret = heading[2].length;
+  } else if (/^[-*+] /.test(text)) {
+    raw = `${text}\n`;
+    caret = text.replace(/^[-*+] /, '').length;
+  } else if (/^\d+\. /.test(text)) {
+    raw = `${text}\n`;
+    caret = text.replace(/^\d+\. /, '').length;
+  } else if (/^(?:\[\]|\[ \]) /.test(text)) {
+    const title = text.replace(/^(?:\[\]|\[ \]) /, '');
+    raw = `- [ ] ${title}\n`;
+    caret = title.length;
+  } else if (/^> /.test(text)) {
+    raw = `${text
+      .split('\n')
+      .map((line) => (line.startsWith('>') ? line : `> ${line}`))
+      .join('\n')}\n`;
+    caret = text.replace(/^> /, '').length;
+  } else if (/^```\w*$/.test(text)) {
+    raw = `${text}\n\n\`\`\`\n`;
+    caret = 0;
+  } else if (text === '---' || text === '***' || text === '___') {
+    raw = '---\n';
+    caret = 0;
+  } else return false;
+  checkpoint(true);
+  state.doc = Doc.replaceBlock(state.doc, index, raw);
+  state.caret = { index, offset: caret };
+  closeMenus();
+  paintCenter();
+  scheduleSave();
+  return true;
+}
+
+function syncTable(table) {
+  if (!table) return;
+  const index = Number(table.dataset.block);
+  const rows = [...table.querySelectorAll('tr')].map((row) =>
+    [...row.querySelectorAll('[data-cell]')].map((cell) => markdownFromDom(cell).replace(/\|/g, '\\|').replace(/\n/g, ' ').trim()),
+  );
+  if (!rows.length) return;
+  const width = Math.max(...rows.map((row) => row.length));
+  const padded = rows.map((row) => Array.from({ length: width }, (_, cell) => row[cell] || ''));
+  const lines = [
+    `| ${padded[0].join(' | ')} |`,
+    `| ${padded[0].map(() => '---').join(' | ')} |`,
+    ...padded.slice(1).map((row) => `| ${row.join(' | ')} |`),
+  ];
+  state.doc = Doc.withBlockRaw(state.doc, index, `${lines.join('\n')}\n`);
+  scheduleSave();
+  paintStatus();
+}
+
+function rememberCaret() {
+  const el = document.activeElement?.closest?.('[data-block]');
+  if (!el || el.dataset.block == null) return;
+  state.editorCaret = { index: Number(el.dataset.block), offset: modelOffset(el) };
+}
+
+function checkpoint(force) {
+  if (!state.doc || state.restoring) return;
+  rememberCaret();
+  if (state.undoOpen && !force) return;
+  const snap = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+  state.editorPast = state.editorPast || [];
+  state.editorFuture = state.editorFuture || [];
+  if (state.editorPast.at(-1) !== snap) state.editorPast.push(snap);
+  if (state.editorPast.length > 80) state.editorPast.shift();
+  state.editorFuture.length = 0;
+  state.undoOpen = !force;
+  clearTimeout(state.undoTimer);
+  state.undoTimer = setTimeout(() => {
+    state.undoOpen = false;
+  }, 700);
+}
+
+function applyEditorSnap(snap) {
+  state.restoring = true;
+  const blocks = JSON.parse(snap).map((block) => ({ ...block, task: Doc.parseTask(block.raw) }));
+  state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+  const caret = state.editorCaret;
+  paintCenter();
+  if (caret) {
+    const target = document.querySelector(`[data-block="${Math.min(caret.index, blocks.length - 1)}"]`);
+    if (target) placeCaret(target, Math.min(caret.offset, markdownFromDom(target).length));
+  }
+  state.restoring = false;
+  scheduleSave();
+}
+
+function undoDoc() {
+  if (!state.doc) return;
+  state.editorPast = state.editorPast || [];
+  state.editorFuture = state.editorFuture || [];
+  const current = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+  if (state.editorPast.at(-1) === current) state.editorPast.pop();
+  const snap = state.editorPast.pop();
+  if (!snap) return;
+  state.editorFuture.push(current);
+  state.undoOpen = false;
+  applyEditorSnap(snap);
+}
+
+function redoDoc() {
+  const snap = state.editorFuture?.pop();
+  if (!snap || !state.doc) return;
+  const current = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+  state.editorPast = state.editorPast || [];
+  state.editorPast.push(current);
+  state.undoOpen = false;
+  applyEditorSnap(snap);
+}
+
+function focusSibling(index, direction) {
+  let next = index + direction;
+  while (state.doc.blocks[next] && (state.doc.blocks[next].type === 'hr' || state.doc.blocks[next].type === 'blank')) next += direction;
+  const target = document.querySelector(`[data-block="${next}"]`);
+  if (!target) return;
+  placeCaret(target, direction < 0 ? markdownFromDom(target).length : 0);
+}
+
+function paintBlockSelection() {
+  const range = state.blockRange;
+  document.querySelectorAll('[data-block]').forEach((block) => {
+    const index = Number(block.dataset.block);
+    if (!range) {
+      block.classList.remove('is-selecionado');
+      return;
+    }
+    const low = Math.min(range.anchor, range.end);
+    const high = Math.max(range.anchor, range.end);
+    block.classList.toggle('is-selecionado', low !== high && index >= low && index <= high);
+  });
 }
 
 function onBlockKey(event, el) {
@@ -1520,7 +1777,9 @@ function onBlockKey(event, el) {
     event.preventDefault();
     const index = Number(el.dataset.block);
     const text = readEditable(el).replace(/\n$/, '');
-    state.doc = Doc.withBlockRaw(state.doc, index, `- [ ] ${text}\n`);
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, `- [ ] ${text}\n`);
+    state.caret = { index, offset: text.length };
     paintCenter();
     scheduleSave();
     return;
@@ -1545,8 +1804,101 @@ function onBlockKey(event, el) {
     return;
   }
   const index = Number(el.dataset.block);
+  if (event.key === 'Tab' && !event.altKey) {
+    event.preventDefault();
+    const block = state.doc.blocks[index];
+    if (block && (block.type === 'item' || block.type === 'task')) {
+      checkpoint(true);
+      const raw = event.shiftKey ? block.raw.replace(/^ {1,2}/, '') : `  ${block.raw}`;
+      const caret = modelOffset(el);
+      state.doc = Doc.withBlockRaw(state.doc, index, raw);
+      state.caret = { index, offset: caret };
+      paintCenter();
+      scheduleSave();
+    }
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && ['c', 'x'].includes(event.key.toLowerCase()) && state.blockRange && state.blockRange.anchor !== state.blockRange.end) {
+    event.preventDefault();
+    const low = Math.min(state.blockRange.anchor, state.blockRange.end);
+    const high = Math.max(state.blockRange.anchor, state.blockRange.end);
+    const copied = state.doc.blocks.slice(low, high + 1).map((block) => block.raw).join('');
+    state.clip = copied;
+    navigator.clipboard?.writeText(copied).catch(() => {});
+    if (event.key.toLowerCase() === 'x') {
+      checkpoint(true);
+      const blocks = state.doc.blocks.filter((_, position) => position < low || position > high);
+      state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+      state.blockRange = null;
+      state.caret = { index: Math.max(0, low - 1), offset: 0 };
+      paintCenter();
+      scheduleSave();
+    }
+    return;
+  }
+  if (event.key === 'ArrowUp' && !event.shiftKey && modelOffset(el) === 0) {
+    event.preventDefault();
+    focusSibling(index, -1);
+    return;
+  }
+  if (event.key === 'ArrowDown' && !event.shiftKey && modelOffset(el) >= markdownFromDom(el).length) {
+    event.preventDefault();
+    focusSibling(index, 1);
+    return;
+  }
+  if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.shiftKey && (event.key === 'ArrowUp' ? modelOffset(el) === 0 : modelOffset(el) >= markdownFromDom(el).length)) {
+    event.preventDefault();
+    const direction = event.key === 'ArrowUp' ? -1 : 1;
+    if (!state.blockRange) state.blockRange = { anchor: index, end: index };
+    const next = state.blockRange.end + direction;
+    if (state.doc.blocks[next]) state.blockRange.end = next;
+    paintBlockSelection();
+    return;
+  }
+  if ((event.key === 'Backspace' || event.key === 'Delete') && state.blockRange && state.blockRange.anchor !== state.blockRange.end) {
+    event.preventDefault();
+    const low = Math.min(state.blockRange.anchor, state.blockRange.end);
+    const high = Math.max(state.blockRange.anchor, state.blockRange.end);
+    checkpoint(true);
+    const blocks = state.doc.blocks.filter((_, position) => position < low || position > high);
+    state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+    state.blockRange = null;
+    state.caret = { index: Math.max(0, low - 1), offset: 0 };
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  if (event.key === 'Enter' && el.dataset.cell != null) {
+    event.preventDefault();
+    checkpoint(true);
+    const rows = tableRows(state.doc.blocks[index]?.raw || '');
+    const width = rows[0]?.length || 2;
+    rows.push(Array.from({ length: width }, () => ''));
+    const lines = [
+      `| ${rows[0].join(' | ')} |`,
+      `| ${rows[0].map(() => '---').join(' | ')} |`,
+      ...rows.slice(1).map((row) => `| ${row.join(' | ')} |`),
+    ];
+    state.doc = Doc.withBlockRaw(state.doc, index, `${lines.join('\n')}\n`);
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  if (event.key === 'Enter' && el.dataset.toggle === '1') {
+    event.preventDefault();
+    checkpoint(true);
+    const text = markdownFromDom(el);
+    const offset = modelOffset(el);
+    const raw = `> [!toggle]\n> ${text.slice(0, offset)}\n\n> [!toggle]\n> ${text.slice(offset)}\n`;
+    state.doc = Doc.replaceBlock(state.doc, index, raw);
+    state.caret = { index: index + 2, offset: 0 };
+    paintCenter();
+    scheduleSave();
+    return;
+  }
   if (event.key === 'Enter') {
     event.preventDefault();
+    checkpoint(true);
     const offset = modelOffset(el);
     const result = event.shiftKey
       ? Doc.insertInBlock(state.doc, index, offset, '\n')
@@ -1559,12 +1911,38 @@ function onBlockKey(event, el) {
   }
   if (event.key === 'Backspace' && modelOffset(el) === 0 && !event.metaKey && !event.ctrlKey) {
     event.preventDefault();
+    checkpoint(true);
     const result = Doc.joinBlocks(state.doc, index);
     state.doc = result.doc;
     state.caret = result.caret;
     paintCenter();
     scheduleSave();
+    return;
   }
+  if (event.key === 'Delete' && !event.metaKey && !event.ctrlKey && modelOffset(el) >= markdownFromDom(el).length) {
+    event.preventDefault();
+    checkpoint(true);
+    const result = Doc.joinForward(state.doc, index);
+    state.doc = result.doc;
+    state.caret = result.caret;
+    paintCenter();
+    scheduleSave();
+  }
+}
+
+function spliceParsed(doc, index, offset, text) {
+  const block = doc.blocks[index];
+  const visible = Doc.visibleOf(block);
+  const before = visible.slice(0, offset);
+  const after = visible.slice(offset);
+  const chunks = [];
+  if (before) chunks.push(rawFromPlain(block, before).replace(/\n$/, ''));
+  chunks.push(text.replace(/\n$/, ''));
+  if (after) chunks.push(after);
+  const parsed = Doc.parseDocument(`${chunks.join('\n')}\n`).blocks;
+  const blocks = doc.blocks.slice();
+  blocks.splice(index, 1, ...parsed);
+  return { ...doc, blocks, body: blocks.map((item) => item.raw).join('') };
 }
 
 function onBlockPaste(event, el) {
@@ -1573,17 +1951,27 @@ function onBlockPaste(event, el) {
   event.preventDefault();
   const index = Number(el.dataset.block);
   const offset = modelOffset(el);
-  const result = text.includes('\n')
-    ? Doc.pasteLines(state.doc, index, offset, text)
-    : Doc.insertInBlock(state.doc, index, offset, text);
-  state.doc = result.doc;
-  state.caret = result.caret;
+  checkpoint(true);
+  if (text.includes('\n')) {
+    const result = Doc.pasteLines(state.doc, index, offset, text);
+    state.doc = result.doc;
+    state.caret = result.caret;
+  } else {
+    const inserted = Doc.insertInBlock(state.doc, index, offset, text);
+    state.doc = Doc.replaceBlock(inserted.doc, index, inserted.doc.blocks[index].raw);
+    const promoted = state.doc.blocks[index];
+    state.caret = {
+      index,
+      offset: promoted?.type === 'code' ? 0 : Math.min(inserted.caret.offset, Doc.visibleOf(promoted).length),
+    };
+  }
   paintCenter();
   scheduleSave();
 }
 
 function formatBlock(el, prefix, suffix) {
   const index = Number(el.dataset.block);
+  checkpoint(true);
   const range = selectionOffsets(el);
   const result = Doc.wrapBlock(state.doc, index, range.start, range.end, prefix, suffix);
   state.wrapping = true;
@@ -1615,20 +2003,39 @@ function offsetAt(el, node, offset) {
     if (found) return;
     if (current === node) {
       if (current.nodeType === Node.TEXT_NODE) count += Math.min(offset, current.textContent.length);
+      else [...current.childNodes].slice(0, offset).forEach((child) => addWhole(child));
       found = true;
       return;
     }
+    addWhole(current, node);
+  };
+  const addWhole = (current, stop) => {
+    if (found || current === stop) return;
     if (current.nodeType === Node.TEXT_NODE) {
-      count += current.textContent.length;
+      count += current.textContent.replace(/\u200b/g, '').length;
       return;
     }
-    if (current.dataset && current.dataset.raw) {
+    if (current.nodeType !== Node.ELEMENT_NODE) return;
+    if (current.dataset?.raw) {
       count += current.dataset.raw.length;
-      if (current.contains(node)) found = true;
+      if (stop && current.contains(stop)) found = true;
       return;
     }
-    if (current.tagName === 'BR') count += 1;
-    for (const child of current.childNodes) walk(child);
+    if (current.tagName === 'BR') {
+      count += 1;
+      return;
+    }
+    const [open, close] = wrapWidth(current);
+    count += open;
+    for (const child of current.childNodes) {
+      if (child === stop || (stop && child.contains?.(stop))) {
+        walk(child);
+        return;
+      }
+      addWhole(child, stop);
+      if (found) return;
+    }
+    count += close;
   };
   walk(el);
   return count;
@@ -1638,30 +2045,59 @@ function placeCaret(el, offset) {
   el.focus();
   const selection = getSelection();
   const range = document.createRange();
-  let left = offset;
+  let left = Math.max(0, offset);
   const walk = (current) => {
     if (left < 0) return true;
     if (current.nodeType === Node.TEXT_NODE) {
-      if (left <= current.textContent.length) {
-        range.setStart(current, left);
+      const text = current.textContent.replace(/\u200b/g, '');
+      if (left <= text.length) {
+        range.setStart(current, Math.min(left, current.textContent.length));
         range.collapse(true);
         left = -1;
         return true;
       }
-      left -= current.textContent.length;
+      left -= text.length;
       return false;
     }
-    if (current.dataset && current.dataset.raw) {
+    if (current.nodeType !== Node.ELEMENT_NODE) return false;
+    if (current.dataset?.raw) {
+      if (left <= 0) {
+        range.setStartBefore(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       left -= current.dataset.raw.length;
+      if (left <= 0) {
+        range.setStartAfter(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       return false;
     }
     if (current.tagName === 'BR') {
       left -= 1;
+      if (left <= 0) {
+        range.setStartAfter(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       return false;
+    }
+    const [open, close] = wrapWidth(current);
+    left -= open;
+    if (left < 0) {
+      range.setStart(current, 0);
+      range.collapse(true);
+      left = -1;
+      return true;
     }
     for (const child of current.childNodes) {
       if (walk(child)) return true;
     }
+    left -= close;
     return false;
   };
   if (!walk(el)) {
@@ -1759,8 +2195,20 @@ function insertAt(el, start, end, text) {
   const current = readEditable(el);
   const next = current.slice(0, start) + text + current.slice(end);
   const block = state.doc.blocks[index];
-  const raw = rawFromPlain(block, next);
-  state.doc = Doc.withBlockRaw(state.doc, index, raw);
+  checkpoint(true);
+  state.doc = Doc.replaceBlock(state.doc, index, rawFromPlain(block, next));
+  const promoted = state.doc.blocks[index];
+  let caretIndex = index;
+  let offset = 0;
+  if (promoted?.type === 'hr') {
+    const blocks = state.doc.blocks.slice();
+    blocks.splice(index + 1, 0, { type: 'paragraph', raw: '\n' });
+    state.doc = { ...state.doc, blocks, body: blocks.map((item) => item.raw).join('') };
+    caretIndex = index + 1;
+  } else if (promoted?.type === 'code') offset = 0;
+  else if (promoted && promoted.type !== block?.type) offset = Doc.visibleOf(promoted).length;
+  else offset = Math.min((start || 0) + String(text || '').length, Doc.visibleOf(promoted || { raw: '' }).length);
+  state.caret = { index: caretIndex, offset };
   slash.reset();
   closeMenus();
   paintCenter();
@@ -1864,8 +2312,6 @@ async function saveNow() {
       path: state.active,
       body,
       expectedRevision: state.revision,
-      origin: 'mcp',
-      libraryPath: '/outra',
     });
     if (result.conflict) {
       state.conflict = true;
@@ -1978,6 +2424,10 @@ async function openNote(file, options = {}) {
   state.treeFocus = 'note';
   state.view = 'note';
   state.doc = Doc.parseDocument(note.body);
+  state.editorPast = [JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })))];
+  state.editorFuture = [];
+  state.undoOpen = false;
+  state.blockRange = null;
   state.revision = note.revision;
   state.frontmatter = note.frontmatter;
   state.conflict = false;
@@ -2414,10 +2864,6 @@ function runCommand(id) {
     visoes: () => showViews(),
     mencoes: () => showMentions(),
     importar: () => importObsidian(),
-    leitura: () => {
-      state.reading = !state.reading;
-      paintCenter();
-    },
     foco: () => {
       state.focusMode = !state.focusMode;
       document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
@@ -3130,11 +3576,11 @@ function openBlockMenu(anchor, index) {
         const blocks = state.doc.blocks.filter((_, position) => position !== index);
         state.doc = { ...state.doc, blocks, body: blocks.map((item) => item.raw).join('') };
       } else if (action === 'titulo') {
-        state.doc = Doc.withBlockRaw(state.doc, index, `# ${text}\n`);
+        state.doc = Doc.replaceBlock(state.doc, index, `# ${text}\n`);
       } else if (action === 'lista') {
-        state.doc = Doc.withBlockRaw(state.doc, index, `- ${text}\n`);
+        state.doc = Doc.replaceBlock(state.doc, index, `- ${text}\n`);
       } else if (action === 'tarefa') {
-        state.doc = Doc.withBlockRaw(state.doc, index, `- [ ] ${text}\n`);
+        state.doc = Doc.replaceBlock(state.doc, index, `- [ ] ${text}\n`);
       }
       paintCenter();
       scheduleSave();
@@ -3149,7 +3595,14 @@ function openSlashAt(index) {
     const insert = item.id === 'hoje' ? today() : item.insert;
     const text = readEditable(el).replace(/\n$/, '');
     const next = text.trim() ? `${insert}${text}` : insert;
-    state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(state.doc.blocks[index], next));
+    const block = state.doc.blocks[index];
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, rawFromPlain(block, next));
+    const promoted = state.doc.blocks[index];
+    state.caret = {
+      index,
+      offset: promoted?.type === 'code' ? 0 : Doc.visibleOf(promoted || { raw: '' }).length,
+    };
     closeMenus();
     paintCenter();
     scheduleSave();
@@ -3812,6 +4265,15 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     openCommands();
     return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') && state.view === 'note' && state.doc) {
+    const tag = event.target?.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      event.preventDefault();
+      if (event.key.toLowerCase() === 'y' || event.shiftKey) redoDoc();
+      else undoDoc();
+      return;
+    }
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
