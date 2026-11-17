@@ -4,9 +4,9 @@ A janela Electron é uma camada fina sobre o motor. O renderer não lê nem grav
 
 ## O que a pessoa vê
 
-Barra lateral com a árvore Biblioteca, estantes e notas. A cor e o ícone da estante usam `--shelf-1` a `--shelf-8` só como marcador. A estante Entrada não tem cor: o ícone é `caixa-entrada`. Abas na barra de título, painel direito com links de saída e backlinks, barra de status.
+O nome da biblioteca, no topo da lateral, abre a lista de recentes. Dali dá para trocar, criar outra pasta, abrir uma pasta existente ou tirar a atual da lista. A cor e o ícone da estante usam `--shelf-1` a `--shelf-8` só como marcador. A estante Entrada não tem cor: o ícone é `caixa-entrada`. Abas na barra de título, painel direito com links de saída e backlinks, barra de status.
 
-O editor mostra a nota, não o Markdown cru. O arquivo continua `.md`, com wikilinks, embeds e tarefas no padrão do Obsidian Tasks (`- [/]`, `📅`, `⏫`). O menu `/` abre no início da linha ou depois de espaço, inclusive no meio do texto, e pode abrir de novo depois do Esc. `[[` lista notas da biblioteca, com a estante. Salvar manda a revisão SHA-256. Se o arquivo mudou, a janela avisa e não grava por cima.
+O editor mostra a nota, não o Markdown cru. O arquivo continua `.md`, com wikilinks, embeds e tarefas no padrão do Obsidian Tasks (`- [/]`, `📅`, `⏫`). Selecionar texto abre a barra de formatação (negrito, itálico, link, wikilink, título, lista, tarefa, citação e código). O `+` na margem do bloco abre o menu `/`, e a linha vazia diz “Digite / para comandos”. O menu `/` também abre no início da linha ou depois de espaço, inclusive no meio do texto, e pode abrir de novo depois do Esc. `[[` lista notas da biblioteca, com a estante. Ctrl+Shift+P lista os comandos e os atalhos. Salvar manda a revisão SHA-256. Se o arquivo mudou, a janela avisa e não grava por cima.
 
 Ctrl+K busca. O grafo é desenhado na janela a partir de `graph.query`, com cor por estante, filtro de estante e tag, e foco na nota aberta.
 

@@ -485,7 +485,7 @@ function paintTree() {
   const draft = state.namingShelf
     ? `<li role="treeitem"><div class="arvore__linha">${icon('estante')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
     : '';
-  host.innerHTML = `<div class="lateral__biblioteca">${icon('biblioteca')}<span>${escapeHtml(state.libraryName)}</span><em>Biblioteca</em></div>
+  host.innerHTML = `<div class="lateral__biblioteca"><button type="button" class="lateral__seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">${icon('biblioteca')}<span>${escapeHtml(state.libraryName)}</span><em>Biblioteca</em></button></div>
     <ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
   host.querySelectorAll('[data-open]').forEach((button) => {
     button.onclick = () => {
@@ -502,6 +502,8 @@ function paintTree() {
       paintTree();
     };
   });
+  const picker = host.querySelector('#seletor-biblioteca');
+  if (picker) picker.onclick = () => openLibraryMenu(picker);
   bindNameField(
     host.querySelector('#nome-estante'),
     async (name) => {
@@ -629,6 +631,11 @@ function paintCenter() {
     .querySelectorAll('[data-block]')
     .forEach((el) => bindBlock(el));
   $('#coluna')
+    .querySelectorAll('[data-mais]')
+    .forEach((button) => {
+      button.onclick = () => openSlashAt(Number(button.dataset.mais));
+    });
+  $('#coluna')
     .querySelectorAll('[data-target]')
     .forEach((link) => {
       link.addEventListener('click', (event) => {
@@ -708,7 +715,8 @@ function renderBlock(block, index) {
     return `<figure class="embed" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure>`;
   }
   const text = block.raw.replace(/\n$/, '');
-  return `<p class="bloco bloco--texto" data-block="${index}" contenteditable="true">${inlineHtml(text)}</p>`;
+    const empty = text.trim() === '';
+    return `<div class="bloco-linha"><button type="button" class="bloco__mais" data-mais="${index}" aria-label="Comandos do bloco">+</button><p class="bloco bloco--texto" data-block="${index}" ${empty ? 'data-dica="1"' : ''} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
 }
 
 function inlineHtml(text) {
@@ -730,6 +738,7 @@ function bindBlock(el) {
   el.addEventListener('input', () => onBlockInput(el));
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('blur', () => {
+    if (state.wrapping) return;
     closeMenus();
     const index = Number(el.dataset.block);
     state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
@@ -1137,6 +1146,222 @@ function paintStatus() {
   if (theme) theme.textContent = themeName() === 'dark' ? 'Escuro' : 'Claro';
   const estado = $('#st-estado');
   if (estado && state.conflict) estado.textContent = 'Conflito';
+}
+
+function openLibraryMenu(anchor) {
+  closeMenus();
+  const recents = [...new Set([state.libraryPath, ...(state.settings.libraries || [])])].filter(Boolean);
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML =
+    recents
+      .map((folder) => {
+        const name = folder.split(/[/\\]/).pop();
+        return `<button type="button" class="menu__item" role="menuitem" data-lib="${escapeHtml(folder)}" ${folder === state.libraryPath ? 'aria-selected="true"' : ''}>${icon('biblioteca')}<span>${escapeHtml(name)}</span></button>`;
+      })
+      .join('') +
+    `<div class="menu__sep"></div>
+    <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
+    <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
+    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>`;
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.querySelectorAll('[data-lib]').forEach((button) => {
+    button.onclick = () => {
+      closeMenus();
+      switchLibrary(button.dataset.lib);
+    };
+  });
+  menu.querySelector('[data-acao="nova"]').onclick = () => {
+    closeMenus();
+    chooseLibrary(true);
+  };
+  menu.querySelector('[data-acao="abrir"]').onclick = () => {
+    closeMenus();
+    chooseLibrary(false);
+  };
+  menu.querySelector('[data-acao="remover"]').onclick = () => {
+    closeMenus();
+    forgetLibrary();
+  };
+}
+
+async function chooseLibrary(create) {
+  const chosen = await sophy.chooseFolder();
+  if (!chosen?.ok || !chosen.value) return;
+  if (create) {
+    const created = await sophy.createLibrary(chosen.value);
+    if (!created.ok) {
+      toast(created.error, 'erro');
+      return;
+    }
+    await switchLibrary(created.value.root);
+    return;
+  }
+  await switchLibrary(chosen.value);
+}
+
+async function switchLibrary(folder) {
+  const response = await sophy.switchLibrary(folder);
+  if (!response.ok) {
+    toast(response.error, 'erro');
+    return;
+  }
+  await applyLibrary(response.value.root, response.value.libraries);
+}
+
+async function forgetLibrary() {
+  const response = await sophy.forgetLibrary(state.libraryPath);
+  if (!response.ok) {
+    toast(response.error, 'erro');
+    return;
+  }
+  if (!response.value.libraryPath) {
+    state.libraryPath = null;
+    state.settings.libraries = response.value.libraries;
+    state.settings.onboarded = false;
+    paintOnboarding();
+    return;
+  }
+  await switchLibrary(response.value.libraryPath);
+}
+
+async function applyLibrary(root, libraries) {
+  state.libraryPath = root;
+  state.libraryName = root.split(/[/\\]/).pop();
+  state.settings.libraryPath = root;
+  if (libraries) state.settings.libraries = libraries;
+  state.tabs = [];
+  state.active = null;
+  state.doc = null;
+  state.view = 'empty';
+  state.selectedShelf = null;
+  await refreshLibrary();
+  paintTabs();
+  paintTree();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+}
+
+function openSlashAt(index) {
+  const el = document.querySelector(`[data-block="${index}"]`);
+  if (!el) return;
+  openMenu(el, 'menu menu--blocos menu-flutuante', renderSlash(Cmd.SLASH_ITEMS), (item) => {
+    const insert = item.id === 'hoje' ? today() : item.insert;
+    const text = readEditable(el).replace(/\n$/, '');
+    const next = text.trim() ? `${insert}${text}` : insert;
+    state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(state.doc.blocks[index], next));
+    closeMenus();
+    paintCenter();
+    scheduleSave();
+  });
+}
+
+function applyWrap(index, selected, prefix, suffix = '') {
+  const block = document.querySelector(`[data-block="${index}"]`);
+  const text = block ? readEditable(block) : '';
+  const at = text.indexOf(selected);
+  if (!block || !selected || at < 0) return;
+  const next = text.slice(0, at) + prefix + selected + suffix + text.slice(at + selected.length);
+  state.wrapping = true;
+  state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(state.doc.blocks[index], next));
+  setTimeout(() => {
+    paintCenter();
+    saveNow();
+    state.wrapping = false;
+  }, 0);
+}
+
+function showFormatBar(range) {
+  document.querySelector('.barra-formato')?.remove();
+  const host = range.startContainer.parentElement?.closest?.('[data-block]');
+  const selected = range.toString();
+  if (!host || !selected) return;
+  const index = Number(host.dataset.block);
+  const bar = document.createElement('div');
+  bar.className = 'barra-formato';
+  bar.setAttribute('role', 'toolbar');
+  bar.innerHTML = [
+    ['Negrito', 'negrito', '**', '**'],
+    ['Itálico', 'italico', '*', '*'],
+    ['Link', 'link', '[', '](https://)'],
+    ['Wikilink', 'nota', '[[', ']]'],
+    ['Título', 'titulo', '# ', ''],
+    ['Lista', 'lista', '- ', ''],
+    ['Tarefa', 'tarefa', '- [ ] ', ''],
+    ['Citação', 'citacao', '> ', ''],
+    ['Código', 'codigo', '`', '`'],
+  ]
+    .map(
+      ([label, glyph, prefix, suffix]) =>
+        `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}">${icon(glyph)}</button>`,
+    )
+    .join('');
+  document.body.append(bar);
+  const rect = range.getBoundingClientRect();
+  bar.style.left = `${Math.max(8, rect.left)}px`;
+  bar.style.top = `${Math.max(8, rect.top - 44)}px`;
+  bar.querySelectorAll('button').forEach((button) => {
+    button.onmousedown = (event) => {
+      event.preventDefault();
+      applyWrap(index, selected, button.dataset.prefix, button.dataset.suffix);
+      bar.remove();
+    };
+  });
+}
+
+function openCommands() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  const commands = [
+    ['Nova nota', 'Ctrl+N', () => createNote()],
+    ['Nova estante', '', () => createWorkspace()],
+    ['Buscar', 'Ctrl+K', () => openPalette()],
+    ['Mostrar grafo', '', () => showGraph()],
+    ['Alternar tema', '', () => toggleTheme()],
+    ['Nova biblioteca', '', () => chooseLibrary(true)],
+    ['Abrir biblioteca', '', () => chooseLibrary(false)],
+    ['Remover biblioteca da lista', '', () => forgetLibrary()],
+  ];
+  overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Comandos">
+    <div class="paleta__busca">${icon('busca')}<input id="comando-q" placeholder="Comandos" aria-label="Comandos" /></div>
+    <div class="paleta__lista" id="comando-lista"></div>
+    <div class="menu__rodape"><span><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">P</span></span><span><span class="kbd">esc</span> fechar</span></div>
+  </div>`;
+  const input = $('#comando-q');
+  const draw = () => {
+    const needle = input.value.trim().toLocaleLowerCase();
+    $('#comando-lista').innerHTML = commands
+      .filter(([label]) => !needle || label.toLocaleLowerCase().includes(needle))
+      .map(
+        ([label, shortcut]) =>
+          `<button type="button" class="menu__item" data-cmd="${escapeHtml(label)}"><span>${escapeHtml(label)}</span>${shortcut ? `<span class="menu__atalho">${escapeHtml(shortcut)}</span>` : ''}</button>`,
+      )
+      .join('');
+    $('#comando-lista')
+      .querySelectorAll('[data-cmd]')
+      .forEach((button) => {
+        button.onclick = () => {
+          closePalette();
+          commands.find(([label]) => label === button.dataset.cmd)?.[2]();
+        };
+      });
+  };
+  input.oninput = draw;
+  input.onkeydown = (event) => {
+    if (event.key === 'Escape') closePalette();
+    if (event.key === 'Enter') $('#comando-lista .menu__item')?.click();
+  };
+  overlay.onclick = (event) => {
+    if (event.target === overlay) closePalette();
+  };
+  draw();
+  input.focus();
 }
 
 async function createNote() {
@@ -1569,7 +1794,17 @@ function applyCommand(command) {
   }
 }
 
+document.addEventListener('mousedown', (event) => {
+  if (!event.target.closest('.menu-flutuante, #seletor-biblioteca, .barra-formato')) closeMenus();
+});
+
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeMenus();
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+    event.preventDefault();
+    openCommands();
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
     openPalette();
@@ -1590,6 +1825,20 @@ document.addEventListener('keydown', (event) => {
     state.namingShelf = false;
     paintTree();
   }
+});
+
+document.addEventListener('selectionchange', () => {
+  const selection = getSelection();
+  if (!selection?.rangeCount || selection.isCollapsed) {
+    document.querySelector('.barra-formato')?.remove();
+    return;
+  }
+  const block = selection.anchorNode?.parentElement?.closest?.('[data-block]');
+  if (!block || !$('#coluna')?.contains(block)) {
+    document.querySelector('.barra-formato')?.remove();
+    return;
+  }
+  showFormatBar(selection.getRangeAt(0));
 });
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {

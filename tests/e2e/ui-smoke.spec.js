@@ -60,6 +60,99 @@ async function launch(args) {
   });
 }
 
+test('troca de biblioteca, formatação e comandos', async () => {
+  test.setTimeout(60000);
+  const first = library();
+  const second = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-outra-'));
+  fs.mkdirSync(path.join(second, '.sophy'));
+  fs.writeFileSync(path.join(second, 'Outra.md'), '# Outra biblioteca\n');
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-data-'));
+  fs.writeFileSync(
+    path.join(userData, 'ui.json'),
+    JSON.stringify({
+      onboarded: true,
+      libraryPath: first,
+      libraries: [first, second],
+      theme: 'light',
+    }),
+  );
+  const app = await electron.launch({
+    args: ['.', `--test-user-data=${userData}`],
+    env: env(),
+  });
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('#seletor-biblioteca').click();
+  await expect(page.getByRole('menuitem', { name: 'Nova biblioteca…' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-bibliotecas-claro.png') });
+  await page.getByRole('menuitem', { name: path.basename(second) }).click();
+  await expect(page.getByRole('button', { name: 'Outra', exact: true })).toBeVisible();
+  await page.locator('#seletor-biblioteca').click();
+  await page.getByRole('menuitem', { name: path.basename(first) }).click();
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.locator('.bloco--texto').first().evaluate((el) => {
+    const text = [...el.childNodes].find((node) => node.nodeType === 3 && node.textContent.trim());
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, Math.min(6, text.textContent.length));
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await page.locator('.bloco-linha').first().hover();
+  await expect(page.locator('.barra-formato')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-formato-claro.png') });
+  await page.locator('.barra-formato button[aria-label="Negrito"]').click();
+  await expect
+    .poll(() => fs.readFileSync(path.join(first, 'Estudos', 'Leitura.md'), 'utf8'))
+    .toContain('**');
+  await page.locator('.bloco-linha').first().hover();
+  await expect(page.locator('.bloco__mais').first()).toBeVisible();
+  await page.keyboard.press('Control+Shift+P');
+  await expect(page.getByRole('dialog', { name: 'Comandos' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Nova biblioteca' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-comandos-claro.png') });
+  await app.close();
+
+  const marked = fs.readFileSync(path.join(first, 'Estudos', 'Leitura.md'), 'utf8');
+  fs.writeFileSync(path.join(first, 'Estudos', 'Leitura.md'), marked.replace(/\*\*([^*]+)\*\*/g, '$1'));
+  const darkData = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-data-'));
+  fs.writeFileSync(
+    path.join(darkData, 'ui.json'),
+    JSON.stringify({
+      onboarded: true,
+      libraryPath: first,
+      libraries: [first, second],
+      theme: 'dark',
+    }),
+  );
+  const dark = await electron.launch({
+    args: ['.', `--test-user-data=${darkData}`],
+    env: env(),
+  });
+  const darkPage = await dark.firstWindow();
+  await darkPage.locator('#seletor-biblioteca').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-bibliotecas-escuro.png') });
+  await darkPage.keyboard.press('Escape');
+  await darkPage.getByRole('button', { name: 'Leitura', exact: true }).click();
+  await darkPage.locator('.bloco--texto').first().evaluate((el) => {
+    const text = [...el.childNodes].find((node) => node.nodeType === 3 && node.textContent.trim());
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, Math.min(6, text.textContent.length));
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await darkPage.locator('.bloco-linha').first().hover();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-formato-escuro.png') });
+  await darkPage.keyboard.press('Control+Shift+P');
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-comandos-escuro.png') });
+  await dark.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

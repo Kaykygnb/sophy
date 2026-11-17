@@ -43,6 +43,17 @@ function writeSettings(patch) {
   return next;
 }
 
+function rememberLibrary(folder) {
+  const settings = readSettings();
+  const libraries = [
+    folder,
+    ...(Array.isArray(settings.libraries) ? settings.libraries : []).filter(
+      (item) => typeof item === 'string' && item !== folder,
+    ),
+  ].slice(0, 12);
+  return writeSettings({ libraryPath: folder, onboarded: true, libraries });
+}
+
 function broadcast(command) {
   for (const window of windows) {
     if (!window.isDestroyed()) window.webContents.send('sophy:command', command);
@@ -94,7 +105,7 @@ function setupIpc() {
       const opened = gate('library.open', { path: path.resolve(folder) });
       settings.libraryPath = opened.root;
       settings.onboarded = true;
-      writeSettings({ libraryPath: opened.root, onboarded: true });
+      rememberLibrary(opened.root);
     } else if (settings.libraryPath) {
       try {
         gate('library.open', { path: settings.libraryPath });
@@ -137,21 +148,46 @@ function setupIpc() {
     fs.mkdirSync(target, { recursive: true });
     fs.mkdirSync(path.join(target, '.sophy'), { recursive: true });
     const opened = gate('library.open', { path: target });
-    writeSettings({ libraryPath: opened.root, onboarded: true });
+    rememberLibrary(opened.root);
     gate('library.watch', { enabled: true });
     return opened;
+  });
+
+  handle('sophy:switch-library', (_event, folder) => {
+    if (typeof folder !== 'string' || !folder.trim()) throw new Error('Escolha a biblioteca.');
+    const opened = gate('library.open', { path: path.resolve(folder) });
+    const settings = rememberLibrary(opened.root);
+    gate('library.watch', { enabled: true });
+    return { root: opened.root, libraries: settings.libraries };
+  });
+
+  handle('sophy:forget-library', (_event, folder) => {
+    if (typeof folder !== 'string') throw new Error('Biblioteca inválida.');
+    const settings = readSettings();
+    const libraries = (Array.isArray(settings.libraries) ? settings.libraries : []).filter(
+      (item) => item !== folder,
+    );
+    const nextPath = settings.libraryPath === folder ? libraries[0] || null : settings.libraryPath;
+    writeSettings({ libraries, libraryPath: nextPath });
+    if (nextPath) {
+      gate('library.open', { path: nextPath });
+      gate('library.watch', { enabled: true });
+    }
+    return { libraryPath: nextPath, libraries };
   });
 
   handle('sophy:settings', (_event, patch) => {
     if (!patch || typeof patch !== 'object') throw new Error('Configuração inválida.');
     const allowed = {};
-    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion']) {
+    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion', 'libraries']) {
       if (key in patch) allowed[key] = patch[key];
     }
     if ('theme' in allowed && !['light', 'dark', 'system'].includes(allowed.theme))
       throw new Error('Tema inválido.');
     if ('readingFont' in allowed && !['inter', 'literata'].includes(allowed.readingFont))
       throw new Error('Fonte inválida.');
+    if ('libraries' in allowed && !Array.isArray(allowed.libraries))
+      throw new Error('Lista de bibliotecas inválida.');
     return writeSettings(allowed);
   });
 
