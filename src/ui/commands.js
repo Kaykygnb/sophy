@@ -28,6 +28,7 @@
     'view.save',
     'card.review',
     'version.point',
+    'version.restore',
     'site.export',
     'search.semantic.enable',
   ]);
@@ -327,6 +328,7 @@
     { id: 'biblioteca', rotulo: 'Trocar biblioteca', grupo: 'Navegar', icone: 'alternar', atalho: 'Ctrl+Shift+O', quando: 'sempre' },
     { id: 'grafo', rotulo: 'Mostrar grafo', grupo: 'Navegar', icone: 'grafo', atalho: '', quando: 'biblioteca' },
     { id: 'hoje', rotulo: 'Nota do dia', grupo: 'Navegar', icone: 'nota-diaria', atalho: 'Alt+D', quando: 'biblioteca' },
+    { id: 'config', rotulo: 'Configurações', grupo: 'Navegar', icone: 'ajuste', atalho: 'Ctrl+,', quando: 'sempre' },
     { id: 'captura', rotulo: 'Captura rápida', grupo: 'Criar', icone: 'caixa-entrada', atalho: 'Ctrl+Shift+Espaço', quando: 'biblioteca' },
     { id: 'visoes', rotulo: 'Visões salvas', grupo: 'Navegar', icone: 'lista', atalho: '', quando: 'biblioteca' },
     { id: 'mencoes', rotulo: 'Menções sem link', grupo: 'Editar', icone: 'link', atalho: '', quando: 'biblioteca' },
@@ -334,6 +336,7 @@
     { id: 'leitura', rotulo: 'Modo leitura', grupo: 'Editar', icone: 'leitura', atalho: '', quando: 'editor' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
+    { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
     { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'tachado', atalho: 'Ctrl+Shift+X', quando: 'editor' },
@@ -465,6 +468,52 @@
     },
   ];
 
+  const COVER_MIGRATION = ['rede', 'estante', 'jardim', 'horizonte', 'cerrado', 'ondas'];
+  const COVER_IDS = [
+    'ondas', 'montanhas', 'folhas', 'campo', 'nuvens', 'jardim', 'horizonte', 'ceu-noturno',
+    'constelacao', 'cerrado', 'vereda', 'ipe', 'grade', 'papel-dobrado', 'arcos', 'topografia',
+    'estante', 'pautado', 'rede', 'cidade', 'sofi-galho', 'sofi-livros', 'sofi-noite', 'sofi-folhas',
+  ];
+  const COVER_NAMES = {
+    ondas: 'Ondas', montanhas: 'Montanhas', folhas: 'Folhas', campo: 'Campo', nuvens: 'Nuvens',
+    jardim: 'Jardim', horizonte: 'Horizonte', 'ceu-noturno': 'Céu noturno', constelacao: 'Constelação',
+    cerrado: 'Cerrado', vereda: 'Vereda', ipe: 'Ipê', grade: 'Grade', 'papel-dobrado': 'Papel dobrado',
+    arcos: 'Arcos', topografia: 'Topografia', estante: 'Estante', pautado: 'Pautado', rede: 'Rede',
+    cidade: 'Cidade', 'sofi-galho': 'Sofi no galho', 'sofi-livros': 'Sofi nos livros',
+    'sofi-noite': 'Sofi à noite', 'sofi-folhas': 'Sofi entre folhas',
+  };
+
+  function capaY(value) {
+    if (value == null || value === '') return 0.5;
+    const text = String(value).trim();
+    if (text.endsWith('%')) {
+      const number = Number(text.slice(0, -1));
+      return Number.isNaN(number) ? 0.5 : Math.min(1, Math.max(0, number / 100));
+    }
+    const number = Number(text);
+    if (Number.isNaN(number)) return 0.5;
+    return number > 1 ? Math.min(1, number / 100) : Math.min(1, Math.max(0, number));
+  }
+
+  function resolveCover(front) {
+    const source = front && typeof front === 'object' ? front : {};
+    let token = '';
+    if (source.capa == null && source.ilustracao != null && COVER_MIGRATION[Number(source.ilustracao)])
+      token = `sophy:${COVER_MIGRATION[Number(source.ilustracao)]}`;
+    if (typeof source.capa === 'string') token = source.capa.trim();
+    if (!token) return null;
+    const y = capaY(source.capa_y);
+    if (token.startsWith('cor:')) return { kind: 'cor', color: token.slice(4), y };
+    if (token.startsWith('sophy:')) {
+      let id = token.slice(6);
+      if (/^[1-6]$/.test(id)) id = COVER_MIGRATION[Number(id) - 1];
+      if (!COVER_IDS.includes(id)) return null;
+      return { kind: 'arte', id, name: COVER_NAMES[id] || id, y };
+    }
+    if (/\.(png|jpe?g|webp|svg)$/i.test(token)) return { kind: 'arquivo', src: token, y };
+    return null;
+  }
+
   return {
     ORIGIN_TOOLS,
     SLASH_ITEMS,
@@ -484,6 +533,9 @@
     notePreviewHtml,
     noteIndent,
     uniqueTitle,
+    resolveCover,
+    COVER_IDS,
+    COVER_NAMES,
     filterSlash,
     CONFLICT,
   };

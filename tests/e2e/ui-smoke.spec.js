@@ -395,6 +395,71 @@ test('rodada 2: gaveta, quadro, semana, cartão e canvas', async () => {
   await app.close();
 });
 
+test('gaveta abaixo de 1024 px com véu, Esc e deslize', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setContentSize(1000, 700));
+  await expect.poll(() => page.locator('#lateral').evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  const motion = await page.locator('#lateral').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { duration: style.transitionDuration, timing: style.transitionTimingFunction };
+  });
+  expect(motion.duration).toBe('0.2s');
+  expect(motion.timing === 'ease-out' || motion.timing.includes('cubic-bezier')).toBe(true);
+  await page.locator('#abrir-lateral').click();
+  await expect(page.locator('#lateral')).toHaveClass(/is-aberta/);
+  await expect(page.locator('#gaveta-veu')).toBeVisible();
+  const veilMatches = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--overlay)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(document.querySelector('#gaveta-veu')).backgroundColor === expected;
+  });
+  expect(veilMatches).toBe(true);
+  await page.screenshot({ path: path.join(artifacts, 'ui-gaveta-1000-claro.png') });
+  const box = await page.locator('#gaveta-veu').boundingBox();
+  await page.mouse.click(box.x + box.width - 24, box.y + 80);
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  await expect(page.locator('#gaveta-veu')).toBeHidden();
+  await expect(page.locator('#abrir-lateral')).toBeFocused();
+  await page.locator('#abrir-lateral').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  await expect(page.locator('#abrir-lateral')).toBeFocused();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => page.locator('#lateral').evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
+  await windowHandle.evaluate((win) => win.setContentSize(800, 600));
+  await page.locator('#abrir-lateral').click();
+  await page.screenshot({ path: path.join(artifacts, 'ui-gaveta-800-claro.png') });
+  await app.close();
+
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  const darkWindow = await dark.browserWindow(darkPage);
+  await darkWindow.evaluate((win) => win.setContentSize(1000, 700));
+  await darkPage.locator('#abrir-lateral').click();
+  await expect(darkPage.locator('#gaveta-veu')).toBeVisible();
+  const darkVeilMatches = await darkPage.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--overlay)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(document.querySelector('#gaveta-veu')).backgroundColor === expected;
+  });
+  expect(darkVeilMatches).toBe(true);
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-gaveta-1000-escuro.png') });
+  await darkWindow.evaluate((win) => win.setContentSize(800, 600));
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-gaveta-800-escuro.png') });
+  await dark.close();
+});
+
 test('Configurações e Início', async () => {
   test.setTimeout(60000);
   const root = library();
@@ -481,7 +546,8 @@ test('flashcards e a busca por significado desligada', async () => {
   await page.keyboard.press('Control+Shift+P');
   await page.locator('#comando-q').fill('Flashcards');
   await page.locator('#comando-lista .menu__item', { hasText: 'Flashcards' }).click();
-  await expect(page.getByRole('button', { name: 'capital' })).toBeVisible();
+  await expect(page.locator('.fc-face__p')).toHaveText('capital');
+  await expect(page.locator('.fc-revisao')).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-flashcards-claro.png') });
   await app.close();
 });
@@ -509,6 +575,7 @@ test('a Sofi abre e a chave não entra na biblioteca', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
   );
   await expect(darkPage.getByRole('dialog', { name: 'Sofi' })).toBeVisible();
+  await darkPage.locator('#agente-chave').click();
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-sofi-escuro.png') });
   await dark.close();
 });
@@ -522,6 +589,135 @@ function walk(directory) {
   }
   return text;
 }
+
+test('acabamento da rodada 3', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  fs.writeFileSync(
+    path.join(root, 'Estudos', 'Capa.md'),
+    '---\ncapa: sophy:ondas\ncapa_y: 40%\n---\n# Capa\n\n',
+    'utf8',
+  );
+  fs.writeFileSync(path.join(root, 'Estudos', 'Velha.md'), '---\nilustracao: 0\n---\n# Velha\n\n', 'utf8');
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+  await expect(page.locator('.cartao-estante', { hasText: 'Estudos' })).toBeVisible();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
+  );
+  await page.locator('#comando-q').fill('Configurações');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Configurações' }).click();
+  await page.locator('input[name="cfg-fonte"][value="literata"]').check();
+  await expect
+    .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-reading')))
+    .toContain('Literata');
+  await page.locator('#arvore').getByRole('button', { name: 'Capa', exact: true }).click();
+  await expect(page.locator('.coluna > .capa .capa__arte use')).toHaveAttribute('href', '#capa-ondas');
+  await expect(page.locator('.coluna > .capa')).toHaveAttribute('style', /--capa-y:0\.4/);
+  await page.screenshot({ path: path.join(artifacts, 'ui-capa-1440-claro.png') });
+  await page.locator('#arvore').getByRole('button', { name: 'Velha', exact: true }).click();
+  await expect(page.locator('.coluna > .capa .capa__arte use')).toHaveAttribute('href', '#capa-rede');
+  await page.locator('[data-nav="tarefas"]').click();
+  await page.getByRole('button', { name: 'Quadro' }).click();
+  await expect(page.getByRole('button', { name: 'Status', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Estante', exact: true })).toHaveCount(0);
+  await expect(page.locator('#conexoes')).toHaveClass(/is-oculta/);
+  await page.locator('[data-nav="calendario"]').click();
+  await page.getByRole('button', { name: 'Agenda' }).click();
+  await expect(page.locator('.agenda')).toBeVisible();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
+  );
+  await page.locator('#comando-q').fill('Histórico');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Histórico de versões' }).click();
+  await expect(page.locator('.versoes-lista')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-versoes-1440-claro.png') });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#cfg-pdf').click();
+  await expect(page.locator('.pdf-pagina')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-exportar-1440-claro.png') });
+  await page.keyboard.press('Escape');
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setSize(800, 600));
+  await page.locator('#abrir-lateral').click();
+  const pad = await page.locator('#lateral').evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom));
+  expect(pad).toBeGreaterThan(28);
+  await page.screenshot({ path: path.join(artifacts, 'ui-gaveta-800-claro.png') });
+  await app.close();
+
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  await expect(darkPage.getByRole('heading', { name: 'Início' })).toBeVisible();
+  await darkPage.locator('.cartao-estante', { hasText: 'Estudos' }).click();
+  await darkPage.locator('[data-nav="inicio"]').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-inicio-1440-escuro.png') });
+  await darkPage.locator('#arvore').getByRole('button', { name: 'Capa', exact: true }).click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-capa-1440-escuro.png') });
+  const darkWindow = await dark.browserWindow(darkPage);
+  await darkWindow.evaluate((win) => win.setSize(800, 600));
+  await darkPage.locator('#abrir-lateral').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-gaveta-800-escuro.png') });
+  await dark.close();
+});
+
+test('rodada 4: capa da estante, semana, prévia e restaurar', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  fs.writeFileSync(
+    path.join(root, 'Estudos', 'Cor.md'),
+    '---\ncapa: cor:estante\n---\n# Cor\n\nA faixa usa a cor da estante.\n',
+    'utf8',
+  );
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('#arvore').getByRole('button', { name: 'Cor', exact: true }).click();
+  const paint = await page.locator('.capa--cor').getAttribute('style');
+  expect(paint).toContain('--shelf-');
+  expect(paint).not.toContain('var(--estante-cor');
+  await expect(page.locator('.coluna .capa-galeria')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Trocar capa' }).click();
+  await expect(page.getByRole('dialog', { name: 'Capa da nota' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Usar arquivo do computador…' })).toBeVisible();
+  await expect(page.locator('[data-cor="estante"]')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-capa-seletor-claro.png') });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('input[name="cfg-semana"][value="0"]').check();
+  await page.locator('[data-nav="calendario"]').click();
+  await expect(page.locator('.cal-semana span').first()).toHaveText('dom');
+  await expect(page.locator('.cal-dia strong').first()).toHaveText('1');
+  await page.screenshot({ path: path.join(artifacts, 'ui-semana-domingo-claro.png') });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', altKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.semana-diaria__dia').first()).toContainText('dom');
+  await page.locator('#arvore').getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#cfg-pdf').click();
+  await expect(page.locator('.pdf-pagina')).toContainText('memória');
+  const wrap = await page.locator('.opcao-cartao b').first().evaluate((el) => getComputedStyle(el).whiteSpace);
+  expect(wrap).toBe('nowrap');
+  await page.screenshot({ path: path.join(artifacts, 'ui-exportar-previa-claro.png') });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
+  );
+  await page.locator('#comando-q').fill('Histórico');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Histórico de versões' }).click();
+  await page.getByRole('button', { name: 'Gravar ponto agora' }).click();
+  await page.locator('[data-restaurar]').first().click();
+  await expect(page.locator('#st-estado')).not.toHaveText('Conflito');
+  await app.close();
+});
 
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);

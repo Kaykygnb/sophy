@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 import { listNotes, readNote, type Library } from './library.ts';
+import { resolveInside } from './paths.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -14,6 +15,7 @@ export type StudyCard = {
   workspace: string | null;
   due: string;
   box: number;
+  reversible?: boolean;
 };
 
 type Schedule = Record<string, { due: string; box: number }>;
@@ -49,7 +51,9 @@ export function cardsInText(body: string, notePath: string, workspace: string | 
       return;
     }
     if (fence) return;
-    const match = line.match(/^(.+?)\s::\s(.+)$/);
+    const triple = line.match(/^(.+?)\s:::\s(.+)$/);
+    const pair = triple ? null : line.match(/^(.+?)\s::\s(.+)$/);
+    const match = triple || pair;
     if (!match) return;
     cards.push({
       id: `${notePath}:${index + 1}`,
@@ -60,6 +64,7 @@ export function cardsInText(body: string, notePath: string, workspace: string | 
       workspace,
       due: today,
       box: 0,
+      reversible: Boolean(triple),
     });
   });
   return cards;
@@ -174,6 +179,27 @@ export function pruneVersions(
     drop(point);
   }
   return removed;
+}
+
+export function restoreVersion(library: Library, id: string) {
+  if (!/^[\w.:-]+$/.test(id)) throw new EngineError('invalid-path', 'Ponto inválido.');
+  const source = path.join(library.root, '.sophy', 'versoes', id);
+  const stat = fs.lstatSync(source);
+  if (stat.isSymbolicLink() || !stat.isDirectory())
+    throw new EngineError('not-found', 'Ponto não encontrado.');
+  const files = collectNotes(source);
+  for (const file of files) {
+    const parts = file.relative.split('/');
+    let parent = '';
+    for (const part of parts.slice(0, -1)) {
+      parent = parent ? `${parent}/${part}` : part;
+      const folder = resolveInside(library.root, parent, { allowMissing: true });
+      if (!fs.existsSync(folder)) fs.mkdirSync(folder);
+    }
+    const destination = resolveInside(library.root, file.relative, { allowMissing: true });
+    fs.copyFileSync(file.full, destination);
+  }
+  return { restored: files.length, id };
 }
 
 function pointTime(full: string, fallback: number) {

@@ -34,7 +34,7 @@ export function unlinkedMentions(library: Library) {
     body: readNote(library, note.path).body,
   }));
   return notes
-    .filter((note) => note.title.length >= 3)
+    .filter((note) => note.title.length >= 4 && !/^\d{4}-\d{2}-\d{2}$/.test(note.title))
     .map((note) => {
       const hits = notes
         .filter((other) => other.path !== note.path)
@@ -50,19 +50,14 @@ export function unlinkedMentions(library: Library) {
 
 function countTitle(text: string, title: string) {
   if (!title) return 0;
-  let count = 0;
-  let from = 0;
-  while (from <= text.length) {
-    const at = text.indexOf(title, from);
-    if (at < 0) break;
-    count += 1;
-    from = at + title.length;
-  }
-  return count;
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'gu');
+  return [...text.matchAll(pattern)].length;
 }
 
 export function linkMentions(library: Library, title: string) {
-  if (!title || title.length < 3) throw new EngineError('invalid-note', 'O título é curto demais para ligar.');
+  if (!title || title.length < 4 || /^\d{4}-\d{2}-\d{2}$/.test(title))
+    throw new EngineError('invalid-note', 'O título é curto demais para ligar.');
   let files = 0;
   let links = 0;
   for (const note of listNotes(library)) {
