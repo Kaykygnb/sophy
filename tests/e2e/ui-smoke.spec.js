@@ -268,6 +268,36 @@ test('Enter cria bloco, Ctrl+B formata e a árvore marca um item', async () => {
   await app.close();
 });
 
+test('tarefas e calendário listam a biblioteca', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('[data-nav="tarefas"]').click();
+  await expect(page.getByRole('heading', { name: 'Tarefas' })).toBeVisible();
+  await expect(page.locator('.kcard', { hasText: 'abrir o capítulo' })).toBeVisible();
+  await page.getByRole('button', { name: 'Quadro' }).click();
+  await page
+    .locator('.kcard', { hasText: 'abrir o capítulo' })
+    .dragTo(page.locator('.quadro__coluna[data-status="feita"]'));
+  const file = path.join(root, 'Estudos', 'Leitura.md');
+  await expect.poll(() => fs.readFileSync(file, 'utf8')).toMatch(/\[x\] abrir o capítulo/);
+  await page.screenshot({ path: path.join(artifacts, 'ui-tarefas-claro.png') });
+  await page.locator('[data-nav="calendario"]').click();
+  await expect(page.getByRole('heading', { name: 'Calendário' })).toBeVisible();
+  await expect(page.locator('.cal-dia.is-hoje')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-calendario-claro.png') });
+  await app.close();
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  await darkPage.locator('[data-nav="tarefas"]').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-tarefas-escuro.png') });
+  await darkPage.locator('[data-nav="calendario"]').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-calendario-escuro.png') });
+  await dark.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

@@ -21,6 +21,7 @@
     'canvas.node.remove',
     'canvas.edge.put',
     'canvas.edge.remove',
+    'task.update',
   ]);
 
   function slashQuery(text, cursor) {

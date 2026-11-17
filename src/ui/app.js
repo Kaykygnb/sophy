@@ -644,6 +644,14 @@ function paintTabs() {
 function paintCenter() {
   const center = $('#centro');
   if (!center) return;
+  if (state.view === 'tasks') {
+    paintTasks(center);
+    return;
+  }
+  if (state.view === 'calendar') {
+    paintCalendar(center);
+    return;
+  }
   if (state.view === 'shelf') {
     const notes = state.notes.filter((note) => note.workspace === state.selectedShelf);
     const boards = state.canvases.filter((file) => file.workspace === state.selectedShelf);
@@ -1530,6 +1538,180 @@ function openNewMenu(anchor) {
   };
 }
 
+function isoToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+async function showTasks() {
+  state.view = 'tasks';
+  state.taskMode = state.taskMode || 'lista';
+  state.taskFilter = state.taskFilter || {};
+  const query = { today: isoToday() };
+  for (const key of ['status', 'priority', 'workspace', 'due']) {
+    if (state.taskFilter[key]) query[key] = state.taskFilter[key];
+  }
+  state.taskRows = await tool('task.query', query);
+  paintCenter();
+}
+
+async function showCalendar() {
+  state.view = 'calendar';
+  state.calendarMode = state.calendarMode || 'mes';
+  state.calendarCursor = state.calendarCursor || isoToday();
+  const cursor = state.calendarCursor;
+  const from = state.calendarMode === 'semana' ? weekStart(cursor) : `${cursor.slice(0, 7)}-01`;
+  const to = state.calendarMode === 'semana' ? addIso(from, 6) : addIso(from, 41);
+  state.calendarItems = await tool('calendar.query', { from, to });
+  paintCenter();
+}
+
+function addIso(iso, days) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return isoTodayFrom(date);
+}
+
+function isoTodayFrom(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function weekStart(iso) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  const offset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - offset);
+  return isoTodayFrom(date);
+}
+
+function taskCard(task) {
+  const kit =
+    task.status === 'andamento'
+      ? 'andamento'
+      : task.status === 'feita'
+        ? 'feita'
+        : task.status === 'cancelada'
+          ? 'cancelada'
+          : 'aberta';
+  return `<article class="kcard" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}"><span class="check" data-status="${kit}"></span><strong>${escapeHtml(task.title)}</strong><span class="chip">${escapeHtml(task.due || 'sem prazo')}</span><button type="button" class="tarefa__origem" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.workspace || 'Biblioteca')}</button></article>`;
+}
+
+function paintTasks(center) {
+  const rows = state.taskRows || [];
+  const filter = state.taskFilter || {};
+  const chips = (items, key) =>
+    items
+      .map(
+        ([value, label]) =>
+          `<button type="button" class="chip ${filter[key] === value ? 'is-ativa' : ''}" data-filtro="${key}" data-valor="${value}">${label}</button>`,
+      )
+      .join('');
+  const due = [
+    ['', 'Todos os prazos'],
+    ['atrasada', 'Atrasadas'],
+    ['hoje', 'Hoje'],
+    ['semana', 'Esta semana'],
+    ['sem', 'Sem prazo'],
+  ];
+  const statuses = [
+    ['', 'Status'],
+    ['aberta', 'Abertas'],
+    ['andamento', 'Andamento'],
+    ['feita', 'Feitas'],
+  ];
+  const shelves = [['', 'Estante']].concat((state.workspaces || []).map((shelf) => [shelf.name, shelf.name]));
+  const columns = ['aberta', 'andamento', 'feita']
+    .map((status) => {
+      const label = status === 'aberta' ? 'A fazer' : status === 'andamento' ? 'Em andamento' : 'Concluídas';
+      const cards = rows.filter((task) => task.status === status).map(taskCard).join('');
+      return `<section class="quadro__coluna" data-status="${status}"><h3>${label}</h3>${cards || '<p>Solte aqui</p>'}</section>`;
+    })
+    .join('');
+  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><h2>Tarefas</h2><p>${rows.length} na biblioteca</p><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${rows.map(taskCard).join('') || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
+  center.querySelectorAll('[data-filtro]').forEach((button) => {
+    button.onclick = () => {
+      state.taskFilter[button.dataset.filtro] = button.dataset.valor;
+      showTasks();
+    };
+  });
+  center.querySelectorAll('[data-modo]').forEach((button) => {
+    button.onclick = () => {
+      state.taskMode = button.dataset.modo;
+      paintCenter();
+    };
+  });
+  center.querySelectorAll('[data-open-task]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.openTask);
+  });
+  bindTaskDrag(center);
+}
+
+function paintCalendar(center) {
+  const cursor = state.calendarCursor || isoToday();
+  const mode = state.calendarMode || 'mes';
+  const start = mode === 'semana' ? weekStart(cursor) : (() => {
+    const [year, month] = cursor.split('-').map(Number);
+    const first = new Date(year, month - 1, 1);
+    const offset = (first.getDay() + 6) % 7;
+    first.setDate(1 - offset);
+    return isoTodayFrom(first);
+  })();
+  const count = mode === 'semana' ? 7 : 42;
+  const days = Array.from({ length: count }, (_, index) => addIso(start, index));
+  const items = state.calendarItems || [];
+  const cells = days
+    .map((date) => {
+      const mine = items.filter((item) => item.date === date);
+      const marks = mine
+        .slice(0, 3)
+        .map((item) => {
+          if (item.kind === 'tarefa')
+            return `<button type="button" class="cal-item" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}">${escapeHtml(item.title)}</button>`;
+          return `<span class="cal-item">${item.kind === 'nota' ? '●' : '◆'} ${escapeHtml(item.title)}</span>`;
+        })
+        .join('');
+      return `<div class="cal-dia ${date === isoToday() ? 'is-hoje' : ''}" data-date="${date}"><strong>${Number(date.slice(8))}</strong>${marks}</div>`;
+    })
+    .join('');
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><h2>Calendário</h2><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>`;
+  center.querySelectorAll('[data-cal]').forEach((button) => {
+    button.onclick = () => {
+      state.calendarMode = button.dataset.cal;
+      showCalendar();
+    };
+  });
+  bindTaskDrag(center);
+}
+
+function bindTaskDrag(center) {
+  center.querySelectorAll('[data-task]').forEach((card) => {
+    card.addEventListener('dragstart', (event) => {
+      event.dataTransfer.setData(
+        'text/plain',
+        JSON.stringify({
+          path: card.dataset.task,
+          line: Number(card.dataset.line),
+          revision: card.dataset.rev,
+        }),
+      );
+    });
+  });
+  center.querySelectorAll('[data-status], [data-date]').forEach((target) => {
+    target.addEventListener('dragover', (event) => event.preventDefault());
+    target.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      const payload = JSON.parse(event.dataTransfer.getData('text/plain') || '{}');
+      const patch = { path: payload.path, line: payload.line, expectedRevision: payload.revision };
+      if (target.dataset.status) patch.status = target.dataset.status;
+      if (target.dataset.date) patch.due = target.dataset.date;
+      await tool('task.update', patch);
+      if (state.view === 'calendar') await showCalendar();
+      else await showTasks();
+    });
+  });
+}
+
 function runCommand(id) {
   const runs = {
     nota: () => createNote(),
@@ -1552,16 +1734,8 @@ function runCommand(id) {
       paintCenter();
       paintTabs();
     },
-    tarefas: () => {
-      state.view = 'soon';
-      state.soonTitle = 'Tarefas';
-      paintCenter();
-    },
-    calendario: () => {
-      state.view = 'soon';
-      state.soonTitle = 'Calendário';
-      paintCenter();
-    },
+    tarefas: () => showTasks(),
+    calendario: () => showCalendar(),
     sofi: () => toast('A Sofi entra com o agente. A chave fica no cofre do sistema, não na biblioteca.'),
   };
   runs[id]?.();

@@ -25,6 +25,7 @@ export { outgoingLinks, backlinks, brokenLinks, watchLibrary } from './links.ts'
 export { searchLibrary } from './search.ts';
 export { queryGraph } from './graph.ts';
 export { parseCanvas, serializeCanvas, readCanvas, createCanvas, updateCanvas } from './canvas.ts';
+export { listTasks, updateTask, queryCalendar } from './tasks.ts';
 export { listHistory, undoLast } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';
 export {
