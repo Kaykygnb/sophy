@@ -14,16 +14,16 @@ Claro e escuro vêm de `src/ui/assets/tokens.css`. “Sistema” segue `prefers-
 
 A primeira abertura tem quatro passos: boas-vindas, pasta da biblioteca, tema, agente. O passo do agente não grava chave. O agente em si é a etapa 7.
 
-`ui.openCanvas` mostra um aviso de que o canvas entra na etapa 6. Não lê o `.canvas`.
+`ui.openCanvas` abre o `.canvas`. O quadro tem pan e zoom, cartões de texto com `[[`, cartão de nota com prévia, cartão de link, grupos, setas com rótulo, seleção, encaixe na grade, arrastar uma nota da árvore, minimapa e desfazer. O arquivo continua JSON Canvas.
 
 ## Fora desta etapa
 
-Canvas de verdade, tarefas e calendário como telas, visões salvas, nota do dia, captura rápida e o agente. Os arquivos continuam Markdown, então essas telas podem entrar depois sem outro formato.
+Tarefas e calendário como telas, visões salvas, nota do dia, captura rápida e o agente. Os arquivos continuam Markdown, então essas telas podem entrar depois sem outro formato.
 
 ## Ponte com o MCP
 
-A janela chama `subscribeUi`. `ui.openNote`, `ui.showGraph` e `ui.setTheme` no mesmo processo chegam nela. Um `sophy mcp` separado deixa o pedido em `sophy-ui-<uid>` no diretório temporário; a janela responde enquanto estiver aberta. Sem janela, a tool responde `A interface não está aberta.`
+A janela chama `subscribeUi`. `ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` no mesmo processo chegam nela. Um `sophy mcp` separado deixa o pedido em `sophy-ui-<uid>` no diretório temporário; a janela responde enquanto estiver aberta. Sem janela, a tool responde `A interface não está aberta.`
 
 ## Testes
 
-`npm test` inclui a ida e volta do Markdown (`tests/ui-doc.test.js`) e a porta IPC com as tools `ui.*` (`tests/ui-bridge.test.js`). `npm run test:e2e` abre o Electron de verdade: boas-vindas, nota e grafo.
+`npm test` inclui a ida e volta do Markdown, a porta IPC e a grade do canvas (`tests/ui-canvas.test.js`). `npm run test:e2e` abre o Electron: boas-vindas, nota, grafo e um canvas.

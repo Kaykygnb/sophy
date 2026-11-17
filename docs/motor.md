@@ -15,11 +15,11 @@ O motor fica em `engine/` e não usa Electron nem DOM. A janela em `src/` chama 
 
 Igual ao Obsidian, há três papéis e nenhum formato proprietário de nota:
 
-| Arquivo                        | Papel                                                                                                                             |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `*.md`                         | Nota. Markdown comum com frontmatter YAML. É o único formato de nota.                                                             |
-| `*.canvas`                     | Canvas. JSON Canvas, o mesmo arquivo que o Obsidian abre. Nesta etapa o motor só reconhece a extensão; não lê nem regrava o JSON. |
-| qualquer outro arquivo visível | Anexo. Bytes no disco, sem envelope. A tool `file.list` devolve o caminho e o tamanho.                                            |
+| Arquivo                        | Papel                                                                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `*.md`                         | Nota. Markdown comum com frontmatter YAML. É o único formato de nota.                                                      |
+| `*.canvas`                     | Canvas. JSON Canvas, o mesmo arquivo que o Obsidian abre: nós `text`, `file`, `link` e `group`, arestas com lados e cores. |
+| qualquer outro arquivo visível | Anexo. Bytes no disco, sem envelope. A tool `file.list` devolve o caminho e o tamanho.                                     |
 
 Uma nota é um arquivo `.md` em UTF-8.
 
@@ -43,36 +43,42 @@ Nada disto entra nesta etapa. O arquivo continua sendo Markdown e YAML, então d
 
 - Tarefas a partir de `- [ ]` no corpo, com data e prioridade no texto ou no frontmatter.
 - Calendário: notas diárias pelo nome do arquivo, datas de tarefas e datas declaradas no YAML.
-- Wikilinks dentro de cartões de canvas, contando em backlinks, no grafo e na renomeação. O arquivo já é `.canvas` (JSON Canvas); o caminho da nota continua estável.
 - Consultas salvas sobre a mesma listagem de notas.
 
-`entry.move` reescreve os wikilinks que apontavam para o arquivo movido. Alias e âncora permanecem. Um `[[` incompleto não é um link e não é escapado.
+`entry.move` reescreve os wikilinks que apontavam para o arquivo movido, inclusive os que estão no texto de um cartão de canvas. O nó `file` que apontava para a nota também muda de caminho. Alias e âncora permanecem. Um `[[` incompleto não é um link e não é escapado. O canvas entra no grafo e nos backlinks quando cita uma nota.
 
 ## Operações
 
 O registro em `engine/tools.ts` é a borda que CLI, MCP, UI e o agente vão usar. A entrada é validada com Zod.
 
-| Tool               | Função                                                       |
-| ------------------ | ------------------------------------------------------------ |
-| `library.open`     | Abre a pasta e devolve a raiz e as estantes                  |
-| `workspace.list`   | Lista as estantes                                            |
-| `workspace.create` | Cria uma subpasta de primeiro nível                          |
-| `directory.create` | Cria uma pasta, inclusive dentro de uma estante              |
-| `note.list`        | Lista só arquivos `.md`, com filtro opcional por estante     |
-| `file.list`        | Lista `.canvas` e anexos, sem ler o conteúdo                 |
-| `note.read`        | Lê corpo, frontmatter e revisão                              |
-| `note.create`      | Cria `.md` sem sobrescrever                                  |
-| `note.write`       | Grava o corpo se a revisão SHA-256 ainda confere             |
-| `entry.move`       | Move ou renomeia e reescreve os wikilinks afetados           |
-| `entry.trash`      | Move para a lixeira do sistema                               |
-| `links.outgoing`   | Wikilinks da nota, com status resolvido, ambíguo ou quebrado |
-| `links.backlinks`  | Notas que apontam para um caminho                            |
-| `links.broken`     | Links quebrados ou ambíguos                                  |
-| `search.query`     | Busca em título, texto limpo, tags e frontmatter             |
-| `graph.query`      | Nós e arestas, com filtro de estante e tag                   |
-| `history.list`     | Ações ainda desfazíveis                                      |
-| `history.undo`     | Desfaz a última ação, se os arquivos não mudaram depois      |
-| `library.watch`    | Watcher opcional para mudanças externas em `.md`             |
+| Tool                 | Função                                                       |
+| -------------------- | ------------------------------------------------------------ |
+| `library.open`       | Abre a pasta e devolve a raiz e as estantes                  |
+| `workspace.list`     | Lista as estantes                                            |
+| `workspace.create`   | Cria uma subpasta de primeiro nível                          |
+| `directory.create`   | Cria uma pasta, inclusive dentro de uma estante              |
+| `note.list`          | Lista só arquivos `.md`, com filtro opcional por estante     |
+| `file.list`          | Lista `.canvas` e anexos, sem ler o conteúdo                 |
+| `canvas.read`        | Lê o JSON Canvas e a revisão                                 |
+| `canvas.create`      | Cria um `.canvas` sem sobrescrever                           |
+| `canvas.update`      | Grava o JSON se a revisão ainda confere                      |
+| `canvas.node.put`    | Cria ou substitui um nó                                      |
+| `canvas.node.remove` | Remove um nó e as arestas ligadas                            |
+| `canvas.edge.put`    | Cria ou substitui uma aresta                                 |
+| `canvas.edge.remove` | Remove uma aresta                                            |
+| `note.read`          | Lê corpo, frontmatter e revisão                              |
+| `note.create`        | Cria `.md` sem sobrescrever                                  |
+| `note.write`         | Grava o corpo se a revisão SHA-256 ainda confere             |
+| `entry.move`         | Move ou renomeia e reescreve os wikilinks afetados           |
+| `entry.trash`        | Move para a lixeira do sistema                               |
+| `links.outgoing`     | Wikilinks da nota, com status resolvido, ambíguo ou quebrado |
+| `links.backlinks`    | Notas que apontam para um caminho                            |
+| `links.broken`       | Links quebrados ou ambíguos                                  |
+| `search.query`       | Busca em título, texto limpo, tags e frontmatter             |
+| `graph.query`        | Nós e arestas, com filtro de estante e tag                   |
+| `history.list`       | Ações ainda desfazíveis                                      |
+| `history.undo`       | Desfaz a última ação, se os arquivos não mudaram depois      |
+| `library.watch`      | Watcher opcional para mudanças externas em `.md`             |
 
 Um wikilink é `[[Nota]]`, `[[Estante/Nota]]`, `[[Nota|texto]]`, `[[Nota#Cabeçalho]]`, `[[Nota#^id]]` ou o embed `![[...]]`. O nome simples resolve se houver um único arquivo com esse nome, ou se houver um na mesma pasta da nota de origem. Vários homônimos, sem caminho, ficam ambíguos. Caminho com barra escolhe o arquivo. Âncora que não existe na nota de destino deixa o link quebrado. Código cercado, código inline e frontmatter não entram no índice.
 

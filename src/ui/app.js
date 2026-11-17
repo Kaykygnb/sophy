@@ -7,6 +7,11 @@ const state = {
   libraryName: 'Biblioteca',
   workspaces: [],
   notes: [],
+  canvases: [],
+  canvasDoc: null,
+  canvasRevision: null,
+  canvasPreviews: {},
+  canvasRedo: [],
   tabs: [],
   active: null,
   view: 'empty',
@@ -56,7 +61,11 @@ function escapeHtml(value) {
   );
 }
 function baseName(file) {
-  return file.split('/').pop().replace(/\.md$/i, '');
+  return file
+    .split('/')
+    .pop()
+    .replace(/\.md$/i, '')
+    .replace(/\.canvas$/i, '');
 }
 function tagChips(matter) {
   if (!matter || typeof matter !== 'object') return '';
@@ -435,6 +444,8 @@ async function refreshLibrary() {
   state.libraryName = opened.root.split(/[/\\]/).pop();
   state.workspaces = opened.workspaces || [];
   state.notes = await tool('note.list', {});
+  const files = await tool('file.list', {});
+  state.canvases = files.filter((file) => file.kind === 'canvas');
 }
 
 function treeNotes(workspace) {
@@ -464,13 +475,21 @@ function paintTree() {
             ${icon('nota')}${label}</button></li>`;
         })
         .join('');
+      const boards = state.canvases
+        .filter((file) => file.workspace === workspace.name)
+        .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
+        .map(
+          (file) =>
+            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${file.path === state.canvasPath}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
+        )
+        .join('');
       const shelfLabel =
         state.renaming?.kind === 'shelf' && state.renaming.name === workspace.name
           ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
       return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${workspace.name === state.selectedShelf}" aria-expanded="true"${color}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
-          <span class="arvore__conta">${notes.length}</span></button><ul role="group">${children}</ul></li>`;
+          <span class="arvore__conta">${notes.length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
     .join('');
   const loose = treeNotes(null)
@@ -488,12 +507,17 @@ function paintTree() {
   host.innerHTML = `<div class="lateral__biblioteca"><button type="button" class="lateral__seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">${icon('biblioteca')}<span>${escapeHtml(state.libraryName)}</span><em>Biblioteca</em></button></div>
     <ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
   host.querySelectorAll('[data-open]').forEach((button) => {
+    button.draggable = true;
+    button.ondragstart = (event) => event.dataTransfer.setData('text/plain', button.dataset.open);
     button.onclick = () => {
       state.selectedShelf = button.dataset.open.includes('/')
         ? button.dataset.open.split('/')[0]
         : null;
       openNote(button.dataset.open);
     };
+  });
+  host.querySelectorAll('[data-canvas]').forEach((button) => {
+    button.onclick = () => openCanvas(button.dataset.canvas);
   });
   host.querySelectorAll('[data-shelf]').forEach((button) => {
     button.onclick = (event) => {
@@ -592,7 +616,10 @@ function paintTabs() {
     )
     .join('');
   host.querySelectorAll('[data-tab]').forEach((button) => {
-    button.onclick = () => openNote(button.dataset.tab);
+    button.onclick = () =>
+      button.dataset.tab.toLowerCase().endsWith('.canvas')
+        ? openCanvas(button.dataset.tab)
+        : openNote(button.dataset.tab);
   });
 }
 
@@ -604,9 +631,29 @@ function paintCenter() {
     return;
   }
   if (state.view === 'canvas') {
-    center.innerHTML = `<div class="canvas-placeholder"><div class="sofi" data-sofi="pensando"></div><h2>Canvas</h2><p>${escapeHtml(state.canvasPath || '')}</p><p>O canvas entra na etapa 6. Este arquivo .canvas não foi aberto nem alterado.</p></div>`;
-    const sofi = $('[data-sofi]', center);
-    if (sofi) mountSofi(sofi, 'pensando');
+    center.innerHTML = '';
+    const board = document.createElement('div');
+    board.tabIndex = 0;
+    center.append(board);
+    SophyCanvas.mount(board, {
+      document: state.canvasDoc || { nodes: [], edges: [] },
+      notes: state.notes.map((note) => ({ path: note.path, title: baseName(note.path) })),
+      preview: (file) =>
+        state.canvasPreviews[file] || state.canvasPreviews[file?.replace(/\.md$/i, '')],
+      shelf: (file) => {
+        const parts = String(file || '').split('/');
+        return parts.length > 1 ? Cmd.shelfMark(parts[0]) : null;
+      },
+      icon,
+      nextId: () => Math.random().toString(16).slice(2, 10),
+      openNote: (file) => openNote(file).catch((error) => toast(error.message, 'erro')),
+      onChange: (document) => saveCanvas(document),
+      undo: () => undoCanvas(),
+      redo: () => redoCanvas(),
+    });
+    if (state.canvasSelect) {
+      board.focus();
+    }
     return;
   }
   if (!state.active || !state.doc) {
@@ -1039,6 +1086,89 @@ async function saveNow() {
   } catch (error) {
     toast(error.message, 'erro');
   }
+}
+
+async function openCanvas(file) {
+  const canvas = await tool('canvas.read', { path: file });
+  state.view = 'canvas';
+  state.canvasPath = canvas.path;
+  state.canvasDoc = canvas.document;
+  state.canvasRevision = canvas.revision;
+  state.canvasPreviews = {};
+  state.active = null;
+  for (const node of canvas.document.nodes || []) {
+    if (node.type !== 'file' || typeof node.file !== 'string') continue;
+    const notePath = node.file.toLowerCase().endsWith('.md') ? node.file : `${node.file}.md`;
+    try {
+      const note = await tool('note.read', { path: notePath });
+      const preview = {
+        title: baseName(note.path),
+        body: note.body
+          .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+          .replace(/!?\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+          .replace(/!?\[\[([^\]]+)\]\]/g, '$1')
+          .replace(/^#.+\n?/gm, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160),
+        path: note.path,
+      };
+      state.canvasPreviews[node.file] = preview;
+      state.canvasPreviews[note.path] = preview;
+    } catch {
+      /* o cartão mostra o caminho mesmo sem a nota */
+    }
+  }
+  if (!state.tabs.includes(canvas.path)) state.tabs.push(canvas.path);
+  paintTabs();
+  paintTree();
+  paintCenter();
+  paintStatus();
+}
+
+let keepCanvasRedo = false;
+
+async function saveCanvas(document) {
+  if (!state.canvasPath) return;
+  const result = await tool('canvas.update', {
+    path: state.canvasPath,
+    document,
+    expectedRevision: state.canvasRevision,
+  });
+  if (result.conflict) {
+    state.conflict = true;
+    toast('O canvas mudou desde a leitura. Nada foi gravado.', 'erro');
+    return;
+  }
+  if (!keepCanvasRedo) state.canvasRedo = [];
+  state.conflict = false;
+  state.canvasRevision = result.canvas.revision;
+  state.canvasDoc = result.canvas.document;
+  const status = $('#st-estado');
+  if (status) status.textContent = 'Salvo';
+}
+
+async function undoCanvas() {
+  if (!state.canvasPath) return;
+  try {
+    state.canvasRedo.push(structuredClone(state.canvasDoc));
+    await tool('history.undo', {});
+    await openCanvas(state.canvasPath);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+async function redoCanvas() {
+  const document = state.canvasRedo.pop();
+  if (!document || !state.canvasPath) return;
+  keepCanvasRedo = true;
+  try {
+    await saveCanvas(document);
+  } finally {
+    keepCanvasRedo = false;
+  }
+  await openCanvas(state.canvasPath);
 }
 
 async function openNote(file, options = {}) {
@@ -1786,11 +1916,7 @@ function applyCommand(command) {
     return;
   }
   if (command.type === 'openCanvas') {
-    state.view = 'canvas';
-    state.canvasPath = command.path;
-    state.placeholder = next.placeholder;
-    paintCenter();
-    paintLinks();
+    openCanvas(command.path).catch((error) => toast(error.message, 'erro'));
   }
 }
 

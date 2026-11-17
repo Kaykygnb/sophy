@@ -367,6 +367,64 @@ button.arvore__linha[aria-selected='true'] {
   color: var(--ink-2);
   text-align: center;
 }
+.canvas-app {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.canvas-app .canvas-area {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+.canvas-mundo {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.canvas-mundo .cv-seta {
+  overflow: visible;
+  color: var(--ink-3);
+}
+.canvas-ferramentas {
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+.canvas-zoom {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.canvas-mini {
+  position: absolute;
+  right: 12px;
+  bottom: 16px;
+  z-index: 3;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.cv-contador {
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+}
+.cv-texto {
+  min-height: 72px;
+  outline: none;
+  font: var(--text-reading);
+}
 .canvas-placeholder {
   margin: auto;
   max-width: 420px;

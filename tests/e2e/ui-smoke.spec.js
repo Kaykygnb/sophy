@@ -35,6 +35,66 @@ A memória se liga a [[Estudos/Grafo|o grafo]] e também a um [[ incompleto.
     path.join(root, 'Livro', 'Capitulo.md'),
     '# Capítulo\n\nVoltar para [[Estudos/Leitura]].\n',
   );
+  fs.writeFileSync(
+    path.join(root, 'Estudos', 'Mapa.canvas'),
+    JSON.stringify(
+      {
+        nodes: [
+          {
+            id: 'g',
+            type: 'group',
+            x: 40,
+            y: 20,
+            width: 680,
+            height: 400,
+            label: 'Estudos',
+            color: '1',
+          },
+          {
+            id: 't',
+            type: 'text',
+            x: 80,
+            y: 80,
+            width: 280,
+            height: 140,
+            text: 'A memória liga com [[Estudos/Leitura|a leitura]].',
+          },
+          {
+            id: 'f',
+            type: 'file',
+            x: 420,
+            y: 90,
+            width: 250,
+            height: 160,
+            file: 'Estudos/Leitura.md',
+          },
+          {
+            id: 'l',
+            type: 'link',
+            x: 80,
+            y: 270,
+            width: 240,
+            height: 70,
+            url: 'https://obsidian.md',
+            label: 'JSON Canvas',
+          },
+        ],
+        edges: [
+          {
+            id: 'e',
+            fromNode: 't',
+            toNode: 'f',
+            fromSide: 'right',
+            toSide: 'left',
+            toEnd: 'arrow',
+            label: 'explica',
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  );
   for (const shelf of ['Pesquisa', 'Trabalho', 'Diário', 'Leituras']) {
     fs.mkdirSync(path.join(root, shelf), { recursive: true });
     fs.writeFileSync(
@@ -211,6 +271,11 @@ test('a janela abre a biblioteca e mostra a nota', async () => {
   await expect(page.locator('#conexoes')).toContainText('Leitura');
   await expect(page.locator('#conexoes')).not.toContainText('Abra uma nota');
   await page.screenshot({ path: path.join(artifacts, 'ui-grafo-claro.png') });
+  await page.locator('#arvore').getByRole('button', { name: 'Mapa', exact: true }).click();
+  await expect(page.locator('.cv-cartao').first()).toBeVisible();
+  await expect(page.locator('.cv-grupo')).toContainText('Estudos');
+  await page.locator('.cv-cartao').first().click();
+  await page.screenshot({ path: path.join(artifacts, 'ui-canvas-claro.png') });
   expect(errors).toEqual([]);
   await app.close();
 });
@@ -243,6 +308,10 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   await expect(darkPage.locator('#grafo-canvas')).toBeVisible();
   await expect(darkPage.locator('#conexoes')).toContainText('Leitura');
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-grafo-escuro.png') });
+  await darkPage.locator('#arvore').getByRole('button', { name: 'Mapa', exact: true }).click();
+  await expect(darkPage.locator('.cv-cartao').first()).toBeVisible();
+  await darkPage.locator('.cv-cartao').first().click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-canvas-escuro.png') });
   await dark.close();
 
   const welcomeDark = await launch(['--theme=dark']);

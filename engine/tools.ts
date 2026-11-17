@@ -1,4 +1,16 @@
 import { z } from 'zod';
+import {
+  createCanvas,
+  putCanvasEdge,
+  putCanvasNode,
+  readCanvas,
+  removeCanvasEdge,
+  removeCanvasNode,
+  updateCanvas,
+  type CanvasEdge,
+  type CanvasFile,
+  type CanvasNode,
+} from './canvas.ts';
 import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
@@ -33,6 +45,35 @@ const jsonValue: z.ZodType<unknown> = z.lazy(() =>
   ]),
 );
 const frontmatter = z.record(z.string(), jsonValue);
+const canvasSide = z.enum(['top', 'right', 'bottom', 'left']);
+const canvasNode = z.looseObject({
+  id: z.string().min(1),
+  type: z.enum(['text', 'file', 'link', 'group']),
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  color: z.string().optional(),
+  text: z.string().optional(),
+  file: z.string().optional(),
+  url: z.string().optional(),
+  label: z.string().optional(),
+});
+const canvasEdge = z.looseObject({
+  id: z.string().min(1),
+  fromNode: z.string().min(1),
+  toNode: z.string().min(1),
+  fromSide: canvasSide.optional(),
+  toSide: canvasSide.optional(),
+  fromEnd: z.enum(['none', 'arrow']).optional(),
+  toEnd: z.enum(['none', 'arrow']).optional(),
+  color: z.string().optional(),
+  label: z.string().optional(),
+});
+const canvasDocument = z.looseObject({
+  nodes: z.array(canvasNode),
+  edges: z.array(canvasEdge).optional(),
+});
 
 export type Tool = {
   name: string;
@@ -208,6 +249,96 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'canvas.read',
+    'Lê um arquivo .canvas (JSON Canvas). A revisão volta na escrita.',
+    z.object({ libraryPath, path: relativePath }),
+    ({ libraryPath: folder, path }) => readCanvas(openLibrary(folder), path),
+  ),
+  define(
+    'canvas.create',
+    'Cria um .canvas vazio ou com o documento enviado. Não sobrescreve.',
+    z.object({ libraryPath, path: relativePath, document: canvasDocument.optional(), origin }),
+    ({ libraryPath: folder, path, document, origin: source }) =>
+      tracked(folder, source, 'canvas.create', `Criar canvas ${path}`, (library) =>
+        createCanvas(library, path, document as CanvasFile | undefined),
+      ),
+  ),
+  define(
+    'canvas.update',
+    'Substitui o JSON Canvas se a revisão ainda for a última leitura.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      document: canvasDocument,
+      expectedRevision: z.string().length(64),
+      origin,
+    }),
+    ({ libraryPath: folder, path, document, expectedRevision, origin: source }) =>
+      tracked(folder, source, 'canvas.update', `Gravar canvas ${path}`, (library) =>
+        updateCanvas(library, path, document as CanvasFile, expectedRevision),
+      ),
+  ),
+  define(
+    'canvas.node.put',
+    'Cria ou substitui um nó do canvas (texto, arquivo, link ou grupo).',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      node: canvasNode,
+      expectedRevision: z.string().length(64),
+      origin,
+    }),
+    ({ libraryPath: folder, path, node, expectedRevision, origin: source }) =>
+      tracked(folder, source, 'canvas.node.put', `Nó em ${path}`, (library) =>
+        putCanvasNode(library, path, node as CanvasNode, expectedRevision),
+      ),
+  ),
+  define(
+    'canvas.node.remove',
+    'Remove um nó do canvas e as arestas que saíam ou chegavam nele.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      id: z.string().min(1),
+      expectedRevision: z.string().length(64),
+      origin,
+    }),
+    ({ libraryPath: folder, path, id, expectedRevision, origin: source }) =>
+      tracked(folder, source, 'canvas.node.remove', `Remover nó de ${path}`, (library) =>
+        removeCanvasNode(library, path, id, expectedRevision),
+      ),
+  ),
+  define(
+    'canvas.edge.put',
+    'Cria ou substitui uma aresta do canvas, com lados e pontas.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      edge: canvasEdge,
+      expectedRevision: z.string().length(64),
+      origin,
+    }),
+    ({ libraryPath: folder, path, edge, expectedRevision, origin: source }) =>
+      tracked(folder, source, 'canvas.edge.put', `Aresta em ${path}`, (library) =>
+        putCanvasEdge(library, path, edge as CanvasEdge, expectedRevision),
+      ),
+  ),
+  define(
+    'canvas.edge.remove',
+    'Remove uma aresta do canvas.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      id: z.string().min(1),
+      expectedRevision: z.string().length(64),
+      origin,
+    }),
+    ({ libraryPath: folder, path, id, expectedRevision, origin: source }) =>
+      tracked(folder, source, 'canvas.edge.remove', `Remover aresta de ${path}`, (library) =>
+        removeCanvasEdge(library, path, id, expectedRevision),
+      ),
   ),
   define(
     'ui.openNote',

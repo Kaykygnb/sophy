@@ -15,6 +15,12 @@
     'entry.move',
     'entry.trash',
     'history.undo',
+    'canvas.create',
+    'canvas.update',
+    'canvas.node.put',
+    'canvas.node.remove',
+    'canvas.edge.put',
+    'canvas.edge.remove',
   ]);
 
   function slashQuery(text, cursor) {
