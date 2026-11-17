@@ -33,6 +33,18 @@ const $ = (sel, root = document) => root.querySelector(sel);
 function icon(name, extra = '') {
   return `<svg class="icon ${extra}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 }
+function windowButtons() {
+  return `<div class="janela-botoes">
+    <button type="button" class="btn btn--icone" data-window="minimize" aria-label="Minimizar">${icon('janela-minimizar')}</button>
+    <button type="button" class="btn btn--icone" data-window="maximize" aria-label="Maximizar">${icon('janela-maximizar')}</button>
+    <button type="button" class="btn btn--icone janela-fechar" data-window="close" aria-label="Fechar">${icon('fechar')}</button>
+  </div>`;
+}
+function bindWindow(root) {
+  root.querySelectorAll('[data-window]').forEach((button) => {
+    button.onclick = () => sophy.window(button.dataset.window);
+  });
+}
 function escapeHtml(value) {
   return String(value).replace(
     /[&<>"']/g,
@@ -172,24 +184,31 @@ function paintOnboarding() {
       <label class="campo">Local<input id="lib-folder" readonly value="${escapeHtml(state.folder)}" placeholder="Nenhuma pasta escolhida" /></label>
       <button type="button" class="btn btn--secundario" id="escolher-pasta" style="margin-top:12px">${icon('pasta')} Escolher pasta</button>
       <p class="nota-privacidade">${icon('cadeado')} A pasta fica no seu computador. O Sophy não envia as notas.</p>`,
-    3: `<h1>Como você quer ver o Sophy?</h1>
-      <div class="temas">
-        ${['light', 'dark', 'system']
+    3: `<h1>Escolha a aparência</h1>
+      <p class="onboarding__lead">O tema vale na hora. Dá para mudar depois.</p>
+      <p id="rot-tema">Tema</p>
+      <div class="segmentado" role="radiogroup" aria-labelledby="rot-tema">
+        ${[
+          ['light', 'Claro'],
+          ['dark', 'Escuro'],
+          ['system', 'Sistema'],
+        ]
           .map(
-            (
-              item,
-            ) => `<button type="button" class="tema-card ${state.settings.theme === item ? 'is-escolhida' : ''}" data-theme-choice="${item}" data-amostra="${item}">
-            <i></i>${item === 'light' ? 'Claro' : item === 'dark' ? 'Escuro' : 'Sistema'}</button>`,
+            ([value, label]) =>
+              `<label class="segmentado__opcao"><input type="radio" name="tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''} /><span>${label}</span></label>`,
           )
           .join('')}
       </div>
-      <label class="campo">Fonte do texto
-        <select id="fonte">
-          <option value="inter" ${state.settings.readingFont !== 'literata' ? 'selected' : ''}>Inter</option>
-          <option value="literata" ${state.settings.readingFont === 'literata' ? 'selected' : ''}>Literata</option>
-        </select>
-      </label>
-      <label class="campo"><span><input type="checkbox" id="movimento" ${state.settings.reduceMotion ? 'checked' : ''} /> Reduzir animações da interface e da Sofi</span></label>`,
+      <p id="rot-fonte">Fonte do texto</p>
+      <div class="segmentado" role="radiogroup" aria-labelledby="rot-fonte">
+        <label class="segmentado__opcao"><input type="radio" name="fonte" value="inter" ${state.settings.readingFont === 'literata' ? '' : 'checked'} /><span>Inter</span></label>
+        <label class="segmentado__opcao"><input type="radio" name="fonte" value="literata" ${state.settings.readingFont === 'literata' ? 'checked' : ''} /><span>Literata</span></label>
+      </div>
+      <p id="rot-movimento">Animações</p>
+      <div class="segmentado" role="radiogroup" aria-labelledby="rot-movimento">
+        <label class="segmentado__opcao"><input type="radio" name="movimento" value="sistema" ${state.settings.reduceMotion ? '' : 'checked'} /><span>Sistema</span></label>
+        <label class="segmentado__opcao"><input type="radio" name="movimento" value="reduzir" ${state.settings.reduceMotion ? 'checked' : ''} /><span>Reduzir</span></label>
+      </div>`,
     4: `<img alt="" src="ui/assets/ilustracoes/agente-desconectado-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Quer ligar um agente agora?</h1>
       <p class="nota-privacidade">${icon('cadeado')} A chave fica no cofre do sistema. Nada é gravado na biblioteca.</p>
@@ -209,10 +228,19 @@ function paintOnboarding() {
           : 'Concluir';
   const importar =
     state.step === 1
-      ? '<button type="button" class="btn btn--fantasma" id="importar">Já usa outra ferramenta? Importar do Obsidian</button>'
+      ? '<span class="onboarding__importar">Já usa outra ferramenta? <button type="button" class="link" id="importar">Importar do Obsidian</button></span>'
       : '';
+  const logo = themeName() === 'dark' ? 'escuro' : 'claro';
   root.innerHTML = `<section class="onboarding">
-    <div class="onboarding__topo"><div><div class="onboarding__passos">${steps}</div><div class="onboarding__nomes">${stepNames}</div></div><span>Passo ${state.step} de 4</span></div>
+    <header class="onboarding__barra">
+      <img alt="Sophy" src="ui/assets/logo/logo-horizontal-${logo}.svg" />
+      ${windowButtons()}
+    </header>
+    <div class="onboarding__topo">
+      <div class="onboarding__passo-num">Passo ${state.step} de 4</div>
+      <div class="onboarding__passos">${steps}</div>
+      <div class="onboarding__nomes">${stepNames}</div>
+    </div>
     <div class="onboarding__miolo">${bodies[state.step]}</div>
     <div class="onboarding__rodape">
       ${state.step === 1 ? importar : '<button type="button" class="btn btn--fantasma" id="voltar">Voltar</button>'}
@@ -224,6 +252,7 @@ function paintOnboarding() {
   </section>`;
   const sofi = $('[data-sofi]', root);
   if (sofi) mountSofi(sofi, 'pronta');
+  bindWindow(root);
   const back = $('#voltar', root);
   if (back)
     back.onclick = () => {
@@ -260,31 +289,31 @@ function paintOnboarding() {
       state.folder = folder.value || '';
       paintOnboarding();
     };
-  root.querySelectorAll('[data-theme-choice]').forEach((button) => {
-    button.onclick = async () => {
-      state.settings.theme = button.dataset.themeChoice;
+  root.querySelectorAll('input[name="tema"]').forEach((input) => {
+    input.onchange = async () => {
+      state.settings.theme = input.value;
       applyTheme(themeName());
       await sophy.saveSettings({ theme: state.settings.theme });
       paintOnboarding();
     };
   });
-  const font = $('#fonte', root);
-  if (font)
-    font.onchange = async () => {
-      state.settings.readingFont = font.value;
+  root.querySelectorAll('input[name="fonte"]').forEach((input) => {
+    input.onchange = async () => {
+      state.settings.readingFont = input.value;
       document.documentElement.style.setProperty(
         '--font-reading',
-        font.value === 'literata' ? 'var(--font-reading-serif)' : 'var(--font-ui)',
+        input.value === 'literata' ? 'var(--font-reading-serif)' : 'var(--font-ui)',
       );
-      await sophy.saveSettings({ readingFont: font.value });
+      await sophy.saveSettings({ readingFont: input.value });
     };
-  const motion = $('#movimento', root);
-  if (motion)
-    motion.onchange = async () => {
-      state.settings.reduceMotion = motion.checked;
+  });
+  root.querySelectorAll('input[name="movimento"]').forEach((input) => {
+    input.onchange = async () => {
+      state.settings.reduceMotion = input.value === 'reduzir';
       syncMotion();
-      await sophy.saveSettings({ reduceMotion: motion.checked });
+      await sophy.saveSettings({ reduceMotion: state.settings.reduceMotion });
     };
+  });
   const testKey = $('#chave', root);
   if (testKey) {
     const probe = document.createElement('button');
@@ -357,9 +386,7 @@ function paintShell() {
         <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
         <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
         <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
-        <button type="button" class="btn btn--icone" data-window="minimize" aria-label="Minimizar">${icon('chevron-baixo')}</button>
-        <button type="button" class="btn btn--icone" data-window="maximize" aria-label="Maximizar">${icon('mais')}</button>
-        <button type="button" class="btn btn--icone" data-window="close" aria-label="Fechar">${icon('fechar')}</button>
+        ${windowButtons()}
       </div>
     </header>
     <div class="miolo">
@@ -383,9 +410,7 @@ function paintShell() {
   $('#busca').onclick = () => openPalette();
   $('#ver-grafo').onclick = () => showGraph();
   $('#tema').onclick = () => toggleTheme();
-  shell.querySelectorAll('[data-window]').forEach((button) => {
-    button.onclick = () => sophy.window(button.dataset.window);
-  });
+  bindWindow(shell);
   $('#nova-nota').onclick = () => createNote();
   $('#nova-estante').onclick = () => createWorkspace();
   $('#filtro-arvore').oninput = () => paintTree();
@@ -425,20 +450,17 @@ function paintTree() {
       if (filter && notes.length === 0 && !workspace.name.toLocaleLowerCase().includes(filter))
         return '';
       const color = mark.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
-      const dot = mark.color
-        ? `<span class="arvore__ponto" style="background: var(--shelf-${mark.color})"></span>`
-        : '';
       const children = notes
         .map(
           (
             note,
-          ) => `<li><button type="button" class="arvore__linha" style="--nivel:1" data-open="${escapeHtml(note.path)}" aria-selected="${note.path === state.active}">
+          ) => `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${note.path === state.active}">
             ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
         )
         .join('');
-      return `<li><button type="button" class="arvore__linha" aria-expanded="true"${color}>
-          ${icon('chevron-direita', 'arvore__seta')}${dot}${icon(mark.icon, 'icon--estante')}<span class="arvore__nome">${escapeHtml(workspace.name)}</span>
-          <span class="arvore__conta">${notes.length}</span></button><ul>${children}</ul></li>`;
+      return `<li role="treeitem"><button type="button" class="arvore__linha" aria-expanded="true"${color}>
+          ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}<span class="arvore__nome">${escapeHtml(workspace.name)}</span>
+          <span class="arvore__conta">${notes.length}</span></button><ul role="group">${children}</ul></li>`;
     })
     .join('');
   const loose = treeNotes(null)
@@ -450,9 +472,8 @@ function paintTree() {
         ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
     )
     .join('');
-  host.innerHTML = `<ul class="arvore" role="tree">
-    <li><div class="arvore__linha" aria-expanded="true">${icon('chevron-direita', 'arvore__seta')}${icon('estante')}<span class="arvore__nome">${escapeHtml(state.libraryName)}</span></div>
-      <ul>${shelves}${loose}</ul></li></ul>`;
+  host.innerHTML = `<div class="lateral__biblioteca">${icon('biblioteca')}<span>${escapeHtml(state.libraryName)}</span><em>Biblioteca</em></div>
+    <ul class="arvore" role="tree">${shelves}${loose}</ul>`;
   host.querySelectorAll('[data-open]').forEach((button) => {
     button.onclick = () => openNote(button.dataset.open);
   });
@@ -525,7 +546,7 @@ function paintCenter() {
 
 function renderBlock(block, index) {
   if (block.type === 'blank')
-    return `<div class="bloco" data-block="${index}" contenteditable="true"><br /></div>`;
+    return `<div class="bloco" data-vazio data-block="${index}" contenteditable="true"><br /></div>`;
   if (block.type === 'hr') return `<hr data-block="${index}" />`;
   if (block.type === 'heading') {
     const text = block.raw.replace(/^#{1,6}\s?/, '').replace(/\n$/, '');
@@ -537,19 +558,31 @@ function renderBlock(block, index) {
   }
   if (block.type === 'task' && block.task) {
     const task = block.task;
+    const kit = Cmd.kitTaskStatus(task.status);
     const chips = [
-      task.due ? `<span class="chip">${escapeHtml(task.due)}</span>` : '',
-      task.priority === 'alta' ? '<span class="chip chip--alta">Alta</span>' : '',
-      task.priority === 'media' ? '<span class="chip chip--media">Média</span>' : '',
-      task.priority === 'baixa' ? '<span class="chip">Baixa</span>' : '',
+      task.due
+        ? `<span class="chip">${icon('calendario', 'icon--16')}${escapeHtml(task.due)}</span>`
+        : '',
+      task.priority === 'alta'
+        ? `<span class="chip chip--alta">${icon('prioridade-alta', 'icon--16')}Alta</span>`
+        : '',
+      task.priority === 'media'
+        ? `<span class="chip chip--media">${icon('prioridade-media', 'icon--16')}Média</span>`
+        : '',
+      task.priority === 'baixa'
+        ? `<span class="chip chip--baixa">${icon('prioridade-baixa', 'icon--16')}Baixa</span>`
+        : '',
     ].join('');
-    return `<div class="tarefa" data-status="${escapeHtml(task.status)}">${icon('tarefa')}
-      <button type="button" class="check" data-task="${index}" data-status="${escapeHtml(task.status)}" aria-label="Alternar tarefa"></button>
-      <div class="tarefa__texto" data-block="${index}" contenteditable="true">${escapeHtml(task.title)}</div>${chips}</div>`;
+    return `<div class="${Cmd.taskBlockClass(task.status)}">
+      <button type="button" class="check" data-task="${index}" data-status="${kit}" aria-label="Alternar tarefa"></button>
+      <div class="tarefa__texto" data-block="${index}" contenteditable="true">${escapeHtml(task.title)}</div>
+      <div class="tarefa__meta">${chips}</div></div>`;
   }
   if (block.type === 'item') {
+    const marker = block.raw.match(/^\s*(\d+)\./);
     const text = block.raw.replace(/^\s*(?:[-*+]|\d+\.)\s?/, '').replace(/\n$/, '');
-    return `<div class="bloco bloco--item" data-block="${index}" contenteditable="true">${inlineHtml(text)}</div>`;
+    const ordem = marker ? ` data-ordem="${marker[1]}"` : '';
+    return `<div class="bloco bloco--item" data-block="${index}"${ordem} contenteditable="true">${inlineHtml(text)}</div>`;
   }
   if (block.type === 'quote') {
     const text = block.raw
@@ -1293,7 +1326,7 @@ function openPalette() {
   const overlay = $('#overlay');
   overlay.hidden = false;
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Busca">
-    <div class="paleta__busca">${icon('busca')}<input id="paleta-q" placeholder="Buscar notas" aria-label="Buscar" /></div>
+    <div class="paleta__busca">${icon('busca')}<input id="paleta-q" placeholder="Buscar ou comando…" aria-label="Buscar" /><span class="kbd">esc</span></div>
     <div class="paleta__lista" id="paleta-lista"></div>
     <div class="menu__rodape"><span><span class="kbd">↵</span> abrir</span><span><span class="kbd">esc</span> fechar</span></div>
   </div>`;
@@ -1327,7 +1360,11 @@ function openPalette() {
               part.match ? `<mark>${escapeHtml(part.text)}</mark>` : escapeHtml(part.text),
             )
             .join('');
-          return `<button type="button" class="menu__item" data-hit="${index}" ${index === 0 ? 'aria-selected="true"' : ''}><span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${excerpt}</span></span></button>`;
+          const shelf = hit.workspace ? Cmd.shelfMark(hit.workspace) : null;
+          const dot = shelf?.color
+            ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
+            : '';
+          return `<button type="button" class="menu__item" data-hit="${index}" ${index === 0 ? 'aria-selected="true"' : ''}>${icon('nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
         })
         .join('') +
       (commands.length ? '<div class="menu__grupo">Comandos</div>' : '') +

@@ -1,0 +1,61 @@
+/* Sophy · cores das capas vetoriais (fase 8 · 17/11/2026)
+   Gerado por fase8/gen/cores_capa.py. Carregue DEPOIS de tokens.css e tokens-acentos.css.
+   As capas da coleção (fase8/capas/svg/*.svg) pintam tudo com var(--cover-*), então mudam com o tema e com o acento.
+   Papéis: --cover-bg: fundo (céu, papel) · --cover-1: acento bem suave · --cover-2: acento suave · --cover-3: acento médio · --cover-4: acento (detalhes pequenos) · --cover-n1: neutro quente claro · --cover-n2: neutro quente médio · --cover-hi: brilho (estrelas, lua, olhos) · --cover-ink: traço escuro (pupilas da Sofi)
+   Valores explícitos (sem color-mix) para funcionar em qualquer motor. */
+/* Índigo · claro */
+:root, :root[data-accent="indigo"], [data-accent="indigo"] {
+  --cover-bg: #E8E8F0; --cover-1: #D4D4E7; --cover-2: #B8BADC; --cover-3: #9195CC; --cover-4: #4B52B0; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Azul · claro */
+:root[data-accent="azul"], [data-accent="azul"] {
+  --cover-bg: #E5EAEE; --cover-1: #CDD8E4; --cover-2: #ACC0D6; --cover-3: #7EA0C3; --cover-4: #2C64A0; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Verde-água · claro */
+:root[data-accent="verde-agua"], [data-accent="verde-agua"] {
+  --cover-bg: #E4EBE9; --cover-1: #C9DAD8; --cover-2: #A6C4C1; --cover-3: #75A6A1; --cover-4: #1D6E68; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Musgo · claro */
+:root[data-accent="musgo"], [data-accent="musgo"] {
+  --cover-bg: #E9EBE2; --cover-1: #D4DAC8; --cover-2: #B8C3A6; --cover-3: #92A477; --cover-4: #4D6B22; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Âmbar · claro */
+:root[data-accent="ambar"], [data-accent="ambar"] {
+  --cover-bg: #EFE9E0; --cover-1: #E1D5C5; --cover-2: #CFBBA0; --cover-3: #B7976E; --cover-4: #8A5512; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Vinho · claro */
+:root[data-accent="vinho"], [data-accent="vinho"] {
+  --cover-bg: #F1E6E8; --cover-1: #E6CFD6; --cover-2: #D8B1BE; --cover-3: #C4889E; --cover-4: #A03C62; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Grafite · claro */
+:root[data-accent="grafite"], [data-accent="grafite"] {
+  --cover-bg: #E9E9E8; --cover-1: #D4D5D6; --cover-2: #B9BBBF; --cover-3: #93979E; --cover-4: #4F5563; --cover-n1: #ECE6DB; --cover-n2: #D3C6B0; --cover-hi: #FFFFFF; --cover-ink: #2E2D38;
+}
+/* Índigo · escuro */
+:root[data-theme="dark"], [data-theme="dark"], :root[data-theme="dark"][data-accent="indigo"], [data-theme="dark"][data-accent="indigo"], [data-accent="indigo"] [data-theme="dark"], [data-theme="dark"] [data-accent="indigo"] {
+  --cover-bg: #23222F; --cover-1: #2E2E3F; --cover-2: #404158; --cover-3: #5D5F82; --cover-4: #A6ABEA; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}
+/* Azul · escuro */
+:root[data-theme="dark"][data-accent="azul"], [data-theme="dark"][data-accent="azul"], [data-accent="azul"] [data-theme="dark"], [data-theme="dark"] [data-accent="azul"] {
+  --cover-bg: #20242E; --cover-1: #2A313F; --cover-2: #384457; --cover-3: #506680; --cover-4: #8DB8E6; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}
+/* Verde-água · escuro */
+:root[data-theme="dark"][data-accent="verde-agua"], [data-theme="dark"][data-accent="verde-agua"], [data-accent="verde-agua"] [data-theme="dark"], [data-theme="dark"] [data-accent="verde-agua"] {
+  --cover-bg: #1E252A; --cover-1: #273338; --cover-2: #33494B; --cover-3: #486D6C; --cover-4: #7CC7BE; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}
+/* Musgo · escuro */
+:root[data-theme="dark"][data-accent="musgo"], [data-theme="dark"][data-accent="musgo"], [data-accent="musgo"] [data-theme="dark"], [data-theme="dark"] [data-accent="musgo"] {
+  --cover-bg: #232524; --cover-1: #2F332C; --cover-2: #414938; --cover-3: #5E6D4C; --cover-4: #A9C77E; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}
+/* Âmbar · escuro */
+:root[data-theme="dark"][data-accent="ambar"], [data-theme="dark"][data-accent="ambar"], [data-accent="ambar"] [data-theme="dark"], [data-theme="dark"] [data-accent="ambar"] {
+  --cover-bg: #292322; --cover-1: #393029; --cover-2: #524433; --cover-3: #7C6444; --cover-4: #E3B56E; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}
+/* Vinho · escuro */
+:root[data-theme="dark"][data-accent="vinho"], [data-theme="dark"][data-accent="vinho"], [data-accent="vinho"] [data-theme="dark"], [data-theme="dark"] [data-accent="vinho"] {
+  --cover-bg: #2A212A; --cover-1: #3B2C37; --cover-2: #543D4B; --cover-3: #805A6B; --cover-4: #EBA0BC; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}
+/* Grafite · escuro */
+:root[data-theme="dark"][data-accent="grafite"], [data-theme="dark"][data-accent="grafite"], [data-accent="grafite"] [data-theme="dark"], [data-theme="dark"] [data-accent="grafite"] {
+  --cover-bg: #24242B; --cover-1: #313139; --cover-2: #44454E; --cover-3: #646670; --cover-4: #B5BAC6; --cover-n1: #27241F; --cover-n2: #40392F; --cover-hi: #CBC8DA; --cover-ink: #0E0D12;
+}

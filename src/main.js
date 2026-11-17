@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -177,7 +177,7 @@ function createWindow() {
     title: 'Sophy',
     frame: false,
     icon: path.join(__dirname, 'ui/assets/app/sophy.png'),
-    backgroundColor: '#FAF9F7',
+    backgroundColor: readSettings().theme === 'dark' ? '#14131A' : '#FAF9F7',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -221,6 +221,11 @@ app.whenReady().then(async () => {
     return;
   }
   Menu.setApplicationMenu(null);
+  try {
+    session.defaultSession.setSpellCheckerLanguages(['pt-BR']);
+  } catch {
+    /* o dicionário pt-BR pode não estar neste Electron */
+  }
   createWindow();
   app.on('activate', () => {
     if (windows.size === 0) createWindow();

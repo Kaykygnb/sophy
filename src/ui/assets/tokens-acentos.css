@@ -1,0 +1,34 @@
+/* ==========================================================================
+   Sophy · tokens de cor de destaque (fase 7, 17/11/2026) · carregar DEPOIS de direcao/tokens.css
+   Uso: <html data-theme="light|dark" data-accent="azul">. Sem data-accent = Índigo (padrão).
+   Cada opção define --accent-<id>, --accent-<id>-hover e --accent-<id>-soft (claro e escuro);
+   data-accent só redireciona --accent, --accent-hover e --accent-soft para elas.
+   --on-accent não muda: #FFFFFF no claro, #14131A no escuro (todas as opções ≥ 4,5:1).
+   Medido (gen/contraste.py): texto em acento ≥ 4,9:1 em --bg, --surface, --sidebar, --hover e --accent-soft;
+   rótulo sobre o botão ≥ 6,0:1. Gerado por gen/build_tokens7.py — não edite à mão.
+   ========================================================================== */
+:root {
+  --accent-indigo: #4B52B0; --accent-indigo-hover: #3E449A; --accent-indigo-soft: #EFEFF6;  /* Índigo */
+  --accent-azul: #2C64A0; --accent-azul-hover: #235387; --accent-azul-soft: #EAF1F8;  /* Azul */
+  --accent-verde-agua: #1D6E68; --accent-verde-agua-hover: #165B56; --accent-verde-agua-soft: #E7F2F0;  /* Verde-água */
+  --accent-musgo: #4D6B22; --accent-musgo-hover: #3F5A1A; --accent-musgo-soft: #EFF3E6;  /* Musgo */
+  --accent-ambar: #8A5512; --accent-ambar-hover: #73460D; --accent-ambar-soft: #F7F0E4;  /* Âmbar */
+  --accent-vinho: #A03C62; --accent-vinho-hover: #863150; --accent-vinho-soft: #F8EBF0;  /* Vinho */
+  --accent-grafite: #4F5563; --accent-grafite-hover: #3F4450; --accent-grafite-soft: #EFF0F2;  /* Grafite */
+}
+:root[data-theme="dark"], [data-theme="dark"] {
+  --accent-indigo: #A6ABEA; --accent-indigo-hover: #BEC2F2; --accent-indigo-soft: #22223A;
+  --accent-azul: #8DB8E6; --accent-azul-hover: #A9CBEE; --accent-azul-soft: #1B2533;
+  --accent-verde-agua: #7CC7BE; --accent-verde-agua-hover: #9AD5CD; --accent-verde-agua-soft: #172826;
+  --accent-musgo: #A9C77E; --accent-musgo-hover: #BED69B; --accent-musgo-soft: #1F2618;
+  --accent-ambar: #E3B56E; --accent-ambar-hover: #EBC78F; --accent-ambar-soft: #2A2318;
+  --accent-vinho: #EBA0BC; --accent-vinho-hover: #F1B9CE; --accent-vinho-soft: #2E1C24;
+  --accent-grafite: #B5BAC6; --accent-grafite-hover: #C9CDD6; --accent-grafite-soft: #23252B;
+}
+:root[data-accent="indigo"], [data-accent="indigo"], [data-accent="indigo"] [data-theme] { --accent: var(--accent-indigo); --accent-hover: var(--accent-indigo-hover); --accent-soft: var(--accent-indigo-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }
+:root[data-accent="azul"], [data-accent="azul"], [data-accent="azul"] [data-theme] { --accent: var(--accent-azul); --accent-hover: var(--accent-azul-hover); --accent-soft: var(--accent-azul-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }
+:root[data-accent="verde-agua"], [data-accent="verde-agua"], [data-accent="verde-agua"] [data-theme] { --accent: var(--accent-verde-agua); --accent-hover: var(--accent-verde-agua-hover); --accent-soft: var(--accent-verde-agua-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }
+:root[data-accent="musgo"], [data-accent="musgo"], [data-accent="musgo"] [data-theme] { --accent: var(--accent-musgo); --accent-hover: var(--accent-musgo-hover); --accent-soft: var(--accent-musgo-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }
+:root[data-accent="ambar"], [data-accent="ambar"], [data-accent="ambar"] [data-theme] { --accent: var(--accent-ambar); --accent-hover: var(--accent-ambar-hover); --accent-soft: var(--accent-ambar-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }
+:root[data-accent="vinho"], [data-accent="vinho"], [data-accent="vinho"] [data-theme] { --accent: var(--accent-vinho); --accent-hover: var(--accent-vinho-hover); --accent-soft: var(--accent-vinho-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }
+:root[data-accent="grafite"], [data-accent="grafite"], [data-accent="grafite"] [data-theme] { --accent: var(--accent-grafite); --accent-hover: var(--accent-grafite-hover); --accent-soft: var(--accent-grafite-soft); --soft: var(--accent-soft); --accent-line: var(--accent); }

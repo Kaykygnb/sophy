@@ -21,7 +21,10 @@ tags:
 
 A memória se liga a [[Estudos/Grafo|o grafo]] e também a um [[ incompleto.
 
+- [ ] abrir o capítulo
 - [/] revisar o capítulo 📅 2026-11-20 ⏫
+- [x] capítulo lido
+- [-] capítulo cancelado
 `,
   );
   fs.writeFileSync(
@@ -80,7 +83,16 @@ test('a janela abre a biblioteca e mostra a nota', async () => {
     );
   });
   expect(fontsReady).toBe(true);
-  await expect(page.locator('.arvore__ponto').first()).toBeVisible();
+  await expect(page.locator('.arvore__linha[style*="--nivel:2"]').first()).toBeVisible();
+  await expect(page.locator('.check[data-status="feita"]')).toBeVisible();
+  await expect(page.locator('.check[data-status="andamento"]')).toBeVisible();
+  await expect(page.locator('.check[data-status="cancelada"]')).toBeVisible();
+  await expect(page.locator('.onboarding')).toHaveCount(0);
+  await page.keyboard.press('Control+k');
+  await page.locator('#paleta-q').fill('memória');
+  await expect(page.locator('.menu__grupo').first()).toContainText('Notas');
+  await page.screenshot({ path: path.join(artifacts, 'ui-busca-claro.png') });
+  await page.keyboard.press('Escape');
   await page.screenshot({ path: path.join(artifacts, 'ui-editor-claro.png') });
   await page.getByRole('button', { name: 'Mostrar grafo' }).click();
   await expect(page.locator('#grafo-canvas')).toBeVisible();
@@ -100,6 +112,7 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   await expect(page.locator('body')).toContainText('Só funciona se você conectar uma chave.');
   await expect(page.locator('body')).not.toContainText('etapa seguinte');
   await expect(page.getByRole('button', { name: 'Voltar' })).toHaveCount(0);
+  await expect(page.locator('[data-window="close"]')).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-boas-vindas-claro.png') });
   await welcome.close();
 
@@ -108,7 +121,13 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   const darkPage = await dark.firstWindow();
   await darkPage.getByRole('button', { name: 'Leitura', exact: true }).click();
   await expect(darkPage.locator('.coluna')).toContainText('memória se liga');
+  await expect(darkPage.locator('.check[data-status="feita"]')).toBeVisible();
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-editor-escuro.png') });
+  await darkPage.keyboard.press('Control+k');
+  await darkPage.locator('#paleta-q').fill('memória');
+  await expect(darkPage.locator('.menu__grupo').first()).toContainText('Notas');
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-busca-escuro.png') });
+  await darkPage.keyboard.press('Escape');
   await darkPage.getByRole('button', { name: 'Mostrar grafo' }).click();
   await expect(darkPage.locator('#grafo-canvas')).toBeVisible();
   await expect(darkPage.locator('#conexoes')).toContainText('Leitura');

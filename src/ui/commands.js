@@ -145,6 +145,38 @@
     return next;
   }
 
+  const SHELF_ICONS = {
+    estudos: 'capelo',
+    diário: 'nota-diaria',
+    diario: 'nota-diaria',
+    leituras: 'livro',
+    trabalho: 'maleta',
+    pesquisa: 'lampada',
+    projeto: 'livro',
+    'projeto livro': 'livro',
+  };
+
+  function kitTaskStatus(status) {
+    if (status === '/') return 'andamento';
+    if (status === 'x' || status === 'X') return 'feita';
+    if (status === '-') return 'cancelada';
+    return 'aberta';
+  }
+
+  function taskBlockClass(status) {
+    const kit = kitTaskStatus(status);
+    if (kit === 'feita') return 'tarefa tarefa--feita';
+    if (kit === 'cancelada') return 'tarefa tarefa--cancelada';
+    return 'tarefa';
+  }
+
+  function noteIndent(path) {
+    const depth = String(path || '')
+      .split('/')
+      .filter(Boolean).length;
+    return Math.max(2, depth);
+  }
+
   function shelfMark(name) {
     if (name === 'Entrada') return { icon: 'caixa-entrada', color: null };
     const icons = [
@@ -169,7 +201,8 @@
     ];
     let hash = 0;
     for (const char of name) hash = (hash * 33 + char.codePointAt(0)) >>> 0;
-    return { icon: icons[hash % icons.length], color: (hash % 8) + 1 };
+    const mapped = SHELF_ICONS[name.trim().toLocaleLowerCase('pt-BR')];
+    return { icon: mapped || icons[hash % icons.length], color: (hash % 8) + 1 };
   }
 
   function filterSlash(items, query) {
@@ -263,6 +296,9 @@
     saveNote,
     applyUiCommand,
     shelfMark,
+    kitTaskStatus,
+    taskBlockClass,
+    noteIndent,
     filterSlash,
     CONFLICT,
   };
