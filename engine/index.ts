@@ -26,5 +26,11 @@ export { searchLibrary } from './search.ts';
 export { queryGraph } from './graph.ts';
 export { listHistory, undoLast } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';
-export { subscribeUi, requestUi, uiIsOpen } from './ui-bridge.ts';
+export {
+  subscribeUi,
+  requestUi,
+  uiIsOpen,
+  publishUiPresence,
+  takeUiRequests,
+} from './ui-bridge.ts';
 export { createMcpServer, serveMcp } from './mcp.ts';

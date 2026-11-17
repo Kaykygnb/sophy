@@ -1,0 +1,124 @@
+/* Sophy · componentes da fase 8 (17/11/2026): capa vetorial da coleção e seletor de capa.
+   Ordem: tokens.css → tokens-acentos.css → ../capas/tokens-capas.css → components*.css (fases 5–7) → components-fase8.css */
+
+/* ---------- Capa (faixa no topo da nota) ----------
+   Coleção:  <div class="capa" style="--capa-y:.4"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice"><use href="#capa-ondas"/></svg>…</div>
+   Arquivo:  <div class="capa" style="--capa-y:.4"><img class="capa__img" src="…" alt="">…</div>
+   --capa-y vai de 0 (topo) a 1 (base); vem de capa_y no frontmatter (40% → .4). */
+.capa { --capa-h: 200px; position: relative; height: var(--capa-h); overflow: visible; background: var(--cover-bg, var(--hover)); container-type: inline-size; }
+.capa__recorte { position: absolute; inset: 0; overflow: hidden; }
+.capa__arte { position: absolute; left: 0; width: 100%; height: max(100%, 25cqw); top: calc((100% - max(100%, 25cqw)) * var(--capa-y, .5)); display: block; }
+.capa__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center calc(var(--capa-y, .5) * 100%); display: block; }
+.capa--cor { background: var(--estante-cor, var(--accent-soft)); }
+
+/* Miniatura (canvas, visão em quadro, seletor): mesma arte, altura menor */
+.capa-mini { position: relative; height: 84px; overflow: hidden; background: var(--cover-bg); container-type: inline-size; }
+.capa-mini .capa__arte { height: max(100%, 25cqw); }
+
+/* ---------- Seletor de capa ---------- */
+.seletor-capa { width: 456px; max-width: 100%; background: var(--raised); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px 16px 12px; display: grid; gap: 12px; }
+.seletor-capa__topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.seletor-capa__topo h3 { margin: 0; font: 600 14px var(--font-ui); color: var(--ink); }
+.seletor-capa__filtros { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-filtro { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); font: 500 12.5px var(--font-ui); cursor: pointer; }
+[data-theme="dark"] .chip-filtro { background: var(--raised); }
+.chip-filtro:hover { background: var(--hover-subtle); color: var(--ink); }
+.chip-filtro[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.chip-filtro:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.capa-galeria { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 312px; overflow: auto; padding: 4px; }
+.capa-galeria legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.capa-opcao { position: relative; display: grid; gap: 4px; cursor: pointer; }
+.capa-opcao input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.capa-opcao__arte { position: relative; height: 52px; border-radius: 8px; overflow: hidden; background: var(--cover-bg); box-shadow: 0 0 0 1px var(--line); container-type: inline-size; }
+.capa-opcao__arte .capa__arte { height: max(100%, 25cqw); }
+.capa-opcao__nome { font: 500 12px var(--font-ui); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capa-opcao:hover .capa-opcao__arte { box-shadow: 0 0 0 1px var(--input-border); }
+.capa-opcao input:checked + .capa-opcao__arte { box-shadow: 0 0 0 2px var(--accent); }
+.capa-opcao input:checked ~ .capa-opcao__nome { color: var(--ink); font-weight: 600; }
+.capa-opcao__marca { position: absolute; right: 6px; top: 6px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: none; place-items: center; }
+.capa-opcao__marca .icon { width: 12px; height: 12px; stroke-width: 3; }
+.capa-opcao input:checked + .capa-opcao__arte .capa-opcao__marca { display: grid; }
+.capa-opcao input:focus-visible + .capa-opcao__arte { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.capa-opcao[hidden] { display: none; }
+.seletor-capa__rodape { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.seletor-capa__acoes { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.seletor-capa__nota { margin: 0; font: 400 12.5px var(--font-ui); color: var(--ink-3); }
+.seletor-capa__fm { margin: 0; font: 12.5px var(--font-mono); color: var(--ink-2); }
+.cores-estante { display: flex; gap: 8px; border: 0; padding: 0; margin: 0; }
+.cores-estante legend { font: 600 12.5px var(--font-ui); color: var(--ink-3); padding: 0; margin-bottom: 6px; }
+.cor-opcao { position: relative; }
+.cor-opcao input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cor-opcao span { display: block; width: 34px; height: 24px; border-radius: 6px; background: var(--c); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.cor-opcao input:checked + span { box-shadow: 0 0 0 2px var(--accent); }
+.cor-opcao input:focus-visible + span { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+
+/* ---------- Reposicionar (capa_y) ---------- */
+.capa-posicao { display: flex; align-items: center; gap: 12px; font: 500 13px var(--font-ui); color: var(--ink-2); }
+.capa-posicao input[type="range"] { width: 220px; accent-color: var(--accent); }
+.capa-posicao input[type="range"]:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
+.capa-posicao output { font: 12.5px var(--font-mono); color: var(--ink); min-width: 4ch; }
+.capa__zona { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--ink-3); border-bottom: 1px dashed var(--ink-3); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .capa__arte, .capa__img { transition: none !important; } }
+.motion-reduce .capa__arte, .motion-reduce .capa__img { transition: none !important; }
+.capa__arte, .capa__img { transition: top var(--dur-fast, 120ms) var(--ease, ease), object-position var(--dur-fast, 120ms) var(--ease, ease); }
+
+/* ---------- Controle segmentado (.segmentado) ----------
+   <div class="segmentado" role="radiogroup" aria-labelledby="rot-fonte">
+     <label class="segmentado__opcao"><input type="radio" name="fonte" value="inter" checked><span>Inter</span></label> …
+   </div>
+   Rádios nativos: Tab entra no grupo, setas trocam e a escolha vale na hora. */
+.segmentado { display: inline-flex; padding: 3px; gap: 2px; background: var(--hover-subtle); border: 1px solid var(--input-border); border-radius: var(--radius-md, 8px); }
+.segmentado__opcao { position: relative; display: inline-flex; }
+.segmentado__opcao input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.segmentado__opcao span { display: inline-flex; align-items: center; gap: 6px; min-width: 64px; justify-content: center; height: 28px; padding: 0 12px; border-radius: 6px; font: 500 13px/1 var(--font-ui); color: var(--ink-2); cursor: pointer; transition: background var(--dur-fast, 120ms) var(--ease, ease), color var(--dur-fast, 120ms) var(--ease, ease); }
+.segmentado__opcao span .icon { width: 15px; height: 15px; }
+.segmentado__opcao:hover span { color: var(--ink); background: var(--hover); }
+.segmentado__opcao input:checked + span { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--accent); }
+[data-theme="dark"] .segmentado__opcao input:checked + span { background: var(--raised); }
+.segmentado__opcao input:focus-visible + span { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.segmentado__opcao input:disabled + span { opacity: .45; cursor: not-allowed; }
+
+/* ---------- Chave liga/desliga (.alternar) ----------
+   <button class="alternar" role="switch" aria-checked="false" aria-labelledby="rot-x"><span class="alternar__trilho" aria-hidden="true"></span><span class="alternar__estado">Desligado</span></button>
+   Espaço/Enter alternam (é um <button>). Desligada: trilho com borda --input-border (≥ 3:1). Ligada: trilho --accent e botão --on-accent. */
+.alternar { display: inline-flex; align-items: center; gap: 8px; padding: 2px; border: 0; background: none; cursor: pointer; font: 500 12.5px var(--font-ui); color: var(--ink-2); border-radius: 12px; }
+.alternar__trilho { position: relative; width: 36px; height: 20px; border-radius: 10px; border: 1.5px solid var(--input-border); background: var(--surface); box-sizing: border-box; transition: background var(--dur-fast, 120ms) var(--ease, ease), border-color var(--dur-fast, 120ms) var(--ease, ease); }
+[data-theme="dark"] .alternar__trilho { background: var(--raised); }
+.alternar__trilho::after { content: ""; position: absolute; top: 2.5px; left: 2.5px; width: 12px; height: 12px; border-radius: 50%; background: var(--input-border); transition: transform var(--dur-fast, 120ms) var(--ease, ease), background var(--dur-fast, 120ms) var(--ease, ease); }
+.alternar[aria-checked="true"] .alternar__trilho { background: var(--accent); border-color: var(--accent); }
+.alternar[aria-checked="true"] .alternar__trilho::after { transform: translateX(16px); background: var(--on-accent); }
+.alternar:hover .alternar__trilho { border-color: var(--ink-3); }
+.alternar[aria-checked="true"]:hover .alternar__trilho { background: var(--accent-hover); border-color: var(--accent-hover); }
+.alternar:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.alternar:disabled { opacity: .45; cursor: not-allowed; }
+.alternar__estado { min-width: 5.5em; text-align: left; }
+
+/* Movimento reduzido: tudo da fase 8 sem transição */
+@media (prefers-reduced-motion: reduce) { .segmentado__opcao span, .alternar__trilho, .alternar__trilho::after { transition: none !important; } }
+.motion-reduce .segmentado__opcao span, .motion-reduce .alternar__trilho, .motion-reduce .alternar__trilho::after { transition: none !important; }
+
+/* ---------- Piso de 12 px (revisão do PR #5, D1) ---------- */
+.kbd { font: 500 12px/1 var(--font-mono); height: 20px; display: inline-flex; align-items: center; }
+
+/* ---------- Configurações (linhas) ---------- */
+.config-linha { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.config-linha__texto { display: grid; gap: 2px; }
+.config-linha__titulo { font: 500 14px var(--font-ui); color: var(--ink); margin: 0; }
+.config-linha__ajuda { font: 400 12.5px var(--font-ui); color: var(--ink-3); margin: 0; }
+.config-select { font: 500 13.5px var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--input-border); border-radius: 8px; height: 32px; padding: 0 8px; min-width: 140px; }
+[data-theme="dark"] .config-select { background: var(--raised); }
+.config-select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.temas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; border: 0; padding: 0; margin: 0; }
+.tema-cartao { position: relative; display: grid; gap: 10px; padding: 10px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; }
+[data-theme="dark"] .tema-cartao { background: var(--raised); }
+.tema-cartao input { position: absolute; opacity: 0; }
+.tema-cartao:has(input:checked) { box-shadow: inset 0 0 0 2px var(--accent); border-color: var(--accent); }
+.tema-cartao:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.tema-cartao__mini { height: 74px; border-radius: 8px; overflow: hidden; display: block; }
+.tema-cartao__rodape { display: flex; align-items: center; gap: 8px; }
+.tema-cartao__rodape .icon { width: 16px; height: 16px; color: var(--ink-2); }
+.tema-cartao__nome { font: 600 14px var(--font-ui); color: var(--ink); display: block; }
+.tema-cartao__sub { font: 400 12.5px var(--font-ui); color: var(--ink-3); display: block; }
+.tema-cartao__radio { margin-left: auto; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--input-border); box-sizing: border-box; display: grid; place-items: center; }
+.tema-cartao:has(input:checked) .tema-cartao__radio { border-color: var(--accent); }
+.tema-cartao:has(input:checked) .tema-cartao__radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }

@@ -1,0 +1,181 @@
+/* ==========================================================================
+   Sophy · tokens da direção visual (fase 2 · 16/11/2026 · fase 5: --font-mono)
+   Compatível com src/design-system.css: os nomes antigos (--bg, --paper,
+   --panel, --sidebar, --ink, --heading, --muted, --faint, --line, --accent,
+   --accent-hover, --accent-line, --soft, --hover, --sel, --code, --on-accent,
+   --danger, --success, --radius, --shadow, --font-ui, --font-code,
+   --reading-size, --reading-width, --reading-leading) continuam existindo e
+   apontam para os novos. Contraste WCAG medido: todo texto ≥ 4,5:1,
+   bordas de campo e ícones ≥ 3:1, nos dois temas.
+   ========================================================================== */
+
+/* Emoji colorido só para os símbolos do Obsidian Tasks (📅 🛫 ⏳ ✅ ⏫ 🔼 🔽 …).
+   O unicode-range impede que a fonte de emoji troque os dígitos e o # da fonte mono. */
+@font-face {
+  font-family: "Sophy Emoji";
+  src: local("Noto Color Emoji"), local("Apple Color Emoji"), local("Segoe UI Emoji"), local("NotoColorEmoji");
+  unicode-range: U+1F300-1F5FF, U+1F600-1F64F, U+1F680-1F6FF, U+1F900-1F9FF, U+1FA70-1FAFF, U+2600-27BF, U+2B06, U+2B07, U+23E9-23FA, U+231A-231B, U+2705, U+FE0F;
+}
+
+:root {
+  color-scheme: light;
+
+  /* ---- Fontes (todas OFL) ---- */
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Fraunces", Georgia, serif;          /* títulos, marca */
+  --font-reading: var(--font-ui);                       /* opção: "Literata" */
+  --font-reading-serif: "Literata", Georgia, serif;
+  /* Mono com fallback de emoji: o Markdown cru das tarefas usa 📅 🛫 ⏳ ⏫ 🔼 🔽 */
+  --font-mono: "JetBrains Mono", "Sophy Emoji", ui-monospace, "Cascadia Code", "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", monospace;
+  --font-code: var(--font-mono);                        /* nome antigo */
+
+  /* ---- Superfícies (claro) ---- */
+  --bg: #FAF9F7;            /* fundo da janela / editor */
+  --surface: #FFFFFF;       /* cartões, menus, campos */
+  --raised: #FFFFFF;        /* popovers, paleta */
+  --sidebar: #F3F2EF;       /* barra lateral e barra de título */
+  --titlebar: #F3F2EF;
+  --hover: #EAE8E3;
+  --hover-subtle: #F3F2EF;
+  --sel: #EAE8E3;           /* seleção neutra + barra de acento de 2 px */
+  --code: #F5F4F1;
+  --overlay: rgb(30 28 41 / 0.32);
+  --canvas-dot: #D9D5CE;
+
+  /* ---- Texto ---- */
+  --ink: #1E1C29;           /* 15,9:1 sobre --bg */
+  --ink-2: #575468;         /* 7,3:1 sobre --surface */
+  --ink-3: #625F75;         /* 5,0:1 até sobre --hover */
+
+  /* ---- Linhas ---- */
+  --line: #E6E3DD;          /* divisórias (decorativas) */
+  --line-strong: #D9D5CE;   /* bordas de cartão */
+  --input-border: #8A869A;  /* 3,5:1 – bordas de campo e checkbox */
+
+  /* ---- Acento único (índigo) ---- */
+  --accent: #4B52B0;        /* 6,7:1 sobre --surface */
+  --accent-hover: #3E449A;
+  --accent-soft: #EFEFF6;
+  --on-accent: #FFFFFF;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  /* ---- Estados ---- */
+  --success: #2F7A50;  --success-bg: #EEF3EF;
+  --warning: #8A5A12;  --warning-bg: #F6F1E7;
+  --danger:  #B3402F;  --danger-bg:  #F7ECEA;
+
+  /* ---- Pontos das estantes (só marcadores, nunca fundos grandes) ---- */
+  --shelf-1: #6E72B0; --shelf-2: #5B82A6; --shelf-3: #5A8C83; --shelf-4: #78895A;
+  --shelf-5: #A0804F; --shelf-6: #A5675B; --shelf-7: #8A7A9E; --shelf-8: #6B7280;
+
+  /* ---- Escala tipográfica (8 estilos) ---- */
+  --text-display: 600 40px/1.15 var(--font-display);
+  --text-title-1: 600 32px/1.2 var(--font-display);
+  --text-title-2: 600 24px/1.3 var(--font-ui);
+  --text-title-3: 600 20px/1.35 var(--font-ui);
+  --text-reading: 400 16px/1.65 var(--font-reading);
+  --text-ui: 400 14px/1.45 var(--font-ui);
+  --text-detail: 400 13px/1.4 var(--font-ui);
+  --text-caption: 500 12px/1.35 var(--font-ui);   /* mínimo absoluto da UI */
+  --size-display: 40px; --size-title-1: 32px; --size-title-2: 24px; --size-title-3: 20px;
+  --size-reading: 16px; --size-ui: 14px; --size-detail: 13px; --size-caption: 12px;
+
+  /* ---- Leitura ---- */
+  --reading-size: 16px;
+  --reading-width: 680px;
+  --reading-leading: 1.65;
+
+  /* ---- Espaço (grade de 4) ---- */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px;
+
+  /* ---- Layout ---- */
+  --titlebar-h: 44px;
+  --statusbar-h: 28px;
+  --sidebar-w: 264px;
+  --agent-panel-w: 420px;
+  --row-h: 30px;           /* item de árvore / menu */
+  --control-h: 32px;       /* botões e campos */
+
+  /* ---- Raios ---- */
+  --radius-sm: 6px;   /* chips, kbd */
+  --radius-md: 8px;   /* botões, campos, itens */
+  --radius-lg: 12px;  /* cartões, menus */
+  --radius-xl: 16px;  /* modais, painéis */
+  --radius-full: 999px;
+  --radius: var(--radius-md);
+
+  /* ---- Sombras (só para o que flutua) ---- */
+  --shadow-sm: 0 1px 2px rgb(30 28 41 / 0.06);
+  --shadow-md: 0 4px 12px rgb(30 28 41 / 0.08);
+  --shadow-lg: 0 12px 32px rgb(30 28 41 / 0.12);
+  --shadow-xl: 0 24px 64px rgb(30 28 41 / 0.18);
+  --shadow: var(--shadow-md);
+
+  /* ---- Movimento ---- */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --dur-fast: 120ms;    /* hover, toggles, chips */
+  --dur-medium: 180ms;  /* menus, toasts, abas */
+  --dur-slow: 280ms;    /* painéis, modais, mascote */
+
+  /* ---- Aliases do design-system.css atual ---- */
+  --paper: var(--surface);
+  --panel: var(--surface);
+  --heading: var(--ink);
+  --muted: var(--ink-2);
+  --faint: var(--ink-3);
+  --soft: var(--accent-soft);
+  --accent-line: var(--accent);
+}
+
+:root[data-theme="dark"], [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14131A;
+  --surface: #1A1921;
+  --raised: #22212B;
+  --sidebar: #111017;
+  --titlebar: #111017;
+  --hover: #262531;
+  --hover-subtle: #201F29;
+  --sel: #262531;
+  --code: #15141B;
+  --overlay: rgb(0 0 0 / 0.55);
+  --canvas-dot: #2E2D39;
+
+  --ink: #EDEBF5;           /* 15,7:1 */
+  --ink-2: #B4B0C4;         /* 8,3:1 */
+  --ink-3: #918DA6;         /* 4,7:1 sobre --hover */
+
+  --line: #2A2934;
+  --line-strong: #363543;
+  --input-border: #6E6A82;  /* 3,4:1 */
+
+  --accent: #A6ABEA;        /* 8,0:1 */
+  --accent-hover: #BEC2F2;
+  --accent-soft: #22223A;
+  --on-accent: #14131A;
+
+  --success: #8CC9A3;  --success-bg: #1C2622;
+  --warning: #E0B872;  --warning-bg: #2A251D;
+  --danger:  #EE9A8C;  --danger-bg:  #2D1F1F;
+
+  --shelf-1: #A9ACDD; --shelf-2: #8FB0CF; --shelf-3: #8FBDB4; --shelf-4: #AEBE8F;
+  --shelf-5: #D2B07F; --shelf-6: #D99A8D; --shelf-7: #BFB0D3; --shelf-8: #A3A8B4;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.40);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
+  --shadow-xl: 0 24px 64px rgb(0 0 0 / 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] { /* copie o bloco escuro aqui ou resolva no JS */ }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-medium: 0ms; --dur-slow: 0ms; }
+}
+
+/* Foco visível padrão */
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-md); }
