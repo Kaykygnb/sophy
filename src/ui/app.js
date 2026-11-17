@@ -413,14 +413,25 @@ function paintShell() {
           <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('novo')} Novo</button>
         </div>
         <nav class="lateral__nav" aria-label="Seções">
-          <button type="button" data-nav="inicio">${icon('inicio')} Início</button>
-          <button type="button" data-nav="hoje">${icon('nota-diaria')} Hoje</button>
-          <button type="button" data-nav="tarefas">${icon('lista-tarefas')} Tarefas</button>
-          <button type="button" data-nav="calendario">${icon('calendario')} Calendário</button>
-          <button type="button" data-nav="grafo">${icon('grafo')} Grafo</button>
-          <button type="button" data-nav="canvas">${icon('canvas')} Canvas</button>
+          ${[
+            ['inicio', 'inicio', 'Início'],
+            ['hoje', 'nota-diaria', 'Hoje'],
+            ['tarefas', 'lista-tarefas', 'Tarefas'],
+            ['calendario', 'calendario', 'Calendário'],
+            ['grafo', 'grafo', 'Grafo'],
+            ['canvas', 'canvas', 'Canvas'],
+          ]
+            .map(
+              ([id, glyph, label]) =>
+                `<button type="button" class="nav__item" data-nav="${id}">${icon(glyph)} ${label}</button>`,
+            )
+            .join('')}
         </nav>
-        <div class="lateral__busca"><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
+        <div class="lateral__acoes lateral__ferramentas">
+          <button type="button" class="btn btn--fantasma" id="recolher">${icon('painel-lateral')} Recolher</button>
+          <button type="button" class="btn btn--fantasma" id="filtrar">${icon('busca')} Filtrar</button>
+        </div>
+        <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
       </aside>
       <main class="centro" id="centro"></main>
@@ -438,6 +449,12 @@ function paintShell() {
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
   $('#seletor-biblioteca').onclick = (event) => openLibraryMenu(event.currentTarget);
+  $('#recolher').onclick = () => $('#lateral').classList.toggle('is-fechada');
+  $('#filtrar').onclick = () => {
+    const box = shell.querySelector('.lateral__busca');
+    box.hidden = !box.hidden;
+    if (!box.hidden) $('#filtro-arvore').focus();
+  };
   shell.querySelectorAll('[data-nav]').forEach((button) => {
     button.onclick = () => runCommand(button.dataset.nav === 'inicio' ? 'inicio' : button.dataset.nav);
   });
@@ -504,7 +521,7 @@ function paintTree() {
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
       return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
-          <span class="arvore__conta">${notes.length}</span></button><ul role="group">${children}${boards}</ul></li>`;
+          <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
     .join('');
   const loose = treeNotes(null)
@@ -531,9 +548,11 @@ function paintTree() {
         : null;
       openNote(button.dataset.open);
     };
+    button.oncontextmenu = (event) => openTreeMenu(event, 'note', button.dataset.open);
   });
   host.querySelectorAll('[data-canvas]').forEach((button) => {
     button.onclick = () => openCanvas(button.dataset.canvas);
+    button.oncontextmenu = (event) => openTreeMenu(event, 'canvas', button.dataset.canvas);
   });
   host.querySelectorAll('[data-shelf]').forEach((button) => {
     button.onclick = (event) => {
@@ -545,6 +564,7 @@ function paintTree() {
       paintTree();
       paintCenter();
     };
+    button.oncontextmenu = (event) => openTreeMenu(event, 'shelf', button.dataset.shelf);
   });
   bindNameField(
     host.querySelector('#nome-estante'),
@@ -643,7 +663,60 @@ function paintTabs() {
 
 function paintCenter() {
   const center = $('#centro');
-  if (!center) return;
+  if (!center || state.painting) return;
+  state.painting = true;
+  try {
+    paintCenterBody(center);
+  } finally {
+    state.painting = false;
+  }
+  syncNav();
+  bindBlockDrag();
+}
+
+function bindBlockDrag() {
+  document.querySelectorAll('[data-menu]').forEach((handle) => {
+    handle.draggable = true;
+    handle.ondragstart = (event) => {
+      event.dataTransfer.setData('application/x-sophy-block', handle.dataset.menu);
+      event.dataTransfer.effectAllowed = 'move';
+      event.stopPropagation();
+    };
+  });
+  document.querySelectorAll('.bloco-linha').forEach((row) => {
+    row.ondragover = (event) => {
+      if ([...event.dataTransfer.types].includes('application/x-sophy-block')) event.preventDefault();
+    };
+    row.ondrop = (event) => {
+      const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
+      const block = row.querySelector('[data-block]');
+      if (!block || Number.isNaN(from)) return;
+      event.preventDefault();
+      state.doc = Doc.moveBlock(state.doc, from, Number(block.dataset.block));
+      paintCenter();
+      scheduleSave();
+    };
+  });
+}
+
+function syncNav() {
+  document.querySelectorAll('[data-nav]').forEach((button) => {
+    if (button.dataset.nav === state.nav) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+}
+
+function paintCenterBody(center) {
+  if (state.view === 'canvases') {
+    const boards = state.canvases || [];
+    center.innerHTML = boards.length
+      ? `<div class="vazio-ensina"><h2>Canvas</h2><div class="tarefas__lista">${boards.map((file) => `<button type="button" class="menu__item" data-abrir-canvas="${escapeHtml(file.path)}">${icon('canvas')} ${escapeHtml(file.path)}</button>`).join('')}</div></div>`
+      : `<div class="vazio-ensina"><h2>Nenhum canvas</h2><p>Crie um pelo menu Novo. Este botão só abre os que já existem.</p></div>`;
+    center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
+      button.onclick = () => openCanvas(button.dataset.abrirCanvas);
+    });
+    return;
+  }
   if (state.view === 'tasks') {
     paintTasks(center);
     return;
@@ -824,6 +897,11 @@ function renderBlock(block, index) {
 function inlineHtml(text) {
   return Doc.parseInlines(text)
     .map((part) => {
+      if (part.type === 'bold') return `<strong>${escapeHtml(part.text)}</strong>`;
+      if (part.type === 'italic') return `<em>${escapeHtml(part.text)}</em>`;
+      if (part.type === 'strike') return `<s>${escapeHtml(part.text)}</s>`;
+      if (part.type === 'highlight') return `<mark class="marca">${escapeHtml(part.text)}</mark>`;
+      if (part.type === 'code') return `<code>${escapeHtml(part.text)}</code>`;
       if (part.type === 'text') return escapeHtml(part.text);
       const broken = state.outgoing.some(
         (link) =>
@@ -840,12 +918,42 @@ function bindBlock(el) {
   el.addEventListener('input', () => onBlockInput(el));
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('paste', (event) => onBlockPaste(event, el));
+  el.addEventListener('focus', () => {
+    if (state.painting || el.dataset.fonte === '1') return;
+    const block = state.doc?.blocks[Number(el.dataset.block)];
+    if (!block || block.type === 'code') return;
+    const selection = getSelection();
+    let start = null;
+    let end = null;
+    if (selection?.rangeCount && el.contains(selection.anchorNode)) {
+      start = offsetAt(el, selection.anchorNode, selection.anchorOffset);
+      end = offsetAt(el, selection.focusNode, selection.focusOffset);
+    }
+    el.dataset.fonte = '1';
+    el.textContent = Doc.visibleOf(block);
+    if (start == null || end == null || !selection) return;
+    const node = [...el.childNodes].find((child) => child.nodeType === Node.TEXT_NODE);
+    if (!node) return;
+    const range = document.createRange();
+    const from = Math.max(0, Math.min(start, end, node.textContent.length));
+    const to = Math.max(from, Math.min(Math.max(start, end), node.textContent.length));
+    range.setStart(node, from);
+    range.setEnd(node, to);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
   el.addEventListener('blur', () => {
-    if (state.wrapping) return;
+    if (state.painting || state.wrapping) return;
+    if (el.dataset.fonte === '1') {
+      const index = Number(el.dataset.block);
+      state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
+      el.dataset.fonte = '';
+    }
     closeMenus();
-    const index = Number(el.dataset.block);
-    state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
-    paintCenter();
+    requestAnimationFrame(() => {
+      if (state.painting || state.wrapping) return;
+      paintCenter();
+    });
   });
 }
 
@@ -1465,7 +1573,7 @@ function paintLinks() {
       )
       .join('') || '<p class="nota-privacidade">Nenhuma nota aponta para cá.</p>';
   host.innerHTML = `<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}
-    <h3>Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
+    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
   host.querySelectorAll('[data-go]').forEach((button) => {
     button.onclick = () => {
       if (button.dataset.go) openNote(button.dataset.go);
@@ -1585,6 +1693,21 @@ function weekStart(iso) {
   return isoTodayFrom(date);
 }
 
+function shortDate(iso) {
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const [, month, day] = iso.split('-');
+  return `${Number(day)} ${months[Number(month) - 1]}`;
+}
+
+function taskBucket(task) {
+  if (!task.due) return 'Sem prazo';
+  const today = isoToday();
+  if (task.due < today && task.status !== 'feita' && task.status !== 'cancelada') return 'Atrasadas';
+  if (task.due === today) return 'Hoje';
+  if (task.due <= addIso(today, 6)) return 'Esta semana';
+  return 'Próximas';
+}
+
 function taskCard(task) {
   const kit =
     task.status === 'andamento'
@@ -1594,7 +1717,15 @@ function taskCard(task) {
         : task.status === 'cancelada'
           ? 'cancelada'
           : 'aberta';
-  return `<article class="kcard" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}"><span class="check" data-status="${kit}"></span><strong>${escapeHtml(task.title)}</strong><span class="chip">${escapeHtml(task.due || 'sem prazo')}</span><button type="button" class="tarefa__origem" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.workspace || 'Biblioteca')}</button></article>`;
+  const priority =
+    task.priority === 'alta'
+      ? '<span class="chip chip--alta">Alta</span>'
+      : task.priority === 'media'
+        ? '<span class="chip chip--media">Média</span>'
+        : task.priority === 'baixa'
+          ? '<span class="chip chip--baixa">Baixa</span>'
+          : '';
+  return `<article class="kcard" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}"><span class="check" data-status="${kit}"></span><strong>${escapeHtml(task.title)}</strong><span class="kcard__meta">${priority}<span class="chip">${escapeHtml(task.due ? shortDate(task.due) : 'sem prazo')}</span><span class="chip">${escapeHtml(task.workspace || 'Biblioteca')}</span></span><button type="button" class="tarefa__origem" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.workspace || 'Biblioteca')}</button></article>`;
 }
 
 function paintTasks(center) {
@@ -1628,7 +1759,15 @@ function paintTasks(center) {
       return `<section class="quadro__coluna" data-status="${status}"><h3>${label}</h3>${cards || '<p>Solte aqui</p>'}</section>`;
     })
     .join('');
-  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><h2>Tarefas</h2><p>${rows.length} na biblioteca</p><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${rows.map(taskCard).join('') || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
+  const groups = ['Atrasadas', 'Hoje', 'Esta semana', 'Próximas', 'Sem prazo'];
+  const lista = groups
+    .map((name) => {
+      const items = rows.filter((task) => taskBucket(task) === name);
+      if (!items.length) return '';
+      return `<section class="tarefas__grupo"><h3>${name}</h3>${items.map(taskCard).join('')}</section>`;
+    })
+    .join('');
+  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><h2>Tarefas</h2><p>${rows.length} na biblioteca</p><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
   center.querySelectorAll('[data-filtro]').forEach((button) => {
     button.onclick = () => {
       state.taskFilter[button.dataset.filtro] = button.dataset.valor;
@@ -1671,13 +1810,27 @@ function paintCalendar(center) {
           return `<span class="cal-item">${item.kind === 'nota' ? '●' : '◆'} ${escapeHtml(item.title)}</span>`;
         })
         .join('');
-      return `<div class="cal-dia ${date === isoToday() ? 'is-hoje' : ''}" data-date="${date}"><strong>${Number(date.slice(8))}</strong>${marks}</div>`;
+      const outside = date.slice(0, 7) !== cursor.slice(0, 7) ? ' is-fora' : '';
+      return `<div class="cal-dia${date === isoToday() ? ' is-hoje' : ''}${outside}" data-date="${date}"><strong>${Number(date.slice(8))}</strong>${marks}</div>`;
     })
     .join('');
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><h2>Calendário</h2><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>`;
+  const [year, month] = cursor.split('-').map(Number);
+  const monthName = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const weekdays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
+    .map((name) => `<span>${name}</span>`)
+    .join('');
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="Mês anterior">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="Próximo mês">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>`;
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
       state.calendarMode = button.dataset.cal;
+      showCalendar();
+    };
+  });
+  center.querySelectorAll('[data-passo]').forEach((button) => {
+    button.onclick = () => {
+      const [y, m] = state.calendarCursor.split('-').map(Number);
+      const next = new Date(y, m - 1 + Number(button.dataset.passo), 1);
+      state.calendarCursor = isoTodayFrom(next);
       showCalendar();
     };
   });
@@ -1713,10 +1866,14 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
+  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
     estante: () => createWorkspace(),
-    canvas: () => createCanvasFile(),
+    canvas: () => {
+      state.view = 'canvases';
+      paintCenter();
+    },
     modelo: () => createFromTemplate(),
     buscar: () => openPalette(),
     comandos: () => openCommands(),
@@ -1801,7 +1958,7 @@ function openLibraryMenu(anchor) {
     <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
     <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
     <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>
-    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('mostrar-pasta')} Mostrar no Explorer</button>`;
+    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('mostrar-pasta')} ${/linux/i.test(navigator.userAgent) ? 'Mostrar na pasta' : 'Mostrar no Explorer'}</button>`;
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
@@ -1887,6 +2044,52 @@ async function applyLibrary(root, libraries) {
   paintCenter();
   paintLinks();
   paintStatus();
+}
+
+function openTreeMenu(event, kind, target) {
+  event.preventDefault();
+  closeMenus();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante';
+  menu.setAttribute('role', 'menu');
+  const items =
+    kind === 'shelf'
+      ? [
+          ['nota', 'Nova nota aqui'],
+          ['renomear', 'Renomear'],
+          ['lixo', 'Mover para a lixeira'],
+        ]
+      : [
+          ['renomear', 'Renomear'],
+          ['lixo', 'Mover para a lixeira'],
+        ];
+  menu.innerHTML = items
+    .map(([id, label]) => `<button type="button" class="menu__item" role="menuitem" data-arvore="${id}">${label}</button>`)
+    .join('');
+  document.body.append(menu);
+  menu.style.position = 'fixed';
+  menu.style.left = `${event.clientX}px`;
+  menu.style.top = `${event.clientY}px`;
+  menu.querySelector('[data-arvore="renomear"]').onclick = () => {
+    closeMenus();
+    if (kind === 'shelf') state.renaming = { kind: 'shelf', name: target };
+    else state.renaming = { kind: 'note', path: target };
+    paintTree();
+  };
+  const note = menu.querySelector('[data-arvore="nota"]');
+  if (note)
+    note.onclick = () => {
+      closeMenus();
+      state.selectedShelf = target;
+      createNote();
+    };
+  menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
+    closeMenus();
+    await tool('entry.trash', { path: target });
+    await refreshLibrary();
+    paintTree();
+    paintCenter();
+  };
 }
 
 function openBlockMenu(anchor, index) {
@@ -2391,8 +2594,15 @@ function openPalette() {
       } catch {
         hits = [];
       }
-      const canvases = state.canvases.filter((file) =>
-        file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+      const seen = new Set(
+        hits.filter((hit) => String(hit.path).toLowerCase().endsWith('.canvas')).map((hit) => hit.path),
+      );
+      const canvases = state.canvases.filter(
+        (file) =>
+          !seen.has(file.path) && file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+      );
+      hits = hits.map((hit) =>
+        String(hit.path).toLowerCase().endsWith('.canvas') ? { ...hit, kind: 'canvas' } : hit,
       );
       hits = hits.concat(
         canvases.map((file) => ({
@@ -2408,23 +2618,25 @@ function openPalette() {
     const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
       .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
+    const noteHits = hits.filter((hit) => hit.kind !== 'canvas');
+    const canvasHits = hits.filter((hit) => hit.kind === 'canvas');
+    const row = (hit) => {
+      const index = hits.indexOf(hit);
+      const excerpt = (hit.segments || [])
+        .map((part) => (part.match ? `<mark>${escapeHtml(part.text)}</mark>` : escapeHtml(part.text)))
+        .join('');
+      const shelf = hit.workspace ? Cmd.shelfMark(hit.workspace) : null;
+      const dot = shelf?.color
+        ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
+        : '';
+      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
+    };
     list.innerHTML =
-      (hits.length ? '<div class="menu__grupo">Notas</div>' : '') +
-      hits
-        .slice(0, 12)
-        .map((hit, index) => {
-          const excerpt = (hit.segments || [])
-            .map((part) =>
-              part.match ? `<mark>${escapeHtml(part.text)}</mark>` : escapeHtml(part.text),
-            )
-            .join('');
-          const shelf = hit.workspace ? Cmd.shelfMark(hit.workspace) : null;
-          const dot = shelf?.color
-            ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
-            : '';
-          return `<button type="button" class="menu__item" data-hit="${index}" ${index === 0 ? 'aria-selected="true"' : ''}>${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
-        })
-        .join('') +
+      (noteHits.length ? '<div class="menu__grupo">Notas</div>' : '') +
+      noteHits.map(row).join('') +
+      (canvasHits.length ? '<div class="menu__grupo">Canvas</div>' : '') +
+      canvasHits.map(row).join('') +
+      (commands.length && !commandMode ? '' : '') +
       (commands.length ? '<div class="menu__grupo">Comandos</div>' : '') +
       commands
         .map(

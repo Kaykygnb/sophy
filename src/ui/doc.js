@@ -151,13 +151,47 @@
     return { ...doc, blocks, body: blocks.map((block) => block.raw).join('') };
   }
 
+  function decorateText(text) {
+    const pattern =
+      /(\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+?`|(?<!\*)\*(?!\*)[^*\n]+?\*(?!\*))/g;
+    const parts = [];
+    let last = 0;
+    for (const match of text.matchAll(pattern)) {
+      const at = match.index ?? 0;
+      if (at > last) parts.push({ type: 'text', text: text.slice(last, at) });
+      const raw = match[0];
+      let type = 'text';
+      let inner = raw;
+      if (raw.startsWith('**')) {
+        type = 'bold';
+        inner = raw.slice(2, -2);
+      } else if (raw.startsWith('~~')) {
+        type = 'strike';
+        inner = raw.slice(2, -2);
+      } else if (raw.startsWith('==')) {
+        type = 'highlight';
+        inner = raw.slice(2, -2);
+      } else if (raw.startsWith('`')) {
+        type = 'code';
+        inner = raw.slice(1, -1);
+      } else if (raw.startsWith('*')) {
+        type = 'italic';
+        inner = raw.slice(1, -1);
+      }
+      parts.push({ type, text: inner, raw });
+      last = at + raw.length;
+    }
+    if (last < text.length) parts.push({ type: 'text', text: text.slice(last) });
+    return parts.length ? parts : [{ type: 'text', text }];
+  }
+
   function parseInlines(text) {
     const parts = [];
     const pattern = /!?\[\[[^\]\n]*\]\]/g;
     let last = 0;
     for (const match of text.matchAll(pattern)) {
       const at = match.index ?? 0;
-      if (at > last) parts.push({ type: 'text', text: text.slice(last, at) });
+      if (at > last) parts.push(...decorateText(text.slice(last, at)));
       const raw = match[0];
       const inner = raw.slice(raw.startsWith('!') ? 3 : 2, -2);
       parts.push({
@@ -169,13 +203,21 @@
       });
       last = at + raw.length;
     }
-    if (last < text.length) parts.push({ type: 'text', text: text.slice(last) });
+    if (last < text.length) parts.push(...decorateText(text.slice(last)));
     if (parts.length === 0) parts.push({ type: 'text', text: '' });
     return parts;
   }
 
   function serializeInlines(parts) {
-    return parts.map((part) => (part.type === 'text' ? part.text : part.raw)).join('');
+    return parts.map((part) => part.raw || part.text || '').join('');
+  }
+
+  function moveBlock(doc, from, to) {
+    if (from === to || from < 0 || to < 0 || from >= doc.blocks.length || to >= doc.blocks.length) return doc;
+    const blocks = doc.blocks.slice();
+    const [item] = blocks.splice(from, 1);
+    blocks.splice(to, 0, item);
+    return withBlocks(doc, blocks);
   }
 
   function linkTarget(inner) {
@@ -381,5 +423,6 @@
     insertInBlock,
     wrapPlain,
     wrapBlock,
+    moveBlock,
   };
 });

@@ -210,13 +210,15 @@ export function queryCalendar(library: Library, from: string, to: string) {
       }
     }
     const named = note.path.match(/(\d{4}-\d{2}-\d{2})\.md$/i);
+    const heading = file.content.match(/^#{1,6}[ \t]+(.+)$/m);
+    const title = heading ? heading[1].trim() : note.name.replace(/\.md$/i, '');
     if (named && named[1] >= from && named[1] <= to) {
       items.push({
         date: named[1],
         kind: 'nota',
         path: note.path,
         workspace: note.workspace,
-        title: note.name.replace(/\.md$/i, ''),
+        title,
       });
     }
     const matter = document.frontmatter || {};

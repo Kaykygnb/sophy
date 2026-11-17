@@ -208,19 +208,46 @@
     return { title, due: due ? due[1] : null, priority, status: match[3] };
   }
 
+  function formatChunk(text) {
+    const pattern = /(\*\*[^*]+?\*\*|~~[^~]+?~~|==[^=]+?==|`[^`]+?`|\*[^*]+?\*)/g;
+    let html = '';
+    let last = 0;
+    for (const match of text.matchAll(pattern)) {
+      const at = match.index ?? 0;
+      html += escapeHtml(text.slice(last, at));
+      const raw = match[0];
+      const inner =
+        raw.startsWith('**') || raw.startsWith('~~') || raw.startsWith('==')
+          ? raw.slice(2, -2)
+          : raw.slice(1, -1);
+      const tag = raw.startsWith('**')
+        ? 'strong'
+        : raw.startsWith('~~')
+          ? 's'
+          : raw.startsWith('==')
+            ? 'mark'
+            : raw.startsWith('`')
+              ? 'code'
+              : 'em';
+      html += `<${tag}>${escapeHtml(inner)}</${tag}>`;
+      last = at + raw.length;
+    }
+    return html + escapeHtml(text.slice(last));
+  }
+
   function previewInline(text) {
     const pattern = /!?\[\[([^\]\n]*)\]\]/g;
     let html = '';
     let last = 0;
     for (const match of text.matchAll(pattern)) {
       const at = match.index ?? 0;
-      html += escapeHtml(text.slice(last, at));
+      html += formatChunk(text.slice(last, at));
       const inner = match[1];
       const label = inner.includes('|') ? inner.split('|').pop() : inner.split('/').pop();
       html += `<a class="wikilink" href="#">${escapeHtml((label || inner).replace(/#.*$/, ''))}</a>`;
       last = at + match[0].length;
     }
-    return html + escapeHtml(text.slice(last));
+    return html + formatChunk(text.slice(last));
   }
 
   function notePreviewHtml(body) {
