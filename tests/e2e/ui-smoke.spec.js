@@ -719,6 +719,36 @@ test('rodada 4: capa da estante, semana, prévia e restaurar', async () => {
   await app.close();
 });
 
+test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.sofi-lista')).toBeVisible();
+  await expect(page.locator('.agente--lateral img')).toBeVisible();
+  await expect(page.locator('.chip', { hasText: 'cofre' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-sofi-painel-claro.png') });
+  await page.locator('#seletor-biblioteca').click();
+  await page.getByRole('menuitem', { name: 'Nova biblioteca…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Nova biblioteca' })).toBeVisible();
+  await expect(page.locator('#biblioteca-nome')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-nav="calendario"]').click();
+  await page.locator('.cal-dia.is-hoje').click();
+  await expect(page.locator('.painel-dia')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-painel-dia-claro.png') });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#abrir-revisao').click();
+  await expect(page.locator('.revisao-cartao')).toBeVisible();
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

@@ -789,7 +789,11 @@ button.arvore__linha[aria-selected='true'] {
 .site-previa { padding: 16px; border-radius: 12px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
 .site-previa[data-theme="dark"] { background: #14131a; color: #f4f1ea; }
 .agente { position: relative; }
-.agente img { width: 72px; height: 72px; }
+.agente--lateral img { width: 128px; height: 128px; }
+.sofi-lista { margin: 8px 0 12px; padding-left: 18px; }
+.painel-dia { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.versoes-cota { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 8px 0 16px; }
+.versoes-cota span { display: block; height: 100%; background: var(--accent); }
 .agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .canvas-vazio { position: absolute; inset: 72px 24px auto; text-align: center; }
 .semana-diaria { display: flex; gap: 6px; margin-bottom: 12px; }

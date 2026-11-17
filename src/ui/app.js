@@ -885,7 +885,7 @@ function paintSettings(center) {
     </section>
     <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><label class="alternar"><input type="checkbox" id="cfg-sistema" ${state.settings.accentSystem ? 'checked' : ''}><span>Seguir a cor do sistema</span></label><p class="nota-privacidade">Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.</p></section>
     <section><h3>Busca por significado</h3><label class="alternar"><input type="checkbox" id="cfg-busca" ${state.settings.semantic ? 'checked' : ''}><span>${state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'}</span></label><p class="nota-privacidade">Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.</p></section>
-    <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa na segunda.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div></section>
+    <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa na segunda.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div><button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button></section>
     <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
   </div>`;
   center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
@@ -941,6 +941,8 @@ function paintSettings(center) {
       await sophy.saveSettings({ weekStartsOn: Number(input.value) });
     };
   });
+  const review = $('#abrir-revisao');
+  if (review) review.onclick = () => showReview();
   const point = $('#cfg-versao');
   if (point) point.onclick = () => showVersions();
   const site = $('#cfg-site');
@@ -1116,6 +1118,10 @@ function paintCenterBody(center) {
     paintVersions(center);
     return;
   }
+  if (state.view === 'review') {
+    paintReview(center);
+    return;
+  }
   if (state.view === 'settings') {
     paintSettings(center);
     return;
@@ -1136,6 +1142,10 @@ function paintCenterBody(center) {
   }
   if (state.view === 'graph') {
     paintGraph(center);
+    return;
+  }
+  if (state.view === 'canvas-error') {
+    center.innerHTML = `<div class="vazio-ensina"><h2>Não foi possível abrir o canvas</h2><p>${escapeHtml(state.canvasError || 'O quadro não pôde ser lido.')}</p></div>`;
     return;
   }
   if (state.view === 'canvas') {
@@ -1840,7 +1850,17 @@ async function saveNow() {
 }
 
 async function openCanvas(file) {
-  const canvas = await tool('canvas.read', { path: file });
+  let canvas;
+  try {
+    canvas = await tool('canvas.read', { path: file });
+  } catch (error) {
+    state.view = 'canvas-error';
+    state.canvasError = error.message;
+    state.canvasPath = file;
+    paintCenter();
+    return;
+  }
+  state.canvasError = '';
   state.view = 'canvas';
   state.treeFocus = 'canvas';
   state.canvasPath = canvas.path;
@@ -1970,6 +1990,10 @@ async function fillEmbeds() {
 function paintLinks() {
   const host = $('#conexoes');
   if (!host) return;
+  if (state.sofiOpen) {
+    paintSofi(host);
+    return;
+  }
   if (!state.active) {
     host.innerHTML =
       '<h3>Conexões</h3><p class="nota-privacidade">Abra uma nota para ver os links.</p>';
@@ -2270,9 +2294,12 @@ function paintCalendar(center) {
     .join('');
   const previous = mode === 'mes' ? 'Mês anterior' : 'Semana anterior';
   const next = mode === 'mes' ? 'Próximo mês' : 'Próxima semana';
+  const dayPanel = state.dayFocus
+    ? `<aside class="painel-dia"><h3>${escapeHtml(readableDate(state.dayFocus))}</h3>${(state.calendarItems || []).filter((item) => item.date === state.dayFocus).map((item) => `<p>${escapeHtml(calendarLabel(item.title))}</p>`).join('') || '<p>Nada neste dia.</p>'}</aside>`
+    : '';
   const body = mode === 'agenda'
-    ? `<ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>`
-    : `<div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div>`;
+    ? `<ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}`
+    : `<div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div>${dayPanel}`;
   center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
@@ -2292,6 +2319,13 @@ function paintCalendar(center) {
         state.calendarCursor = isoTodayFrom(next);
       }
       showCalendar();
+    };
+  });
+  center.querySelectorAll('.cal-dia').forEach((day) => {
+    day.onclick = (event) => {
+      if (event.target.closest('[data-task]')) return;
+      state.dayFocus = day.dataset.date;
+      paintCenter();
     };
   });
   center.querySelectorAll('[data-open-note]').forEach((button) => {
@@ -2420,11 +2454,10 @@ function dailyStrip(notePath) {
   return `<div class="semana-diaria" aria-label="Semana">${days.join('')}</div>`;
 }
 
-function openAgent() {
-  const overlay = $('#overlay');
-  overlay.hidden = false;
+function paintSofi(host) {
+  host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
-  overlay.innerHTML = `<div class="agente" role="dialog" aria-label="Sofi"><div class="msg"><div class="msg__avatar"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div><div><div class="msg__autor">Sofi</div><div class="msg__balao">A chave fica no cofre do sistema. Nada dela entra na biblioteca.</div></div></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
+  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
   $('#agente-guardar').onclick = async () => {
     const response = await sophy.agentKeySet($('#agente-chave').value);
     $('#agente-chave').value = '';
@@ -2442,6 +2475,15 @@ function openAgent() {
       paintTree();
     }
   };
+  $('#agente-fechar').onclick = () => {
+    state.sofiOpen = false;
+    paintLinks();
+  };
+}
+
+function openAgent() {
+  state.sofiOpen = true;
+  paintSofi($('#conexoes'));
 }
 
 function openCapture() {
@@ -2475,7 +2517,7 @@ async function createFromTemplate() {
   overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Modelos"><h2>Modelos</h2>${models
     .map(
       (note) =>
-        `<button type="button" class="menu__item" data-modelo="${escapeHtml(note.path)}">${escapeHtml(baseName(note.path))}</button>`,
+        `<button type="button" class="cartao-estante" data-modelo="${escapeHtml(note.path)}"><strong>${escapeHtml(baseName(note.path))}</strong><span>Modelo</span></button>`,
     )
     .join('')}<label>Título <input id="modelo-titulo" value="Sem título" /></label></div>`;
   overlay.querySelectorAll('[data-modelo]').forEach((button) => {
@@ -2605,6 +2647,18 @@ function confirmDialog(message) {
   });
 }
 
+async function showReview() {
+  state.view = 'review';
+  state.taskRows = await tool('task.query', { today: isoToday() });
+  paintCenter();
+}
+
+function paintReview(center) {
+  const rows = state.taskRows || [];
+  const items = rows.map((task) => `<li>${escapeHtml(task.title)}<small>${escapeHtml(task.workspace || '')}</small></li>`).join('') || '<li>Nada para revisar.</li>';
+  center.innerHTML = `<div class="inicio"><h2>Revisão da semana</h2><div class="revisao"><article class="revisao-cartao"><div class="revisao-cartao__topo"><strong class="revisao-cartao__titulo">Nesta semana</strong><span class="revisao-cartao__num">${rows.length}</span></div><ul>${items}</ul></article></div></div>`;
+}
+
 async function showVersions() {
   state.view = 'versions';
   state.versionRows = await tool('version.list', {});
@@ -2613,13 +2667,16 @@ async function showVersions() {
 
 function paintVersions(center) {
   const rows = state.versionRows || [];
+  const total = rows.reduce((sum, row) => sum + (row.bytes || 0), 0);
+  const cap = 1024 * 1024 * 1024;
+  const width = Math.min(100, Math.round((total / cap) * 100));
   const items = rows
     .map(
       (row) =>
-        `<li><button type="button" class="versao" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(row.label || row.id)}</b><span>${escapeHtml(row.id)}</span><small>${row.bytes} B</small></button></li>`,
+        `<li><button type="button" class="versao" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(row.label || 'ponto')}</b><span>${escapeHtml(row.preview || row.id)}</span><small>${row.bytes} B</small></button></li>`,
     )
     .join('');
-  center.innerHTML = `<div class="inicio"><h2>Histórico</h2><p>90 dias ou 1 GB. A mais antiga sai primeiro.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></div>`;
+  center.innerHTML = `<div class="inicio"><h2>Histórico</h2><p>90 dias ou 1 GB. A mais antiga sai primeiro.</p><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></div>`;
   const save = $('#gravar-ponto');
   if (save)
     save.onclick = async () => {
@@ -2767,7 +2824,7 @@ function openLibraryMenu(anchor) {
   });
   menu.querySelector('[data-acao="nova"]').onclick = () => {
     closeMenus();
-    chooseLibrary(true);
+    openNewLibrary();
   };
   menu.querySelector('[data-acao="abrir"]').onclick = () => {
     closeMenus();
@@ -2780,6 +2837,18 @@ function openLibraryMenu(anchor) {
   menu.querySelector('[data-acao="revelar"]').onclick = () => {
     closeMenus();
     sophy.libraryReveal(state.libraryPath);
+  };
+}
+
+function openNewLibrary() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Nova biblioteca"><h3>Nova biblioteca</h3><label>Nome <input id="biblioteca-nome" value="Biblioteca" /></label><p class="nota-privacidade">O nome identifica a biblioteca na lista. A pasta continua sendo a que você escolher.</p><button type="button" class="btn btn--primario" id="biblioteca-criar">Escolher pasta e criar</button></div>`;
+  $('#biblioteca-criar').onclick = async () => {
+    const name = $('#biblioteca-nome').value.trim() || 'Biblioteca';
+    overlay.hidden = true;
+    state.libraryNameInput = name;
+    await chooseLibrary(true);
   };
 }
 
@@ -2844,14 +2913,23 @@ async function applyLibrary(root, libraries) {
 
 function openShelfStyle(name) {
   const current = markFor(name);
-  const icons = ['capelo', 'livro', 'lampada', 'maleta', 'leitura', 'coracao', 'estante', 'pasta'];
+  const icons = [
+    ['capelo', 'Capelo'],
+    ['livro', 'Livro'],
+    ['lampada', 'Lâmpada'],
+    ['maleta', 'Maleta'],
+    ['leitura', 'Leitura'],
+    ['coracao', 'Coração'],
+    ['estante', 'Estante'],
+    ['pasta', 'Pasta'],
+  ];
   const pop = document.createElement('div');
   pop.className = 'menu menu-flutuante';
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', 'Cor e ícone');
   pop.innerHTML = `<p>Cor e ícone de ${escapeHtml(name)}</p>
     <div class="acentos">${[1, 2, 3, 4, 5, 6, 7, 8].map((color) => `<button type="button" class="acento ${current.color === color ? 'is-escolhida' : ''}" data-cor="${color}" aria-label="Cor ${color}" style="--amostra: var(--shelf-${color})"></button>`).join('')}</div>
-    <div class="inicio__cartoes">${icons.map((iconName) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}">${icon(iconName)} ${iconName}</button>`).join('')}</div>`;
+    <div class="inicio__cartoes">${icons.map(([iconName, label]) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}">${icon(iconName)} ${label}</button>`).join('')}</div>`;
   document.body.append(pop);
   pop.style.position = 'fixed';
   pop.style.left = '280px';

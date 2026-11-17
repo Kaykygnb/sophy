@@ -237,7 +237,14 @@ export function listVersions(library: Library) {
       } catch {
         /* ponto sem rótulo */
       }
-      return { id: entry.name, label, bytes: dirSize(full) };
+      let preview = '';
+      const notes = collectNotes(full);
+      if (notes[0]) {
+        const text = fs.readFileSync(notes[0].full, 'utf8').replace(/^---[\s\S]*?---\n?/, '');
+        const line = text.split('\n').find((item) => item.trim());
+        preview = (line || '').replace(/^#{1,6}\s*/, '').slice(0, 80);
+      }
+      return { id: entry.name, label, bytes: dirSize(full), preview };
     });
 }
 

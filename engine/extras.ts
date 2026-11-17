@@ -34,7 +34,7 @@ export function unlinkedMentions(library: Library) {
     body: readNote(library, note.path).body,
   }));
   return notes
-    .filter((note) => note.title.length >= 4 && !/^\d{4}-\d{2}-\d{2}$/.test(note.title))
+    .filter((note) => note.title.length >= 4 && !/^\d{4}-\d{2}-\d{2}$/.test(note.title) && note.title.toLocaleLowerCase() !== 'capa')
     .map((note) => {
       const hits = notes
         .filter((other) => other.path !== note.path)
