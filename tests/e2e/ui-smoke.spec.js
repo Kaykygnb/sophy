@@ -749,6 +749,47 @@ test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
   await app.close();
 });
 
+test('seletor de capa dentro da janela e a Sofi cabe na coluna', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('#arvore').getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.getByRole('button', { name: 'Trocar capa' }).click();
+  const picker = page.getByRole('dialog', { name: 'Capa da nota' });
+  await expect(picker).toBeVisible();
+  const inside = await picker.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return box.top >= 0 && box.left >= 0 && box.bottom <= window.innerHeight + 1 && box.right <= window.innerWidth + 1;
+  });
+  expect(inside).toBe(true);
+  await picker.getByRole('button', { name: 'Ondas' }).click();
+  await expect(page.locator('.coluna > .capa .capa__arte use')).toHaveAttribute('href', '#capa-ondas');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('#conexoes .agente--lateral')).toBeVisible();
+  const fits = await page.locator('#conexoes').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(fits).toBe(true);
+  const erase = await page.locator('#agente-apagar').evaluate((button) => {
+    const host = document.querySelector('#conexoes').getBoundingClientRect();
+    const box = button.getBoundingClientRect();
+    return box.right <= host.right + 1 && box.bottom <= host.bottom + 1 && box.width > 0;
+  });
+  expect(erase).toBe(true);
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setContentSize(800, 600));
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('#sofi-gaveta.is-aberta')).toBeVisible();
+  await expect(page.locator('#gaveta-veu')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-sofi-gaveta-800-claro.png') });
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

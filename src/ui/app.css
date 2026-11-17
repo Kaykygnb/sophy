@@ -142,9 +142,7 @@ button.nav__item {
 .cal-dia.is-fora {
   color: var(--ink-3);
 }
-.gaveta-veu {
-  display: none;
-}
+.sofi-gaveta { display: none; }
 @media (max-width: 1024px) {
   .titulo__marca {
     width: auto;
@@ -178,6 +176,20 @@ button.nav__item {
     background: var(--overlay);
     cursor: pointer;
   }
+  .sofi-gaveta.is-aberta {
+    display: block;
+    position: absolute;
+    z-index: 16;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(280px, 100%);
+    box-sizing: border-box;
+    overflow: auto;
+    background: var(--sidebar);
+    border-left: 1px solid var(--line);
+    padding: 12px;
+  }
   #lateral,
   #arvore {
     padding-bottom: calc(var(--statusbar-h) + 16px);
@@ -206,7 +218,25 @@ html.motion-reduce .lateral,
   border-left: 1px solid var(--line);
   background: var(--surface);
   overflow: auto;
+  overflow-x: hidden;
   padding: 16px;
+  box-sizing: border-box;
+}
+#conexoes .agente,
+#conexoes .agente--lateral,
+.sofi-gaveta .agente--lateral {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+#conexoes .inicio__cartoes,
+.sofi-gaveta .inicio__cartoes {
+  width: 100%;
+}
+#agente-apagar,
+#agente-guardar {
+  white-space: normal;
 }
 .status {
   height: var(--statusbar-h);

@@ -413,6 +413,8 @@ function openDrawer(opener) {
 
 function closeDrawer() {
   $('#lateral')?.classList.remove('is-aberta');
+  $('#sofi-gaveta')?.classList.remove('is-aberta');
+  if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.setAttribute('hidden', '');
   const opener = state.drawerOpener || $('#abrir-lateral');
   opener?.focus();
@@ -780,6 +782,21 @@ function openCoverPicker() {
     .join('');
   pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--fantasma" id="fechar-capa" aria-label="Fechar">×</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
   document.body.append(pop);
+  const anchor = $('#trocar-capa')?.getBoundingClientRect();
+  const margin = 8;
+  const width = Math.min(456, window.innerWidth - margin * 2);
+  pop.style.position = 'fixed';
+  pop.style.width = `${width}px`;
+  pop.style.maxHeight = `${window.innerHeight - margin * 2}px`;
+  pop.style.overflow = 'auto';
+  pop.style.zIndex = '40';
+  const box = pop.getBoundingClientRect();
+  let left = anchor ? anchor.left : margin;
+  let top = anchor ? anchor.bottom + margin : margin;
+  left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+  top = Math.max(margin, Math.min(top, window.innerHeight - box.height - margin));
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
   pop.querySelector('#fechar-capa').onclick = () => pop.remove();
   pop.querySelectorAll('[data-filtro-capa]').forEach((button) => {
     button.onclick = () => {
@@ -2477,11 +2494,30 @@ function paintSofi(host) {
   };
   $('#agente-fechar').onclick = () => {
     state.sofiOpen = false;
+    $('#sofi-gaveta')?.classList.remove('is-aberta');
+    if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.setAttribute('hidden', '');
     paintLinks();
   };
 }
 
 function openAgent() {
+  if (drawerNarrow()) {
+    $('#lateral')?.classList.remove('is-aberta');
+    let panel = $('#sofi-gaveta');
+    if (!panel) {
+      panel = document.createElement('aside');
+      panel.id = 'sofi-gaveta';
+      panel.className = 'sofi-gaveta';
+      $('.miolo')?.append(panel);
+    }
+    state.sofiOpen = true;
+    paintSofi(panel);
+    panel.classList.add('is-aberta');
+    $('#gaveta-veu')?.removeAttribute('hidden');
+    state.drawerOpener = $('#abrir-lateral');
+    return;
+  }
+  $('#sofi-gaveta')?.classList.remove('is-aberta');
   state.sofiOpen = true;
   paintSofi($('#conexoes'));
 }
@@ -3679,7 +3715,7 @@ document.addEventListener('keydown', (event) => {
       closePalette();
       return;
     }
-    if (drawerNarrow() && $('#lateral')?.classList.contains('is-aberta')) {
+    if (drawerNarrow() && ($('#lateral')?.classList.contains('is-aberta') || $('#sofi-gaveta')?.classList.contains('is-aberta'))) {
       closeDrawer();
       return;
     }
