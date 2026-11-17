@@ -404,11 +404,24 @@ function paintShell() {
     </header>
     <div class="miolo">
       <aside class="lateral" id="lateral">
+        <div class="lateral__topo">
+          <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">
+            ${icon('biblioteca')}<span class="biblioteca-seletor__nome">${escapeHtml(state.libraryName || 'Biblioteca')}</span>${icon('alternar')}
+          </button>
+        </div>
+        <div class="lateral__acoes">
+          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('novo')} Novo</button>
+        </div>
+        <nav class="lateral__nav" aria-label="Seções">
+          <button type="button" data-nav="inicio">${icon('inicio')} Início</button>
+          <button type="button" data-nav="hoje">${icon('nota-diaria')} Hoje</button>
+          <button type="button" data-nav="tarefas">${icon('lista-tarefas')} Tarefas</button>
+          <button type="button" data-nav="calendario">${icon('calendario')} Calendário</button>
+          <button type="button" data-nav="grafo">${icon('grafo')} Grafo</button>
+          <button type="button" data-nav="canvas">${icon('canvas')} Canvas</button>
+        </nav>
         <div class="lateral__busca"><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
-        <div class="lateral__acoes">
-          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('mais')} Novo</button>
-        </div>
       </aside>
       <main class="centro" id="centro"></main>
       <aside class="conexoes painel" id="conexoes"></aside>
@@ -424,6 +437,10 @@ function paintShell() {
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
+  $('#seletor-biblioteca').onclick = (event) => openLibraryMenu(event.currentTarget);
+  shell.querySelectorAll('[data-nav]').forEach((button) => {
+    button.onclick = () => runCommand(button.dataset.nav === 'inicio' ? 'inicio' : button.dataset.nav);
+  });
   $('#filtro-arvore').oninput = () => paintTree();
   paintTree();
   paintCenter();
@@ -502,8 +519,9 @@ function paintTree() {
   const draft = state.namingShelf
     ? `<li role="treeitem"><div class="arvore__linha">${icon('estante')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
     : '';
-  host.innerHTML = `<div class="lateral__biblioteca"><button type="button" class="lateral__seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">${icon('biblioteca')}<span>${escapeHtml(state.libraryName)}</span><em>Biblioteca</em></button></div>
-    <ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
+  const name = host.parentElement?.querySelector('.biblioteca-seletor__nome');
+  if (name) name.textContent = state.libraryName || 'Biblioteca';
+  host.innerHTML = `<ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
   host.querySelectorAll('[data-open]').forEach((button) => {
     button.draggable = true;
     button.ondragstart = (event) => event.dataTransfer.setData('text/plain', button.dataset.open);
@@ -525,8 +543,6 @@ function paintTree() {
       paintTree();
     };
   });
-  const picker = host.querySelector('#seletor-biblioteca');
-  if (picker) picker.onclick = () => openLibraryMenu(picker);
   bindNameField(
     host.querySelector('#nome-estante'),
     async (name) => {
@@ -625,6 +641,10 @@ function paintTabs() {
 function paintCenter() {
   const center = $('#centro');
   if (!center) return;
+  if (state.view === 'soon') {
+    center.innerHTML = `<div class="vazio-ensina"><h2>${escapeHtml(state.soonTitle || 'Em seguida')}</h2><p>Esta tela entra na próxima etapa. As notas continuam Markdown.</p></div>`;
+    return;
+  }
   if (state.view === 'graph') {
     paintGraph(center);
     return;
@@ -656,7 +676,10 @@ function paintCenter() {
     return;
   }
   if (!state.active || !state.doc) {
-    center.innerHTML = `<div class="vazio"><img alt="" src="ui/assets/ilustracoes/biblioteca-vazia-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" /><h2>Escolha uma nota</h2><p>Ou crie uma pela barra lateral. O arquivo continua Markdown puro.</p></div>`;
+    const emptyLibrary = !state.notes.length;
+    center.innerHTML = emptyLibrary
+      ? `<div class="vazio-ensina"><img alt="" src="ui/assets/ilustracoes/biblioteca-vazia-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" /><h2>Esta biblioteca ainda não tem notas</h2><p>Crie a primeira pelo botão Novo, ou abra uma pasta que já tenha Markdown.</p><div class="vazio-ensina__atalhos"><span><kbd class="kbd">Ctrl N</kbd> nova nota</span><span><kbd class="kbd">Ctrl K</kbd> buscar</span><span><kbd class="kbd">/</kbd> blocos</span></div></div>`
+      : `<div class="vazio-ensina"><h2>Escolha uma nota</h2><p>Ou crie uma com Novo. O arquivo continua Markdown puro.</p></div>`;
     return;
   }
   const conflict = state.conflict
@@ -679,7 +702,12 @@ function paintCenter() {
   $('#coluna')
     .querySelectorAll('[data-mais]')
     .forEach((button) => {
-      button.onclick = () => openSlashAt(Number(button.dataset.mais));
+      button.onclick = () => insertBlockBelow(Number(button.dataset.mais));
+  });
+  $('#coluna')
+    ?.querySelectorAll('[data-menu]')
+    .forEach((button) => {
+      button.onclick = () => openSlashAt(Number(button.dataset.menu));
     });
   $('#coluna')
     .querySelectorAll('[data-target]')
@@ -768,7 +796,8 @@ function renderBlock(block, index) {
   }
   const text = block.raw.replace(/\n$/, '');
     const empty = text.trim() === '';
-    return `<div class="bloco-linha"><button type="button" class="bloco__mais" data-mais="${index}" aria-label="Comandos do bloco">+</button><p class="bloco bloco--texto" data-block="${index}" ${empty ? 'data-dica="1"' : ''} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
+    const hint = empty ? ' data-dica="1" data-placeholder="Digite / para comandos ou [[ para ligar uma nota"' : '';
+    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><p class="bloco bloco--texto" data-block="${index}"${hint} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
 }
 
 function inlineHtml(text) {
@@ -874,6 +903,35 @@ function onBlockKey(event, el) {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'i') {
     event.preventDefault();
     formatBlock(el, '*', '*');
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'x') {
+    event.preventDefault();
+    formatBlock(el, '~~', '~~');
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'h') {
+    event.preventDefault();
+    formatBlock(el, '==', '==');
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'l') {
+    event.preventDefault();
+    formatBlock(el, '[', '](https://)');
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'j') {
+    event.preventDefault();
+    runCommand('sofi');
+    return;
+  }
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    const index = Number(el.dataset.block);
+    const text = readEditable(el).replace(/\n$/, '');
+    state.doc = Doc.withBlockRaw(state.doc, index, `- [ ] ${text}\n`);
+    paintCenter();
+    scheduleSave();
     return;
   }
   if (menu && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter')) {
@@ -1429,6 +1487,7 @@ function openNewMenu(anchor) {
     ['nota', 'nota-nova', 'Nova nota'],
     ['estante', 'pasta-nova', 'Nova estante'],
     ['canvas', 'canvas', 'Novo canvas'],
+    ['modelo', 'modelo', 'A partir de modelo'],
   ]
     .map(
       ([id, glyph, label]) =>
@@ -1439,7 +1498,7 @@ function openNewMenu(anchor) {
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
   menu.style.left = `${rect.left}px`;
-  menu.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
   menu.querySelector('[data-novo="nota"]').onclick = () => {
     closeMenus();
     createNote();
@@ -1452,6 +1511,90 @@ function openNewMenu(anchor) {
     closeMenus();
     createCanvasFile();
   };
+  menu.querySelector('[data-novo="modelo"]').onclick = () => {
+    closeMenus();
+    createFromTemplate();
+  };
+}
+
+function runCommand(id) {
+  const runs = {
+    nota: () => createNote(),
+    estante: () => createWorkspace(),
+    canvas: () => createCanvasFile(),
+    modelo: () => createFromTemplate(),
+    buscar: () => openPalette(),
+    comandos: () => openCommands(),
+    biblioteca: () => {
+      const anchor = document.querySelector('#seletor-biblioteca');
+      if (anchor) openLibraryMenu(anchor);
+    },
+    grafo: () => showGraph(),
+    hoje: () => openDaily(),
+    inicio: () => {
+      state.view = 'empty';
+      state.active = null;
+      state.treeFocus = 'shelf';
+      paintTree();
+      paintCenter();
+      paintTabs();
+    },
+    tarefas: () => {
+      state.view = 'soon';
+      state.soonTitle = 'Tarefas';
+      paintCenter();
+    },
+    calendario: () => {
+      state.view = 'soon';
+      state.soonTitle = 'Calendário';
+      paintCenter();
+    },
+    sofi: () => toast('A Sofi entra com o agente. A chave fica no cofre do sistema, não na biblioteca.'),
+  };
+  runs[id]?.();
+}
+
+async function openDaily() {
+  const now = new Date();
+  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const path = `Diário/${iso}.md`;
+  try {
+    await tool('workspace.create', { name: 'Diário' });
+  } catch {
+    /* a estante já existe */
+  }
+  try {
+    await tool('note.create', { path, body: `# ${iso}\n\n`, frontmatter: { data: iso } });
+  } catch {
+    /* a nota do dia já existe */
+  }
+  await refreshLibrary();
+  await openNote(path);
+}
+
+async function createFromTemplate() {
+  const models = state.notes.filter((note) => note.workspace === 'Modelos');
+  if (!models.length) {
+    toast('Guarde um Markdown em Modelos/. A galeria de modelos entra na etapa seguinte.');
+    return;
+  }
+  const source = await tool('note.read', { path: models[0].path });
+  const name = Cmd.uniqueTitle(state.notes.map((note) => baseName(note.path)), baseName(models[0].path));
+  const path = `Entrada/${name}.md`;
+  await tool('note.create', { path, body: source.body });
+  await refreshLibrary();
+  await openNote(path);
+}
+
+function insertBlockBelow(index) {
+  const blocks = state.doc.blocks.slice();
+  blocks.splice(index + 1, 0, { type: 'blank', raw: '\n' }, { type: 'paragraph', raw: '\n' });
+  state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+  state.caret = { index: index + 2, offset: 0 };
+  paintCenter();
+  const el = document.querySelector(`[data-block="${index + 2}"]`);
+  if (el) showSlash(el, { start: 0, query: '' });
+  scheduleSave();
 }
 
 function openLibraryMenu(anchor) {
@@ -1590,7 +1733,7 @@ function showFormatBar(range) {
   if (!host || !selected) return;
   const index = Number(host.dataset.block);
   const bar = document.createElement('div');
-  bar.className = 'barra-formato';
+  bar.className = 'barra-formatacao barra-formato';
   bar.setAttribute('role', 'toolbar');
   bar.innerHTML = [
     ['Negrito', 'negrito', '**', '**'],
@@ -1602,6 +1745,8 @@ function showFormatBar(range) {
     ['Tarefa', 'tarefa', '- [ ] ', ''],
     ['Citação', 'citacao', '> ', ''],
     ['Código', 'codigo', '`', '`'],
+    ['Riscado', 'tachado', '~~', '~~'],
+    ['Destacar', 'marca-texto', '==', '=='],
   ]
     .map(
       ([label, glyph, prefix, suffix]) =>
@@ -1624,17 +1769,12 @@ function showFormatBar(range) {
 function openCommands() {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  const commands = [
-    ['Nova nota', 'Ctrl+N', () => createNote()],
-    ['Nova estante', '', () => createWorkspace()],
-    ['Novo canvas', '', () => createCanvasFile()],
-    ['Buscar', 'Ctrl+K', () => openPalette()],
-    ['Mostrar grafo', '', () => showGraph()],
+  const commands = Cmd.COMMANDS.map((item) => [item.rotulo, item.atalho, () => runCommand(item.id)]).concat([
     ['Alternar tema', '', () => toggleTheme()],
     ['Nova biblioteca', '', () => chooseLibrary(true)],
     ['Abrir biblioteca', '', () => chooseLibrary(false)],
     ['Remover biblioteca da lista', '', () => forgetLibrary()],
-  ];
+  ]);
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Comandos">
     <div class="paleta__busca">${icon('busca')}<input id="comando-q" placeholder="Comandos" aria-label="Comandos" /></div>
     <div class="paleta__lista" id="comando-lista"></div>
@@ -2124,6 +2264,21 @@ document.addEventListener('mousedown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeMenus();
+  if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'd') {
+    event.preventDefault();
+    runCommand('hoje');
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n') {
+    event.preventDefault();
+    runCommand('estante');
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'o') {
+    event.preventDefault();
+    runCommand('biblioteca');
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
     event.preventDefault();
     openCommands();

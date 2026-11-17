@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld(
     createLibrary: (folder) => ipcRenderer.invoke('sophy:create-library', folder),
     switchLibrary: (folder) => ipcRenderer.invoke('sophy:switch-library', folder),
     forgetLibrary: (folder) => ipcRenderer.invoke('sophy:forget-library', folder),
+    libraryList: () => ipcRenderer.invoke('sophy:library-list'),
+    libraryPick: () => ipcRenderer.invoke('sophy:library-pick'),
+    libraryReveal: (folder) => ipcRenderer.invoke('sophy:library-reveal', folder),
     saveSettings: (patch) => ipcRenderer.invoke('sophy:settings', patch),
     window: (action) => ipcRenderer.invoke('sophy:window', action),
     onCommand: (listener) => {

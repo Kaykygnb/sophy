@@ -36,6 +36,18 @@ test('a prévia do cartão não mostra o Markdown cru da tarefa', () => {
   assert.equal(html.includes('⏫'), false);
 });
 
+test('o registro de comandos tem os atalhos da descoberta', () => {
+  const byId = Object.fromEntries(commands.COMMANDS.map((item) => [item.id, item.atalho]));
+  assert.equal(byId.estante, 'Ctrl+Shift+N');
+  assert.equal(byId.biblioteca, 'Ctrl+Shift+O');
+  assert.equal(byId.riscado, 'Ctrl+Shift+X');
+  assert.equal(byId.destacar, 'Ctrl+Shift+H');
+  assert.equal(byId.link, 'Ctrl+L');
+  assert.equal(byId.tarefa, 'Ctrl+Enter');
+  assert.equal(byId.hoje, 'Alt+D');
+  assert.equal(byId.sofi, 'Ctrl+J');
+});
+
 test('a árvore marca só o item ativo', () => {
   const both = { active: 'Estudos/Leitura.md', selectedShelf: 'Estudos', canvasPath: null };
   assert.equal(commands.treeMarked('note', 'Estudos/Leitura.md', both), true);
