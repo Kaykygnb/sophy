@@ -398,16 +398,37 @@ async function finishOnboarding() {
   await showShell();
 }
 
-function toggleSidebar() {
+function drawerNarrow() {
+  return window.innerWidth < 1024;
+}
+
+function openDrawer(opener) {
   const lateral = $('#lateral');
   if (!lateral) return;
-  if (window.innerWidth <= 900) {
-    lateral.classList.remove('is-fechada');
-    lateral.classList.toggle('is-aberta');
-  } else {
-    lateral.classList.remove('is-aberta');
-    lateral.classList.toggle('is-fechada');
+  state.drawerOpener = opener || $('#abrir-lateral');
+  lateral.classList.remove('is-fechada');
+  lateral.classList.add('is-aberta');
+  $('#gaveta-veu')?.removeAttribute('hidden');
+}
+
+function closeDrawer() {
+  $('#lateral')?.classList.remove('is-aberta');
+  $('#gaveta-veu')?.setAttribute('hidden', '');
+  const opener = state.drawerOpener || $('#abrir-lateral');
+  opener?.focus();
+}
+
+function toggleSidebar(opener) {
+  const lateral = $('#lateral');
+  if (!lateral) return;
+  if (drawerNarrow()) {
+    if (lateral.classList.contains('is-aberta')) closeDrawer();
+    else openDrawer(opener || $('#abrir-lateral'));
+    return;
   }
+  lateral.classList.remove('is-aberta');
+  $('#gaveta-veu')?.setAttribute('hidden', '');
+  lateral.classList.toggle('is-fechada');
 }
 
 function paintShell() {
@@ -427,6 +448,7 @@ function paintShell() {
       </div>
     </header>
     <div class="miolo">
+      <button type="button" class="gaveta-veu" id="gaveta-veu" hidden aria-label="Fechar a gaveta"></button>
       <aside class="lateral" id="lateral">
         <div class="lateral__topo">
           <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">
@@ -471,8 +493,9 @@ function paintShell() {
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
   $('#seletor-biblioteca').onclick = (event) => openLibraryMenu(event.currentTarget);
-  $('#recolher').onclick = () => toggleSidebar();
-  $('#abrir-lateral').onclick = () => toggleSidebar();
+  $('#recolher').onclick = (event) => toggleSidebar(event.currentTarget);
+  $('#abrir-lateral').onclick = (event) => toggleSidebar(event.currentTarget);
+  $('#gaveta-veu').onclick = () => closeDrawer();
   $('#filtrar').onclick = () => {
     const box = shell.querySelector('.lateral__busca');
     box.hidden = !box.hidden;
@@ -3495,7 +3518,15 @@ document.addEventListener('mousedown', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeMenus();
-    closePalette();
+    const overlay = $('#overlay');
+    if (overlay && !overlay.hidden) {
+      closePalette();
+      return;
+    }
+    if (drawerNarrow() && $('#lateral')?.classList.contains('is-aberta')) {
+      closeDrawer();
+      return;
+    }
   }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Space') {
     event.preventDefault();

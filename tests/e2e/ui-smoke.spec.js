@@ -395,6 +395,71 @@ test('rodada 2: gaveta, quadro, semana, cartão e canvas', async () => {
   await app.close();
 });
 
+test('gaveta abaixo de 1024 px com véu, Esc e deslize', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setContentSize(1000, 700));
+  await expect.poll(() => page.locator('#lateral').evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  const motion = await page.locator('#lateral').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { duration: style.transitionDuration, timing: style.transitionTimingFunction };
+  });
+  expect(motion.duration).toBe('0.2s');
+  expect(motion.timing === 'ease-out' || motion.timing.includes('cubic-bezier')).toBe(true);
+  await page.locator('#abrir-lateral').click();
+  await expect(page.locator('#lateral')).toHaveClass(/is-aberta/);
+  await expect(page.locator('#gaveta-veu')).toBeVisible();
+  const veilMatches = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--overlay)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(document.querySelector('#gaveta-veu')).backgroundColor === expected;
+  });
+  expect(veilMatches).toBe(true);
+  await page.screenshot({ path: path.join(artifacts, 'ui-gaveta-1000-claro.png') });
+  const box = await page.locator('#gaveta-veu').boundingBox();
+  await page.mouse.click(box.x + box.width - 24, box.y + 80);
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  await expect(page.locator('#gaveta-veu')).toBeHidden();
+  await expect(page.locator('#abrir-lateral')).toBeFocused();
+  await page.locator('#abrir-lateral').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  await expect(page.locator('#abrir-lateral')).toBeFocused();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => page.locator('#lateral').evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
+  await windowHandle.evaluate((win) => win.setContentSize(800, 600));
+  await page.locator('#abrir-lateral').click();
+  await page.screenshot({ path: path.join(artifacts, 'ui-gaveta-800-claro.png') });
+  await app.close();
+
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  const darkWindow = await dark.browserWindow(darkPage);
+  await darkWindow.evaluate((win) => win.setContentSize(1000, 700));
+  await darkPage.locator('#abrir-lateral').click();
+  await expect(darkPage.locator('#gaveta-veu')).toBeVisible();
+  const darkVeilMatches = await darkPage.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--overlay)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(document.querySelector('#gaveta-veu')).backgroundColor === expected;
+  });
+  expect(darkVeilMatches).toBe(true);
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-gaveta-1000-escuro.png') });
+  await darkWindow.evaluate((win) => win.setContentSize(800, 600));
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-gaveta-800-escuro.png') });
+  await dark.close();
+});
+
 test('Configurações e Início', async () => {
   test.setTimeout(60000);
   const root = library();

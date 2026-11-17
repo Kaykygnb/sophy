@@ -142,7 +142,10 @@ button.nav__item {
 .cal-dia.is-fora {
   color: var(--ink-3);
 }
-@media (max-width: 900px) {
+.gaveta-veu {
+  display: none;
+}
+@media (max-width: 1023px) {
   .titulo__marca {
     width: auto;
     max-width: 128px;
@@ -155,18 +158,32 @@ button.nav__item {
   }
   .lateral {
     position: absolute;
-    z-index: 20;
+    z-index: 30;
     top: 0;
     bottom: 0;
     transform: translateX(-105%);
+    transition: transform 200ms ease-out;
   }
   .lateral.is-aberta {
     transform: none;
+  }
+  .gaveta-veu:not([hidden]) {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    border: 0;
+    padding: 0;
+    background: var(--overlay);
+    cursor: pointer;
   }
   #lateral,
   #arvore {
     padding-bottom: calc(var(--statusbar-h) + 16px);
   }
+}
+html.motion-reduce .lateral {
+  transition: none;
 }
 .lateral.is-fechada {
   display: none;
@@ -1067,5 +1084,8 @@ button.arvore__linha[aria-selected='true'] {
 @media (prefers-reduced-motion: reduce) {
   .sofi img {
     animation: none;
+  }
+  .lateral {
+    transition: none;
   }
 }
