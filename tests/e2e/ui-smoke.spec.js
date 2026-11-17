@@ -322,6 +322,104 @@ test('Canvas da navegação lista sem criar e a busca não duplica', async () =>
   await app.close();
 });
 
+test('rodada 2: gaveta, quadro, semana, cartão e canvas', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setSize(800, 600));
+  await expect.poll(() => page.locator('#lateral').evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  await page.locator('#abrir-lateral').click();
+  await expect(page.locator('#lateral')).toHaveClass(/is-aberta/);
+  await page.screenshot({ path: path.join(artifacts, 'ui-gaveta-800.png') });
+  await page.locator('#recolher').click();
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-fechada/);
+  await page.locator('#abrir-lateral').click();
+  await page.keyboard.press('Control+\\');
+  await expect(page.locator('#lateral')).not.toHaveClass(/is-aberta/);
+  const pad = await page.locator('.centro').evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom));
+  expect(pad).toBeGreaterThan(0);
+  const gap = await page.evaluate(() => {
+    const tabs = document.querySelector('.titulo__abas').getBoundingClientRect();
+    const minimize = document.querySelector('[data-window="minimize"]').getBoundingClientRect();
+    return minimize.left - tabs.right;
+  });
+  expect(gap).toBeGreaterThanOrEqual(0);
+  await windowHandle.evaluate((win) => win.setSize(1440, 900));
+  await page.locator('[data-nav="tarefas"]').click();
+  const card = page.locator('.kcard', { hasText: 'revisar o capítulo' });
+  await expect(card).toBeVisible();
+  const chips = await card.locator('.kcard__meta .chip').allTextContents();
+  expect(chips.map((chip) => chip.trim())).toEqual(['Alta', '20 nov', 'Estudos']);
+  await expect(card.locator('.tarefa__origem')).toHaveCount(0);
+  await expect(card.locator('.chip', { hasText: 'Status' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Quadro' }).click();
+  const board = page.locator('.quadro');
+  await expect(board).toBeVisible();
+  const grid = await board.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { display: style.display, columns: style.gridTemplateColumns, overflowX: style.overflowX };
+  });
+  expect(grid.display).toBe('grid');
+  expect(grid.overflowX).toBe('auto');
+  expect(grid.columns.split(' ').length).toBe(3);
+  await page.screenshot({ path: path.join(artifacts, 'ui-tarefas-quadro-claro.png') });
+
+  await page.locator('[data-nav="calendario"]').click();
+  await page.getByRole('button', { name: 'Próximo mês' }).click();
+  await page.getByRole('button', { name: 'Semana' }).click();
+  await expect(page.locator('.cal-dia.is-hoje')).toBeVisible();
+  await expect(page.locator('.cal-dia strong')).toHaveText(['16', '17', '18', '19', '20', '21', '22']);
+  await page.getByRole('button', { name: 'Próxima semana' }).click();
+  await expect(page.locator('.cal-dia strong')).toHaveText(['23', '24', '25', '26', '27', '28', '29']);
+  await expect(page.locator('.cal-dia.is-hoje')).toHaveCount(0);
+  await page.screenshot({ path: path.join(artifacts, 'ui-calendario-semana-claro.png') });
+
+  const before = fs.readdirSync(path.join(root, 'Estudos')).filter((name) => name.endsWith('.canvas'));
+  await page.locator('[data-nav="canvas"]').click();
+  await expect(page.locator('.canvas-cartao', { hasText: 'Mapa' })).toBeVisible();
+  await expect(page.locator('.canvas-cartao', { hasText: 'Estudos' })).toBeVisible();
+  await expect(page.locator('.canvas-cartao__previa')).toContainText('leitura');
+  await expect(page.locator('.menu__item', { hasText: 'Estudos/Mapa.canvas' })).toHaveCount(0);
+  await page.screenshot({ path: path.join(artifacts, 'ui-canvas-grade-claro.png') });
+  expect(fs.readdirSync(path.join(root, 'Estudos')).filter((name) => name.endsWith('.canvas'))).toEqual(before);
+  await page.keyboard.press('Control+Shift+P');
+  await page.locator('#comando-q').fill('Novo canvas');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Novo canvas' }).click();
+  await expect.poll(() => fs.readdirSync(path.join(root, 'Estudos')).filter((name) => name.endsWith('.canvas')).length).toBe(before.length + 1);
+  await app.close();
+});
+
+test('Configurações e Início', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('[data-nav="inicio"]').click();
+  await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+  await expect(page.locator('.cartao-estante', { hasText: 'Estudos' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-inicio-claro.png') });
+  await page.keyboard.press('Control+Comma');
+  await expect(page.getByRole('heading', { name: 'Configurações' })).toBeVisible();
+  await page.getByRole('button', { name: 'Azul' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-accent', 'azul');
+  await page.screenshot({ path: path.join(artifacts, 'ui-config-claro.png') });
+  await app.close();
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  await darkPage.locator('[data-nav="inicio"]').click();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-inicio-escuro.png') });
+  await darkPage.keyboard.press('Control+Comma');
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-config-escuro.png') });
+  await dark.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

@@ -203,9 +203,11 @@ function setupIpc() {
   handle('sophy:settings', (_event, patch) => {
     if (!patch || typeof patch !== 'object') throw new Error('Configuração inválida.');
     const allowed = {};
-    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion', 'libraries']) {
+    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion', 'libraries', 'accent']) {
       if (key in patch) allowed[key] = patch[key];
     }
+    if ('accent' in allowed && !['indigo', 'azul', 'verde-agua', 'musgo', 'ambar', 'vinho', 'grafite'].includes(allowed.accent))
+      throw new Error('Cor de destaque inválida.');
     if ('theme' in allowed && !['light', 'dark', 'system'].includes(allowed.theme))
       throw new Error('Tema inválido.');
     if ('readingFont' in allowed && !['inter', 'literata'].includes(allowed.readingFont))
