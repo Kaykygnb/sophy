@@ -60,6 +60,24 @@ async function launch(args) {
   });
 }
 
+test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  await page.locator('#nova-nota').click();
+  await expect(page.locator('.bloco--titulo')).toHaveText('Sem título');
+  expect(fs.existsSync(path.join(root, 'Entrada', 'Sem título.md'))).toBe(true);
+  await page.locator('#nova-estante').click();
+  const name = page.locator('#nome-estante');
+  await name.fill('Viagem');
+  await name.press('Enter');
+  await expect(page.locator('[data-shelf="Viagem"]')).toBeVisible();
+  expect(fs.existsSync(path.join(root, 'Viagem'))).toBe(true);
+  expect(fs.statSync(path.join(root, 'Viagem')).isDirectory()).toBe(true);
+  await app.close();
+});
+
 test('a janela abre a biblioteca e mostra a nota', async () => {
   test.setTimeout(90000);
   fs.mkdirSync(artifacts, { recursive: true });

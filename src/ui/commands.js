@@ -170,6 +170,14 @@
     return 'tarefa';
   }
 
+  function uniqueTitle(existing, base = 'Sem título') {
+    const names = new Set(existing);
+    if (!names.has(base)) return base;
+    let index = 2;
+    while (names.has(`${base} ${index}`)) index += 1;
+    return `${base} ${index}`;
+  }
+
   function noteIndent(path) {
     const depth = String(path || '')
       .split('/')
@@ -299,6 +307,7 @@
     kitTaskStatus,
     taskBlockClass,
     noteIndent,
+    uniqueTitle,
     filterSlash,
     CONFLICT,
   };

@@ -14,6 +14,12 @@ test('o status da tarefa vira a classe do kit, sem ícone extra', () => {
   assert.equal(commands.taskBlockClass('x').includes('i-tarefa'), false);
 });
 
+test('Sem título ganha um número quando o nome já existe', () => {
+  assert.equal(commands.uniqueTitle([]), 'Sem título');
+  assert.equal(commands.uniqueTitle(['Sem título']), 'Sem título 2');
+  assert.equal(commands.uniqueTitle(['Sem título', 'Sem título 2']), 'Sem título 3');
+});
+
 test('a estante conhecida tem ícone fixo e a nota fica no nível 2', () => {
   assert.equal(commands.shelfMark('Estudos').icon, 'capelo');
   assert.equal(commands.shelfMark('Diário').icon, 'nota-diaria');

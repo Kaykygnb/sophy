@@ -23,6 +23,10 @@ const state = {
   folderMode: 'criar',
   folder: '',
   libraryNameInput: 'Biblioteca',
+  selectedShelf: null,
+  namingShelf: false,
+  renaming: null,
+  selectTitle: false,
 };
 
 const slash = Cmd.createSlashSession();
@@ -451,15 +455,21 @@ function paintTree() {
         return '';
       const color = mark.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
       const children = notes
-        .map(
-          (
-            note,
-          ) => `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${note.path === state.active}">
-            ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
-        )
+        .map((note) => {
+          const label =
+            state.renaming?.kind === 'note' && state.renaming.path === note.path
+              ? `<input class="arvore__renomear" data-rename="note" value="${escapeHtml(baseName(note.path))}" aria-label="Nome da nota" />`
+              : `<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span>`;
+          return `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${note.path === state.active}">
+            ${icon('nota')}${label}</button></li>`;
+        })
         .join('');
-      return `<li role="treeitem"><button type="button" class="arvore__linha" aria-expanded="true"${color}>
-          ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}<span class="arvore__nome">${escapeHtml(workspace.name)}</span>
+      const shelfLabel =
+        state.renaming?.kind === 'shelf' && state.renaming.name === workspace.name
+          ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
+          : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
+      return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${workspace.name === state.selectedShelf}" aria-expanded="true"${color}>
+          ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length}</span></button><ul role="group">${children}</ul></li>`;
     })
     .join('');
@@ -472,11 +482,100 @@ function paintTree() {
         ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
     )
     .join('');
+  const draft = state.namingShelf
+    ? `<li role="treeitem"><div class="arvore__linha">${icon('estante')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
+    : '';
   host.innerHTML = `<div class="lateral__biblioteca">${icon('biblioteca')}<span>${escapeHtml(state.libraryName)}</span><em>Biblioteca</em></div>
-    <ul class="arvore" role="tree">${shelves}${loose}</ul>`;
+    <ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
   host.querySelectorAll('[data-open]').forEach((button) => {
-    button.onclick = () => openNote(button.dataset.open);
+    button.onclick = () => {
+      state.selectedShelf = button.dataset.open.includes('/')
+        ? button.dataset.open.split('/')[0]
+        : null;
+      openNote(button.dataset.open);
+    };
   });
+  host.querySelectorAll('[data-shelf]').forEach((button) => {
+    button.onclick = (event) => {
+      if (event.target.closest('input')) return;
+      state.selectedShelf = button.dataset.shelf;
+      paintTree();
+    };
+  });
+  bindNameField(
+    host.querySelector('#nome-estante'),
+    async (name) => {
+      await tool('workspace.create', { name });
+      state.namingShelf = false;
+      state.selectedShelf = name;
+      await refreshLibrary();
+      paintTree();
+    },
+    () => {
+      state.namingShelf = false;
+      paintTree();
+    },
+  );
+  const noteRename = host.querySelector('[data-rename="note"]');
+  if (noteRename) {
+    bindNameField(
+      noteRename,
+      async (name) => {
+        const from = state.renaming.path;
+        const folder = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : '';
+        state.renaming = null;
+        const to = `${folder}${name}.md`;
+        if (to !== from) await tool('entry.move', { from, to });
+        await refreshLibrary();
+        await openNote(to);
+      },
+      () => {
+        state.renaming = null;
+        paintTree();
+      },
+    );
+  }
+  const rename = host.querySelector('[data-rename="shelf"]');
+  if (rename) {
+    bindNameField(
+      rename,
+      async (name) => {
+        const from = state.renaming.name;
+        state.renaming = null;
+        if (name !== from) await tool('entry.move', { from, to: name });
+        state.selectedShelf = name;
+        await refreshLibrary();
+        paintTree();
+      },
+      () => {
+        state.renaming = null;
+        paintTree();
+      },
+    );
+  }
+}
+
+function bindNameField(input, confirm, cancel) {
+  if (!input) return;
+  input.focus();
+  input.select();
+  input.onclick = (event) => event.stopPropagation();
+  input.onkeydown = async (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancel();
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const name = input.value.trim();
+      if (!name) return;
+      try {
+        await confirm(name);
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
+    }
+  };
 }
 
 function paintTabs() {
@@ -542,6 +641,18 @@ function paintCenter() {
     .forEach((button) => {
       button.onclick = () => cycleTask(Number(button.dataset.task));
     });
+  if (state.selectTitle) {
+    state.selectTitle = false;
+    const title = $('#coluna .bloco--titulo');
+    if (title) {
+      title.focus();
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
 }
 
 function renderBlock(block, index) {
@@ -1029,12 +1140,19 @@ function paintStatus() {
 }
 
 async function createNote() {
-  const name = window.prompt('Nome da nota');
-  if (!name) return;
-  const shelf = state.workspaces[0]?.name;
-  const path = `${shelf ? shelf + '/' : ''}${name.replace(/\.md$/i, '')}.md`;
+  const shelf =
+    state.selectedShelf ||
+    (state.active && state.active.includes('/') ? state.active.split('/')[0] : null) ||
+    'Entrada';
+  const taken = state.notes
+    .filter((note) => note.workspace === shelf)
+    .map((note) => baseName(note.path));
+  const name = Cmd.uniqueTitle(taken);
+  const path = `${shelf}/${name}.md`;
   try {
-    await tool('note.create', { path, body: '' });
+    await tool('note.create', { path, body: `# ${name}\n` });
+    state.selectedShelf = shelf;
+    state.selectTitle = true;
     await refreshLibrary();
     await openNote(path);
   } catch (error) {
@@ -1063,15 +1181,17 @@ async function createFromWiki(el, found, title) {
   }
 }
 
-async function createWorkspace() {
-  const name = window.prompt('Nome da estante');
-  if (!name) return;
-  try {
-    await tool('workspace.create', { name });
-    await refreshLibrary();
+function createWorkspace() {
+  state.namingShelf = true;
+  state.renaming = null;
+  paintTree();
+}
+
+function renameSelection() {
+  if (state.selectedShelf) {
+    state.renaming = { kind: 'shelf', name: state.selectedShelf };
+    state.namingShelf = false;
     paintTree();
-  } catch (error) {
-    toast(error.message, 'erro');
   }
 }
 
@@ -1461,6 +1581,14 @@ document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
     event.preventDefault();
     createNote();
+  }
+  if (event.key === 'F2' && !event.target.closest('[contenteditable="true"], input, textarea')) {
+    event.preventDefault();
+    if (state.active) state.renaming = { kind: 'note', path: state.active };
+    else if (state.selectedShelf) state.renaming = { kind: 'shelf', name: state.selectedShelf };
+    else return;
+    state.namingShelf = false;
+    paintTree();
   }
 });
 
