@@ -23,6 +23,9 @@
     'canvas.edge.remove',
     'task.update',
     'shelf.style.set',
+    'mention.link',
+    'vault.import',
+    'view.save',
   ]);
 
   function slashQuery(text, cursor) {
@@ -320,6 +323,12 @@
     { id: 'biblioteca', rotulo: 'Trocar biblioteca', grupo: 'Navegar', icone: 'alternar', atalho: 'Ctrl+Shift+O', quando: 'sempre' },
     { id: 'grafo', rotulo: 'Mostrar grafo', grupo: 'Navegar', icone: 'grafo', atalho: '', quando: 'biblioteca' },
     { id: 'hoje', rotulo: 'Nota do dia', grupo: 'Navegar', icone: 'nota-diaria', atalho: 'Alt+D', quando: 'biblioteca' },
+    { id: 'captura', rotulo: 'Captura rápida', grupo: 'Criar', icone: 'caixa-entrada', atalho: 'Ctrl+Shift+Espaço', quando: 'biblioteca' },
+    { id: 'visoes', rotulo: 'Visões salvas', grupo: 'Navegar', icone: 'lista', atalho: '', quando: 'biblioteca' },
+    { id: 'mencoes', rotulo: 'Menções sem link', grupo: 'Editar', icone: 'link', atalho: '', quando: 'biblioteca' },
+    { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
+    { id: 'leitura', rotulo: 'Modo leitura', grupo: 'Editar', icone: 'leitura', atalho: '', quando: 'editor' },
+    { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
     { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'tachado', atalho: 'Ctrl+Shift+X', quando: 'editor' },

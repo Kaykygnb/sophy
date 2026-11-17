@@ -744,6 +744,17 @@ button.arvore__linha[aria-selected='true'] {
   border-radius: 99px;
   padding: 0 6px;
 }
+.canvas-area.tem-capa {
+  background: linear-gradient(145deg, var(--cover-bg), var(--cover-3) 60%, var(--cover-4));
+}
+.semana-diaria { display: flex; gap: 6px; margin-bottom: 12px; }
+.semana-diaria__dia { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; min-width: 44px; cursor: pointer; }
+.semana-diaria__dia.is-hoje { border-color: var(--accent); }
+.is-foco .lateral, .is-foco #conexoes { display: none; }
+.is-leitura [data-block] { cursor: default; }
+.grafo__quadros { display: grid; grid-template-columns: repeat(3, minmax(80px, 1fr)); gap: 8px; }
+.visao-tabela { width: 100%; border-collapse: collapse; }
+.visao-lista { display: grid; gap: 6px; }
 .capa {
   height: 140px;
   border-radius: 16px;

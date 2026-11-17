@@ -420,6 +420,48 @@ test('Configurações e Início', async () => {
   await dark.close();
 });
 
+test('nota do dia, captura, leitura e grafo no tempo', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  fs.mkdirSync(path.join(root, 'Modelos'));
+  fs.writeFileSync(path.join(root, 'Modelos', 'Reuniao.md'), '# {{titulo}}\n\n{{data}} {{hora}}\n{{cursor}}\n', 'utf8');
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await expect(page.getByRole('button', { name: 'Hoje' })).toBeVisible();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', altKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.semana-diaria')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-diario-claro.png') });
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'Space', key: ' ', ctrlKey: true, shiftKey: true, bubbles: true }),
+    ),
+  );
+  await page.locator('#captura').fill('Ideia solta');
+  await page.locator('#captura').press('Enter');
+  await expect.poll(() => fs.readdirSync(path.join(root, 'Entrada')).some((name) => name.includes('Ideia solta'))).toBe(true);
+  await page.locator('#modo-leitura').click();
+  await expect(page.locator('#coluna')).toHaveClass(/is-leitura/);
+  await page.locator('#modo-foco').click();
+  await expect(page.locator('#shell')).toHaveClass(/is-foco/);
+  await page.screenshot({ path: path.join(artifacts, 'ui-foco-claro.png') });
+  await page.locator('#modo-foco').click();
+  await page.locator('[data-nav="grafo"]').click();
+  await expect(page.locator('#grafo-tempo')).toBeVisible();
+  await expect(page.locator('#grafo-quadros')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-grafo-tempo-claro.png') });
+  await page.locator('#novo').click();
+  await page.getByRole('menuitem', { name: 'A partir de modelo' }).click();
+  await page.getByRole('dialog', { name: 'Modelos' }).getByRole('button', { name: 'Reuniao' }).click();
+  await expect.poll(() => {
+    const file = fs.readdirSync(path.join(root, 'Entrada')).find((name) => name.includes('Sem título'));
+    return file ? fs.readFileSync(path.join(root, 'Entrada', file), 'utf8') : '';
+  }).not.toContain('{{');
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

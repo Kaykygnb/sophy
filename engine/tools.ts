@@ -13,6 +13,7 @@ import {
 } from './canvas.ts';
 import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
+import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
 import { readShelfStyles, writeShelfStyle } from './shelves.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
@@ -271,6 +272,51 @@ export const tools = [
     ({ libraryPath: folder, name, color, icon, origin: source }) =>
       tracked(folder, source, 'shelf.style.set', `Estilo ${name}`, (library) =>
         writeShelfStyle(library, name, { color, icon }),
+      ),
+  ),
+  define(
+    'mention.unlinked',
+    'Lista títulos de notas que aparecem em texto puro, fora de wikilink, cerca e código.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => unlinkedMentions(openLibrary(folder)),
+  ),
+  define(
+    'mention.link',
+    'Troca as menções sem link de um título por [[título]]. Acima de dez, a interface pede confirmação antes de chamar.',
+    z.object({ libraryPath, title: z.string().min(3), origin }),
+    ({ libraryPath: folder, title, origin: source }) =>
+      tracked(folder, source, 'mention.link', `Ligar ${title}`, (library) => linkMentions(library, title)),
+  ),
+  define(
+    'vault.import',
+    'Copia Markdown e canvas de uma pasta Obsidian para uma estante. Não escreve na origem e ignora pastas ocultas.',
+    z.object({ libraryPath, sourcePath: z.string().min(1), shelf: z.string().min(1), origin }),
+    ({ libraryPath: folder, sourcePath, shelf, origin: source }) =>
+      tracked(folder, source, 'vault.import', `Importar ${shelf}`, (library) =>
+        importVault(library, sourcePath, shelf),
+      ),
+  ),
+  define(
+    'view.list',
+    'Lista as visões salvas em arquivos .view.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listViews(openLibrary(folder)),
+  ),
+  define(
+    'view.save',
+    'Grava uma visão lista, quadro ou tabela num arquivo .view.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      nome: z.string().min(1),
+      modo: z.enum(['lista', 'quadro', 'tabela']),
+      estante: z.string().optional(),
+      tag: z.string().optional(),
+      origin,
+    }),
+    ({ libraryPath: folder, path, nome, modo, estante, tag, origin: source }) =>
+      tracked(folder, source, 'view.save', `Visão ${nome}`, (library) =>
+        saveView(library, path, { nome, modo, estante, tag }),
       ),
   ),
   define(
