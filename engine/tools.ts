@@ -13,6 +13,7 @@ import {
 } from './canvas.ts';
 import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
+import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
 import { backlinks, brokenLinks, outgoingLinks, relocate, watchLibrary } from './links.ts';
 import {
@@ -249,6 +250,46 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'task.query',
+    'Lista as tarefas de todas as notas, com filtro de status, prazo, prioridade e estante.',
+    z.object({
+      libraryPath,
+      status: z.enum(['aberta', 'andamento', 'feita', 'cancelada']).optional(),
+      priority: z.enum(['alta', 'media', 'baixa']).optional(),
+      workspace: z.string().min(1).optional(),
+      due: z.enum(['atrasada', 'hoje', 'semana', 'sem']).optional(),
+      today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }),
+    ({ libraryPath: folder, ...query }) => listTasks(openLibrary(folder), query),
+  ),
+  define(
+    'task.update',
+    'Muda o status ou o prazo de uma tarefa na linha do Markdown. Exige a revisão da nota.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      line: z.number().int().positive(),
+      status: z.enum(['aberta', 'andamento', 'feita', 'cancelada']).optional(),
+      due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      expectedRevision: z.string().length(64),
+      origin,
+    }),
+    ({ libraryPath: folder, path, line, status, due, expectedRevision, origin: source }) =>
+      tracked(folder, source, 'task.update', `Tarefa ${path}:${line}`, (library) =>
+        updateTask(library, path, line, { status: status as TaskStatus | undefined, due }, expectedRevision),
+      ),
+  ),
+  define(
+    'calendar.query',
+    'Lista notas datadas, prazos e datas do frontmatter entre dois dias.',
+    z.object({
+      libraryPath,
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }),
+    ({ libraryPath: folder, from, to }) => queryCalendar(openLibrary(folder), from, to),
   ),
   define(
     'canvas.read',
