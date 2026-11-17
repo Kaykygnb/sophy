@@ -17,6 +17,7 @@ import {
   type Library,
 } from './library.ts';
 import { searchLibrary } from './search.ts';
+import { requestUi } from './ui-bridge.ts';
 
 const libraryPath = z.string().min(1);
 const relativePath = z.string().min(1);
@@ -207,6 +208,39 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'ui.openNote',
+    'Pede à interface aberta para mostrar uma nota. Não lê segredos nem altera o arquivo.',
+    z.object({ libraryPath, path: relativePath }),
+    ({ libraryPath: folder, path }) => {
+      openLibrary(folder);
+      return requestUi({ type: 'openNote', libraryPath: folder, path });
+    },
+  ),
+  define(
+    'ui.openCanvas',
+    'Pede à interface aberta para mostrar um canvas .canvas.',
+    z.object({ libraryPath, path: relativePath }),
+    ({ libraryPath: folder, path }) => {
+      openLibrary(folder);
+      return requestUi({ type: 'openCanvas', libraryPath: folder, path });
+    },
+  ),
+  define(
+    'ui.showGraph',
+    'Pede à interface aberta para mostrar o grafo.',
+    z.object({ libraryPath, workspace: z.string().min(1).optional() }),
+    ({ libraryPath: folder, workspace }) => {
+      openLibrary(folder);
+      return requestUi({ type: 'showGraph', libraryPath: folder, workspace });
+    },
+  ),
+  define(
+    'ui.setTheme',
+    'Pede à interface aberta para usar o tema claro ou escuro.',
+    z.object({ theme: z.enum(['light', 'dark']) }),
+    ({ theme }) => requestUi({ type: 'setTheme', theme }),
   ),
 ] as const;
 
