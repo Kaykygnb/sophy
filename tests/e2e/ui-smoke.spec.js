@@ -719,6 +719,77 @@ test('rodada 4: capa da estante, semana, prévia e restaurar', async () => {
   await app.close();
 });
 
+test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.sofi-lista')).toBeVisible();
+  await expect(page.locator('.agente--lateral img')).toBeVisible();
+  await expect(page.locator('.chip', { hasText: 'cofre' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-sofi-painel-claro.png') });
+  await page.locator('#seletor-biblioteca').click();
+  await page.getByRole('menuitem', { name: 'Nova biblioteca…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Nova biblioteca' })).toBeVisible();
+  await expect(page.locator('#biblioteca-nome')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-nav="calendario"]').click();
+  await page.locator('.cal-dia.is-hoje').click();
+  await expect(page.locator('.painel-dia')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-painel-dia-claro.png') });
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#abrir-revisao').click();
+  await expect(page.locator('.revisao-cartao')).toBeVisible();
+  await app.close();
+});
+
+test('seletor de capa dentro da janela e a Sofi cabe na coluna', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.locator('#arvore').getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.getByRole('button', { name: 'Trocar capa' }).click();
+  const picker = page.getByRole('dialog', { name: 'Capa da nota' });
+  await expect(picker).toBeVisible();
+  const inside = await picker.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return box.top >= 0 && box.left >= 0 && box.bottom <= window.innerHeight + 1 && box.right <= window.innerWidth + 1;
+  });
+  expect(inside).toBe(true);
+  await picker.getByRole('button', { name: 'Ondas' }).click();
+  await expect(page.locator('.coluna > .capa .capa__arte use')).toHaveAttribute('href', '#capa-ondas');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('#conexoes .agente--lateral')).toBeVisible();
+  const fits = await page.locator('#conexoes').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(fits).toBe(true);
+  const erase = await page.locator('#agente-apagar').evaluate((button) => {
+    const host = document.querySelector('#conexoes').getBoundingClientRect();
+    const box = button.getBoundingClientRect();
+    return box.right <= host.right + 1 && box.bottom <= host.bottom + 1 && box.width > 0;
+  });
+  expect(erase).toBe(true);
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setContentSize(800, 600));
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('#sofi-gaveta.is-aberta')).toBeVisible();
+  await expect(page.locator('#gaveta-veu')).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-sofi-gaveta-800-claro.png') });
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();
@@ -836,4 +907,55 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   await expect(welcomeDarkPage.getByRole('heading', { name: 'Olá, eu sou a Sofi.' })).toBeVisible();
   await welcomeDarkPage.screenshot({ path: path.join(artifacts, 'ui-boas-vindas-escuro.png') });
   await welcomeDark.close();
+});
+
+test('rodada 5: prévia, versões, agenda, cores e abas', async () => {
+  test.setTimeout(90000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`]);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await page.locator('#cfg-pdf').click();
+  await expect(page.locator('.pdf-pagina a.wikilink')).toContainText('o grafo');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
+  );
+  await page.locator('#comando-q').fill('Histórico');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Histórico de versões' }).click();
+  await page.getByRole('button', { name: 'Gravar ponto agora' }).click();
+  await expect(page.locator('.versao').first()).toContainText('Hoje');
+  await page.screenshot({ path: path.join(artifacts, 'ui-versoes-diff-claro.png') });
+  await page.locator('[data-nav="calendario"]').click();
+  await page.getByRole('button', { name: 'Agenda' }).click();
+  await expect(page.locator('.painel-dia')).toBeVisible();
+  await expect(page.locator('.painel-dia')).toContainText('●');
+  await page.screenshot({ path: path.join(artifacts, 'ui-agenda-painel-claro.png') });
+  await page.locator('#arvore [data-shelf="Estudos"]').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Cor e ícone' }).click();
+  await expect(page.getByRole('button', { name: 'Índigo' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.locator('.config')).toContainText('começa na segunda');
+  await page.locator('input[name="cfg-semana"][value="0"]').check();
+  await expect(page.locator('.config')).toContainText('começa no domingo');
+  expect(await page.locator('#gaveta-veu').count()).toBe(0);
+  const windowHandle = await app.browserWindow(page);
+  await windowHandle.evaluate((win) => win.setContentSize(800, 600));
+  await page.locator('#abrir-lateral').click();
+  await expect(page.locator('#gaveta-veu')).toBeVisible();
+  const gap = await page.evaluate(() => {
+    const tabs = document.querySelector('.titulo__abas').getBoundingClientRect();
+    const actions = document.querySelector('.titulo__acoes').getBoundingClientRect();
+    return actions.left - tabs.right;
+  });
+  expect(gap).toBeGreaterThan(8);
+  await page.screenshot({ path: path.join(artifacts, 'ui-abas-800-claro.png') });
+  await app.close();
 });

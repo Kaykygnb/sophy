@@ -27,10 +27,11 @@ test('ligar menções escreve wikilinks e a importação não mexe na origem', (
   createNote(library, 'Estudos/Resumo.md', 'A Leitura ficou de fora do colchete. 2026-11-17\n');
   createNote(library, 'Diário/2026-11-17.md', '# dia\n');
   createNote(library, 'Estudos/Oi.md', 'Oi\n');
+  createNote(library, 'Estudos/Capa.md', 'Uma capa.\n');
   const found = unlinkedMentions(library);
   assert.equal(found.some((row) => row.title === 'Leitura' && row.total === 1), true);
   assert.equal(found.some((row) => row.title === '2026-11-17'), false);
-  assert.equal(found.some((row) => row.title === 'Oi'), false);
+  assert.equal(found.some((row) => row.title === 'Capa'), false);
   const linked = linkMentions(library, 'Leitura');
   assert.equal(linked.links, 1);
   assert.match(fs.readFileSync(path.join(root, 'Estudos/Resumo.md'), 'utf8'), /\[\[Leitura\]\]/);
