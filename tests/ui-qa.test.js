@@ -34,6 +34,20 @@ test('a prévia do cartão não mostra o Markdown cru da tarefa', () => {
   assert.equal(html.includes('[['), false);
   assert.equal(html.includes('📅'), false);
   assert.equal(html.includes('⏫'), false);
+  assert.match(html, /class="cv-previa"/);
+});
+
+test('a prévia usa os estilos do editor e não deixa citação nem código crus', () => {
+  const html = commands.notePreviewHtml(
+    '**negrito** e *itálico*\n\n> uma citação\n\n```\nconst cru = true;\n```\n',
+  );
+  assert.match(html, /<strong>negrito<\/strong>/);
+  assert.match(html, /<em>itálico<\/em>/);
+  assert.match(html, /<blockquote class="bloco bloco--citacao">uma citação<\/blockquote>/);
+  assert.match(html, /<pre class="bloco bloco--codigo"><code>const cru = true;<\/code><\/pre>/);
+  assert.equal(html.includes('> uma'), false);
+  assert.equal(html.includes('```'), false);
+  assert.match(html, /cv-previa/);
 });
 
 test('o registro de comandos tem os atalhos da descoberta', () => {
@@ -46,6 +60,9 @@ test('o registro de comandos tem os atalhos da descoberta', () => {
   assert.equal(byId.tarefa, 'Ctrl+Enter');
   assert.equal(byId.hoje, 'Alt+D');
   assert.equal(byId.sofi, 'Ctrl+J');
+  assert.equal(byId['novo-canvas'], '');
+  assert.equal(commands.COMMANDS.some((item) => item.id === 'canvas'), false);
+  assert.equal(commands.COMMANDS.find((item) => item.rotulo === 'Novo canvas').id, 'novo-canvas');
 });
 
 test('a árvore marca só o item ativo', () => {

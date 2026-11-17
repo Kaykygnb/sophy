@@ -389,6 +389,18 @@ async function finishOnboarding() {
   await showShell();
 }
 
+function toggleSidebar() {
+  const lateral = $('#lateral');
+  if (!lateral) return;
+  if (window.innerWidth <= 900) {
+    lateral.classList.remove('is-fechada');
+    lateral.classList.toggle('is-aberta');
+  } else {
+    lateral.classList.remove('is-aberta');
+    lateral.classList.toggle('is-fechada');
+  }
+}
+
 function paintShell() {
   $('#onboarding').hidden = true;
   const shell = $('#shell');
@@ -398,6 +410,7 @@ function paintShell() {
       <div class="titulo__marca"><img alt="Sophy" src="ui/assets/logo/logo-horizontal-${logo}.svg" /></div>
       <div class="titulo__abas" role="tablist" id="abas"></div>
       <div class="titulo__acoes">
+        <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
         <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
         <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
         <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
@@ -451,7 +464,8 @@ function paintShell() {
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
   $('#seletor-biblioteca').onclick = (event) => openLibraryMenu(event.currentTarget);
-  $('#recolher').onclick = () => $('#lateral').classList.toggle('is-fechada');
+  $('#recolher').onclick = () => toggleSidebar();
+  $('#abrir-lateral').onclick = () => toggleSidebar();
   $('#filtrar').onclick = () => {
     const box = shell.querySelector('.lateral__busca');
     box.hidden = !box.hidden;
@@ -818,6 +832,50 @@ function bindBlockDrag() {
   });
 }
 
+function canvasCardPreview(document) {
+  const nodes = document?.nodes || [];
+  const text = nodes.find((node) => node.type === 'text' && node.text);
+  if (text) return Cmd.notePreviewHtml(text.text);
+  const files = nodes.filter((node) => node.type === 'file' && node.file).slice(0, 3);
+  if (!files.length) return '<p class="nota-privacidade">Quadro vazio</p>';
+  return `<p>${files.map((node) => escapeHtml(baseName(node.file))).join(' · ')}</p>`;
+}
+
+function paintCanvasGallery(center) {
+  const boards = state.canvases || [];
+  const cards = boards
+    .map((file) => {
+      const preview = state.canvasGallery?.[file.path] || '<p class="nota-privacidade">…</p>';
+      return `<button type="button" class="canvas-cartao" data-abrir-canvas="${escapeHtml(file.path)}"><span class="canvas-cartao__previa">${preview}</span><strong>${escapeHtml(baseName(file.path))}</strong><span>${escapeHtml(file.workspace || '')}</span></button>`;
+    })
+    .join('');
+  center.innerHTML = `<div class="canvas-grade"><h2>Canvas</h2>${cards || '<p>Nenhum canvas ainda.</p>'}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas">${icon('canvas')} Novo canvas</button></div>`;
+  center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
+    button.onclick = () => openCanvas(button.dataset.abrirCanvas);
+  });
+  const create = $('#atalho-novo-canvas');
+  if (create)
+    create.onclick = () => {
+      runCommand('novo-canvas');
+    };
+  if (!state.canvasGalleryLoaded) loadCanvasGallery();
+}
+
+async function loadCanvasGallery() {
+  state.canvasGalleryLoaded = true;
+  const gallery = {};
+  for (const file of state.canvases || []) {
+    try {
+      const canvas = await tool('canvas.read', { path: file.path });
+      gallery[file.path] = canvasCardPreview(canvas.document);
+    } catch {
+      gallery[file.path] = '';
+    }
+  }
+  state.canvasGallery = gallery;
+  if (state.view === 'canvases') paintCenter();
+}
+
 function syncNav() {
   document.querySelectorAll('[data-nav]').forEach((button) => {
     if (button.dataset.nav === state.nav) button.setAttribute('aria-current', 'page');
@@ -827,13 +885,7 @@ function syncNav() {
 
 function paintCenterBody(center) {
   if (state.view === 'canvases') {
-    const boards = state.canvases || [];
-    center.innerHTML = boards.length
-      ? `<div class="vazio-ensina"><h2>Canvas</h2><div class="tarefas__lista">${boards.map((file) => `<button type="button" class="menu__item" data-abrir-canvas="${escapeHtml(file.path)}">${icon('canvas')} ${escapeHtml(file.path)}</button>`).join('')}</div></div>`
-      : `<div class="vazio-ensina"><h2>Nenhum canvas</h2><p>Crie um pelo menu Novo. Este botão só abre os que já existem.</p></div>`;
-    center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
-      button.onclick = () => openCanvas(button.dataset.abrirCanvas);
-    });
+    paintCanvasGallery(center);
     return;
   }
   if (state.view === 'tasks') {
@@ -1752,7 +1804,7 @@ function openNewMenu(anchor) {
   menu.innerHTML = [
     ['nota', 'nota-nova', 'Nova nota'],
     ['estante', 'pasta-nova', 'Nova estante'],
-    ['canvas', 'canvas', 'Novo canvas'],
+    ['novo-canvas', 'canvas', 'Novo canvas'],
     ['modelo', 'modelo', 'A partir de modelo'],
   ]
     .map(
@@ -1773,9 +1825,9 @@ function openNewMenu(anchor) {
     closeMenus();
     createWorkspace();
   };
-  menu.querySelector('[data-novo="canvas"]').onclick = () => {
+  menu.querySelector('[data-novo="novo-canvas"]').onclick = () => {
     closeMenus();
-    createCanvasFile();
+    runCommand('novo-canvas');
   };
   menu.querySelector('[data-novo="modelo"]').onclick = () => {
     closeMenus();
@@ -1862,7 +1914,7 @@ function taskCard(task) {
         : task.priority === 'baixa'
           ? '<span class="chip chip--baixa">Baixa</span>'
           : '';
-  return `<article class="kcard" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}"><span class="check" data-status="${kit}"></span><strong>${escapeHtml(task.title)}</strong><span class="kcard__meta">${priority}<span class="chip">${escapeHtml(task.due ? shortDate(task.due) : 'sem prazo')}</span><span class="chip">${escapeHtml(task.workspace || 'Biblioteca')}</span></span><button type="button" class="tarefa__origem" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.workspace || 'Biblioteca')}</button></article>`;
+  return `<article class="kcard" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}"><span class="check" data-status="${kit}"></span><button type="button" class="kcard__titulo" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.title)}</button><span class="kcard__meta">${priority}<span class="chip">${escapeHtml(task.due ? shortDate(task.due) : 'sem prazo')}</span><span class="chip">${escapeHtml(task.workspace || 'Biblioteca')}</span></span></article>`;
 }
 
 function paintTasks(center) {
@@ -1956,18 +2008,26 @@ function paintCalendar(center) {
   const weekdays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
     .map((name) => `<span>${name}</span>`)
     .join('');
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="Mês anterior">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="Próximo mês">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>`;
+  const previous = mode === 'semana' ? 'Semana anterior' : 'Mês anterior';
+  const next = mode === 'semana' ? 'Próxima semana' : 'Próximo mês';
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>`;
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
       state.calendarMode = button.dataset.cal;
+      if (button.dataset.cal === 'semana') state.calendarCursor = isoToday();
       showCalendar();
     };
   });
   center.querySelectorAll('[data-passo]').forEach((button) => {
     button.onclick = () => {
-      const [y, m] = state.calendarCursor.split('-').map(Number);
-      const next = new Date(y, m - 1 + Number(button.dataset.passo), 1);
-      state.calendarCursor = isoTodayFrom(next);
+      const step = Number(button.dataset.passo);
+      if ((state.calendarMode || 'mes') === 'semana') {
+        state.calendarCursor = addIso(state.calendarCursor || isoToday(), step * 7);
+      } else {
+        const [y, m] = (state.calendarCursor || isoToday()).split('-').map(Number);
+        const next = new Date(y, m - 1 + step, 1);
+        state.calendarCursor = isoTodayFrom(next);
+      }
       showCalendar();
     };
   });
@@ -2009,8 +2069,10 @@ function runCommand(id) {
     estante: () => createWorkspace(),
     canvas: () => {
       state.view = 'canvases';
+      state.canvasGalleryLoaded = false;
       paintCenter();
     },
+    'novo-canvas': () => createCanvasFile(),
     modelo: () => createFromTemplate(),
     buscar: () => openPalette(),
     comandos: () => openCommands(),
@@ -2933,7 +2995,7 @@ document.addEventListener('keydown', (event) => {
   }
   if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
     event.preventDefault();
-    $('#lateral')?.classList.toggle('is-fechada');
+    toggleSidebar();
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
     event.preventDefault();

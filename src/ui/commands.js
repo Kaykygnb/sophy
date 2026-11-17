@@ -253,9 +253,40 @@
 
   function notePreviewHtml(body) {
     const source = String(body || '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+    const lines = source.split(/\r?\n/);
     const chunks = [];
-    for (const line of source.split(/\r?\n/)) {
+    let fence = false;
+    let code = [];
+    let quote = [];
+    const flushQuote = () => {
+      if (!quote.length) return;
+      chunks.push(`<blockquote class="bloco bloco--citacao">${quote.map((line) => previewInline(line)).join('<br>')}</blockquote>`);
+      quote = [];
+    };
+    const flushCode = () => {
+      if (!code.length) return;
+      chunks.push(`<pre class="bloco bloco--codigo"><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+      code = [];
+    };
+    for (const line of lines) {
       if (chunks.length >= 8) break;
+      if (line.trim().startsWith('```')) {
+        flushQuote();
+        if (fence) {
+          flushCode();
+          fence = false;
+        } else fence = true;
+        continue;
+      }
+      if (fence) {
+        code.push(line);
+        continue;
+      }
+      if (/^>\s?/.test(line)) {
+        quote.push(line.replace(/^>\s?/, ''));
+        continue;
+      }
+      flushQuote();
       const task = previewTask(line);
       if (task) {
         const kit = kitTaskStatus(task.status);
@@ -274,13 +305,15 @@
       if (!text || /^#{1,6}\s/.test(text)) continue;
       chunks.push(`<p>${previewInline(text)}</p>`);
     }
-    return chunks.join('');
+    flushQuote();
+    if (fence) flushCode();
+    return `<div class="cv-previa">${chunks.join('')}</div>`;
   }
 
   const COMMANDS = [
     { id: 'nota', rotulo: 'Nova nota', grupo: 'Criar', icone: 'nota-nova', atalho: 'Ctrl+N', quando: 'biblioteca' },
     { id: 'estante', rotulo: 'Nova estante', grupo: 'Criar', icone: 'pasta-nova', atalho: 'Ctrl+Shift+N', quando: 'biblioteca' },
-    { id: 'canvas', rotulo: 'Novo canvas', grupo: 'Criar', icone: 'canvas', atalho: '', quando: 'biblioteca' },
+    { id: 'novo-canvas', rotulo: 'Novo canvas', grupo: 'Criar', icone: 'canvas', atalho: '', quando: 'biblioteca' },
     { id: 'modelo', rotulo: 'A partir de modelo', grupo: 'Criar', icone: 'modelo', atalho: '', quando: 'biblioteca' },
     { id: 'buscar', rotulo: 'Buscar', grupo: 'Navegar', icone: 'busca', atalho: 'Ctrl+K', quando: 'sempre' },
     { id: 'comandos', rotulo: 'Comandos', grupo: 'Navegar', icone: 'comando', atalho: 'Ctrl+Shift+P', quando: 'sempre' },
