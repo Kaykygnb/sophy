@@ -157,6 +157,34 @@ test('trocar o estado da tarefa não apaga data nem prioridade', () => {
   assert.equal(task.priority, 'alta');
 });
 
+test('código guarda a cerca e o --- do corpo não é frontmatter', () => {
+  const code = doc.parseBody('```js\nabc\n```\n');
+  const split = doc.splitBlock(code, 0, 1);
+  assert.match(split.doc.blocks[0].raw, /^```js\na\nbc\n```/);
+  const leave = doc.splitBlock(code, 0, 3);
+  assert.equal(leave.doc.blocks[1].type, 'paragraph');
+  assert.match(leave.doc.blocks[0].raw, /^```js\nabc\n```/);
+  const wide = doc.parseBody('````md\n```js\nx\n```\n````\n');
+  assert.equal(wide.blocks.filter((block) => block.type === 'code').length, 1);
+  const tilde = doc.parseBody('~~~js\nconst a = 1;\n~~~\n');
+  assert.equal(tilde.blocks[0].type, 'code');
+  assert.match(doc.codeParts(tilde.blocks[0].raw).body, /const a = 1;/);
+  const ruled = doc.parseBody('---\nTexto importante\n---\nFim\n');
+  assert.equal(ruled.blocks.some((block) => block.raw.includes('Texto importante')), true);
+  assert.equal(ruled.blocks.filter((block) => block.type === 'paragraph').length, 2);
+});
+
+test('tabela respeita pipe escapado e junção de tarefa guarda a data', () => {
+  const cells = doc.splitCells('| a \\| b | z |');
+  assert.deepEqual(cells, ['a \\| b', 'z']);
+  const model = doc.tableModel('| Nome | Valor |\n|:--|--:|\n| a \\| b | z |\n');
+  assert.deepEqual(model.align, [':--', '--:']);
+  const joined = doc.joinBlocks(doc.parseBody('- [ ] uma\n- [x] duas 📅 2026-11-20 ⏫\n'), 1);
+  assert.match(joined.doc.blocks[0].raw, /\[x\]/);
+  assert.match(joined.doc.blocks[0].raw, /2026-11-20/);
+  assert.match(joined.doc.blocks[0].raw, /uma duas/);
+});
+
 test('frontmatter legado permanece quando só o corpo muda', () => {
   const source = '---\nnotas1_editor: { antigo: true }\n---\ncorpo [[Nota]]\n';
   const parsed = doc.parseDocument(source);

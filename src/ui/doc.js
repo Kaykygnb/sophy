@@ -27,8 +27,13 @@
     return line.replace(/\r?\n$/, '');
   }
 
+  function fenceMark(line) {
+    const match = lineText(line).match(/^(```+|~~~+)/);
+    return match ? match[1] : '';
+  }
+
   function isFence(line) {
-    return lineText(line).startsWith('```');
+    return fenceMark(line).length >= 3;
   }
 
   function isHeading(line) {
@@ -63,15 +68,15 @@
     while (index < lines.length) {
       const line = lines[index];
       if (isFence(line)) {
+        const open = fenceMark(line);
         const chunk = [line];
         index += 1;
-        while (index < lines.length && !isFence(lines[index])) {
+        while (index < lines.length) {
+          const mark = fenceMark(lines[index]);
+          const trimmed = lineText(lines[index]);
           chunk.push(lines[index]);
           index += 1;
-        }
-        if (index < lines.length) {
-          chunk.push(lines[index]);
-          index += 1;
+          if (mark && mark[0] === open[0] && mark.length >= open.length && trimmed === mark) break;
         }
         blocks.push({ type: 'code', raw: chunk.join('') });
         continue;
@@ -157,6 +162,95 @@
     }
     const blocks = parseBlocks(body);
     return { bom, prefix, body, blocks };
+  }
+
+  function parseBody(markdown) {
+    const text = typeof markdown === 'string' ? markdown : '';
+    return { bom: '', prefix: null, body: text, blocks: parseBlocks(text) };
+  }
+
+  function codeParts(raw) {
+    const text = String(raw || '');
+    const openMatch = text.match(/^(```+|~~~+)([^\n]*)\n/);
+    if (!openMatch) return { fence: '```', info: '', body: text.replace(/\n$/, '') };
+    const fence = openMatch[1];
+    const info = openMatch[2];
+    let rest = text.slice(openMatch[0].length);
+    if (rest.endsWith(`\n${fence}\n`)) rest = rest.slice(0, -(fence.length + 2));
+    else if (rest.endsWith(`\n${fence}`)) rest = rest.slice(0, -(fence.length + 1));
+    else if (rest.endsWith('\n')) rest = rest.slice(0, -1);
+    return { fence, info, body: rest };
+  }
+
+  function codeRaw(fence, info, body) {
+    return `${fence}${info || ''}\n${body}\n${fence}\n`;
+  }
+
+  function splitCells(line) {
+    let raw = String(line || '').trim();
+    if (raw.startsWith('|')) raw = raw.slice(1);
+    if (raw.endsWith('|')) raw = raw.slice(0, -1);
+    const cells = [];
+    let current = '';
+    let wiki = 0;
+    for (let index = 0; index < raw.length; index += 1) {
+      if (raw[index] === '\\' && raw[index + 1] === '|') {
+        current += '\\|';
+        index += 1;
+        continue;
+      }
+      if (raw.startsWith('[[', index)) {
+        wiki += 1;
+        current += '[[';
+        index += 1;
+        continue;
+      }
+      if (wiki && raw.startsWith(']]', index)) {
+        wiki -= 1;
+        current += ']]';
+        index += 1;
+        continue;
+      }
+      if (raw[index] === '|' && wiki === 0) {
+        cells.push(current.trim());
+        current = '';
+        continue;
+      }
+      current += raw[index];
+    }
+    cells.push(current.trim());
+    return cells;
+  }
+
+  function tableModel(raw) {
+    const lines = String(raw || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('|') && line.endsWith('|'));
+    const rows = [];
+    let align = null;
+    for (const line of lines) {
+      const cells = splitCells(line);
+      if (cells.length && cells.every((cell) => /^:?-+:?$/.test(cell))) {
+        align = cells;
+        continue;
+      }
+      rows.push(cells);
+    }
+    return { rows, align };
+  }
+
+  function tableRaw(rows, align) {
+    const width = Math.max(align?.length || 0, ...rows.map((row) => row.length), 1);
+    const fit = (row) => Array.from({ length: width }, (_, index) => row[index] || '');
+    const aligned = align ? fit(align) : fit(rows[0] || []).map(() => '---');
+    const body = (rows.length ? rows : [['']]).map(fit);
+    const lines = [
+      `| ${body[0].join(' | ')} |`,
+      `| ${aligned.join(' | ')} |`,
+      ...body.slice(1).map((row) => `| ${row.join(' | ')} |`),
+    ];
+    return `${lines.join('\n')}\n`;
   }
 
   function serializeDocument(doc) {
@@ -302,12 +396,16 @@
         .split('\n')
         .map((line) => line.replace(/^>\s?/, ''))
         .join('\n');
-    if (block.type === 'code') return raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
+    if (block.type === 'code') return codeParts(block.raw).body;
     if (block.type === 'blank') return '';
     return raw;
   }
 
   function rewriteVisible(block, text) {
+    if (block.type === 'code') {
+      const parts = codeParts(block.raw);
+      return { ...block, raw: codeRaw(parts.fence, parts.info, text) };
+    }
     const clean = text.replace(/\n$/, '');
     if (block.type === 'heading')
       return { ...block, raw: `${'#'.repeat(block.level || 1)} ${clean.replace(/\n/g, ' ')}\n` };
@@ -337,8 +435,45 @@
     return { ...doc, blocks, body: blocks.map((block) => block.raw).join('') };
   }
 
+  function renumberNumbered(doc) {
+    const blocks = doc.blocks.slice();
+    let count = 0;
+    let run = false;
+    for (let index = 0; index < blocks.length; index += 1) {
+      const match = blocks[index].type === 'item' && String(blocks[index].raw).match(/^(\s*)(\d+)\. ([\s\S]*)$/);
+      if (!match) {
+        run = false;
+        count = 0;
+        continue;
+      }
+      if (!run) {
+        run = true;
+        count = 0;
+      }
+      count += 1;
+      if (Number(match[2]) !== count) blocks[index] = { ...blocks[index], raw: `${match[1]}${count}. ${match[3]}` };
+    }
+    return withBlocks(doc, blocks);
+  }
+
+  function isEmbedBlock(block) {
+    return !!block && /^!\[\[[^\]\n]+\]\]$/.test(String(block.raw || '').trim());
+  }
+
   function splitBlock(doc, index, offset) {
     const block = doc.blocks[index];
+    if (block?.type === 'code') {
+      const parts = codeParts(block.raw);
+      if (offset >= parts.body.length) {
+        const blocks = doc.blocks.slice();
+        blocks.splice(index + 1, 0, { type: 'paragraph', raw: '\n' });
+        return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+      }
+      const next = `${parts.body.slice(0, offset)}\n${parts.body.slice(offset)}`;
+      const blocks = doc.blocks.slice();
+      blocks[index] = { ...block, raw: codeRaw(parts.fence, parts.info, next) };
+      return { doc: withBlocks(doc, blocks), caret: { index, offset: offset + 1 } };
+    }
     const text = visibleOf(block);
     const before = text.slice(0, offset);
     const after = text.slice(offset);
@@ -406,7 +541,7 @@
         ? { type: 'item', raw: `${numbered[1]}${Number(numbered[2]) + 1}. ${after}\n` }
         : rewriteVisible(block, after);
       blocks.splice(index, 1, left, right);
-      return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+      return { doc: renumberNumbered(withBlocks(doc, blocks)), caret: { index: index + 1, offset: 0 } };
     }
     const left = rewriteVisible(block, before);
     const right = { type: 'paragraph', raw: `${after}\n` };
@@ -439,6 +574,19 @@
       if (target < 0) return { doc: withBlocks(doc, blocks), caret: { index: 0, offset: 0 } };
       return { doc: withBlocks(doc, blocks), caret: { index: target, offset: visibleOf(blocks[target]).length } };
     }
+    if (isEmbedBlock(above) || isEmbedBlock(doc.blocks[index])) {
+      return { doc, caret: { index, offset: 0 } };
+    }
+    if (above.type === 'task' && above.task && doc.blocks[index].type === 'task' && doc.blocks[index].task) {
+      const upper = above.task;
+      const lower = doc.blocks[index].task;
+      const keeper = lower.suffix || lower.due || lower.priority || lower.status !== ' ' ? lower : upper;
+      const gap = upper.title && lower.title ? ' ' : '';
+      const task = { ...keeper, title: `${upper.title}${gap}${lower.title}`.trim() };
+      const blocks = doc.blocks.slice();
+      blocks.splice(index - 1, 2, { type: 'task', task, raw: `${serializeTask(task)}\n` });
+      return { doc: withBlocks(doc, blocks), caret: { index: index - 1, offset: `${upper.title}${gap}`.length } };
+    }
     const left = visibleOf(above);
     const right = visibleOf(doc.blocks[index]);
     const gap = left && right && !/\s$/.test(left) && !/^\s/.test(right) ? ' ' : '';
@@ -458,13 +606,24 @@
     return joinBlocks(doc, index + 1);
   }
 
-  function pasteLines(doc, index, offset, pasted) {
+  function pasteLines(doc, index, offset, pasted, end = offset) {
     const block = doc.blocks[index] || { type: 'paragraph', raw: '\n' };
+    if (block.type === 'code') {
+      const parts = codeParts(block.raw);
+      const from = Math.min(offset, end);
+      const to = Math.max(offset, end);
+      const body = parts.body.slice(0, from) + String(pasted) + parts.body.slice(to);
+      const blocks = doc.blocks.slice();
+      blocks[index] = { ...block, raw: codeRaw(parts.fence, parts.info, body) };
+      return { doc: withBlocks(doc, blocks), caret: { index, offset: from + String(pasted).length } };
+    }
     const text = visibleOf(block);
-    const before = text.slice(0, offset);
-    const after = text.slice(offset);
+    const from = Math.min(offset, end);
+    const to = Math.max(offset, end);
+    const before = text.slice(0, from);
+    const after = text.slice(to);
     const source = `${before}${String(pasted).replace(/\r\n/g, '\n')}${after}`;
-    const parsed = parseDocument(source.endsWith('\n') ? source : `${source}\n`).blocks;
+    const parsed = parseBody(source.endsWith('\n') ? source : `${source}\n`).blocks;
     const created = parsed.length ? parsed : [{ type: 'paragraph', raw: '\n' }];
     const blocks = doc.blocks.slice();
     const at = doc.blocks[index] ? index : blocks.length;
@@ -479,6 +638,13 @@
 
   function insertInBlock(doc, index, offset, chunk) {
     const block = doc.blocks[index];
+    if (block?.type === 'code') {
+      const parts = codeParts(block.raw);
+      const body = parts.body.slice(0, offset) + chunk + parts.body.slice(offset);
+      const blocks = doc.blocks.slice();
+      blocks[index] = { ...block, raw: codeRaw(parts.fence, parts.info, body) };
+      return { doc: withBlocks(doc, blocks), caret: { index, offset: offset + chunk.length } };
+    }
     const text = visibleOf(block);
     const next = text.slice(0, offset) + chunk + text.slice(offset);
     const blocks = doc.blocks.slice();
@@ -511,6 +677,12 @@
 
   return {
     parseDocument,
+    parseBody,
+    codeParts,
+    codeRaw,
+    splitCells,
+    tableModel,
+    tableRaw,
     serializeDocument,
     serializeBlocks,
     withBlockRaw,
