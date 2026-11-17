@@ -406,9 +406,10 @@ function paintShell() {
       <aside class="lateral" id="lateral">
         <div class="lateral__busca"><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
-        <div style="display:flex;gap:8px;padding:12px">
+        <div class="lateral__acoes">
           <button type="button" class="btn btn--secundario" id="nova-nota">${icon('nota-nova')} Nota</button>
           <button type="button" class="btn btn--fantasma" id="nova-estante">${icon('pasta-nova')} Estante</button>
+          <button type="button" class="btn btn--fantasma" id="novo-canvas">${icon('canvas')} Canvas</button>
         </div>
       </aside>
       <main class="centro" id="centro"></main>
@@ -425,6 +426,7 @@ function paintShell() {
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
   $('#nova-nota').onclick = () => createNote();
+  $('#novo-canvas').onclick = () => createCanvasFile();
   $('#nova-estante').onclick = () => createWorkspace();
   $('#filtro-arvore').oninput = () => paintTree();
   paintTree();
@@ -1451,6 +1453,7 @@ function openCommands() {
   const commands = [
     ['Nova nota', 'Ctrl+N', () => createNote()],
     ['Nova estante', '', () => createWorkspace()],
+    ['Novo canvas', '', () => createCanvasFile()],
     ['Buscar', 'Ctrl+K', () => openPalette()],
     ['Mostrar grafo', '', () => showGraph()],
     ['Alternar tema', '', () => toggleTheme()],
@@ -1492,6 +1495,27 @@ function openCommands() {
   };
   draw();
   input.focus();
+}
+
+async function createCanvasFile() {
+  const shelf =
+    state.selectedShelf ||
+    (state.canvasPath && state.canvasPath.includes('/') ? state.canvasPath.split('/')[0] : null) ||
+    (state.active && state.active.includes('/') ? state.active.split('/')[0] : null) ||
+    'Entrada';
+  const taken = state.canvases
+    .filter((file) => file.workspace === shelf)
+    .map((file) => baseName(file.path));
+  const name = Cmd.uniqueTitle(taken);
+  const path = `${shelf}/${name}.canvas`;
+  try {
+    await tool('canvas.create', { path });
+    state.selectedShelf = shelf;
+    await refreshLibrary();
+    await openCanvas(path);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
 }
 
 async function createNote() {

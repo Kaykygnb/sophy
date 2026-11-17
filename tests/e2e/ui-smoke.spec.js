@@ -213,6 +213,20 @@ test('troca de biblioteca, formatação e comandos', async () => {
   await dark.close();
 });
 
+test('Canvas na árvore cria um quadro vazio', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  await page.locator('#arvore [data-shelf="Estudos"]').click();
+  await page.locator('#novo-canvas').click();
+  await expect(page.locator('.canvas-area')).toBeVisible();
+  expect(fs.existsSync(path.join(root, 'Estudos', 'Sem título.canvas'))).toBe(true);
+  await page.keyboard.press('Control+Shift+P');
+  await expect(page.getByRole('button', { name: 'Novo canvas' })).toBeVisible();
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();
@@ -275,7 +289,7 @@ test('a janela abre a biblioteca e mostra a nota', async () => {
   await expect(page.locator('.cv-cartao').first()).toBeVisible();
   await expect(page.locator('.cv-grupo')).toContainText('Estudos');
   await page.locator('.cv-cartao').first().click();
-  await page.screenshot({ path: path.join(artifacts, 'ui-canvas-claro.png') });
+  await page.screenshot({ path: path.join(artifacts, 'ui-canvas-novo-claro.png') });
   expect(errors).toEqual([]);
   await app.close();
 });
@@ -311,7 +325,7 @@ test('boas-vindas no claro e no escuro, editor escuro', async () => {
   await darkPage.locator('#arvore').getByRole('button', { name: 'Mapa', exact: true }).click();
   await expect(darkPage.locator('.cv-cartao').first()).toBeVisible();
   await darkPage.locator('.cv-cartao').first().click();
-  await darkPage.screenshot({ path: path.join(artifacts, 'ui-canvas-escuro.png') });
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-canvas-novo-escuro.png') });
   await dark.close();
 
   const welcomeDark = await launch(['--theme=dark']);

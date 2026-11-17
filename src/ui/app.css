@@ -609,6 +609,15 @@ button.arvore__linha[aria-selected='true'] {
   border: 1px solid var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+.lateral__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}
+.lateral__acoes .btn {
+  flex: 1 1 calc(50% - 8px);
+}
 .lateral__biblioteca {
   padding: 8px 12px 0;
 }
