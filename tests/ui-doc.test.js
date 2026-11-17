@@ -22,6 +22,31 @@ const colchetes = "[[";
 \`\`\`
 `;
 
+test('Enter separa o parágrafo, Backspace junta e a colagem vira blocos', () => {
+  const start = doc.parseDocument('Primeiro parágrafo.\n');
+  const index = start.blocks.findIndex((block) => block.type === 'paragraph');
+  const split = doc.splitBlock(start, index, 'Primeiro parágrafo.'.length);
+  const typed = doc.insertInBlock(split.doc, split.caret.index, split.caret.offset, 'Segunda linha');
+  const saved = doc.serializeDocument(typed.doc);
+  assert.equal(saved.includes('Primeiro parágrafo.Segunda'), false);
+  assert.match(saved, /Primeiro parágrafo\.\n\nSegunda linha\n/);
+  const joined = doc.joinBlocks(typed.doc, typed.caret.index);
+  assert.match(doc.serializeDocument(joined.doc), /Primeiro parágrafo\.Segunda linha/);
+  const pasted = doc.pasteLines(start, index, 'Primeiro '.length, 'A\nB');
+  assert.match(doc.serializeDocument(pasted.doc), /Primeiro A\n\nBparágrafo\./);
+  const soft = doc.insertInBlock(start, index, 'Primeiro '.length, '\n');
+  assert.match(doc.serializeDocument(soft.doc), /Primeiro \nparágrafo\./);
+});
+
+test('negrito e itálico envolvem o trecho no Markdown', () => {
+  const start = doc.parseDocument('memória\n');
+  const bold = doc.wrapBlock(start, 0, 0, 7, '**', '**');
+  assert.equal(doc.serializeDocument(bold.doc), '**memória**\n');
+  const italic = doc.wrapPlain('abc', 0, 0, '*');
+  assert.equal(italic.text, '**abc');
+  assert.equal(italic.cursor, 1);
+});
+
 test('markdown volta igual, com wikilink, tarefa e frontmatter', () => {
   const parsed = doc.parseDocument(sample);
   assert.equal(doc.serializeDocument(parsed), sample);
