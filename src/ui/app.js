@@ -100,6 +100,14 @@ function motionReduced() {
     state.settings.reduceMotion === true || matchMedia('(prefers-reduced-motion: reduce)').matches
   );
 }
+function applyReadingFont(font) {
+  const choice = font === 'literata' ? 'literata' : 'inter';
+  document.documentElement.dataset.font = choice;
+  document.documentElement.style.setProperty(
+    '--font-reading',
+    choice === 'literata' ? 'var(--font-reading-serif)' : 'var(--font-ui)',
+  );
+}
 function syncMotion() {
   document.documentElement.classList.toggle('motion-reduce', motionReduced());
 }
@@ -424,9 +432,11 @@ function paintShell() {
           <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">
             ${icon('biblioteca')}<span class="biblioteca-seletor__nome">${escapeHtml(state.libraryName || 'Biblioteca')}</span>${icon('alternar')}
           </button>
+          <button type="button" class="btn btn--icone" id="recolher" aria-label="Recolher">${icon('painel-lateral')}</button>
         </div>
         <div class="lateral__acoes">
           <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('novo')} Novo</button>
+          <button type="button" class="btn btn--icone" id="filtrar" aria-label="Filtrar">${icon('busca')}</button>
         </div>
         <nav class="lateral__nav" aria-label="Seções">
           ${[
@@ -443,10 +453,6 @@ function paintShell() {
             )
             .join('')}
         </nav>
-        <div class="lateral__acoes lateral__ferramentas">
-          <button type="button" class="btn btn--fantasma" id="recolher">${icon('painel-lateral')} Recolher</button>
-          <button type="button" class="btn btn--fantasma" id="filtrar">${icon('busca')} Filtrar</button>
-        </div>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
       </aside>
@@ -483,6 +489,8 @@ function paintShell() {
 }
 
 async function showShell() {
+  state.view = 'home';
+  state.nav = 'inicio';
   await refreshLibrary();
   paintShell();
 }
@@ -690,15 +698,38 @@ function paintTabs() {
   });
 }
 
-function coverBand() {
-  const capa = state.frontmatter?.capa;
-  if (typeof capa !== 'string' || !/^sophy:[1-6]$/.test(capa)) return '';
-  return `<div class="capa" data-sophy="${capa.slice(6)}" role="img" aria-label="Capa ${escapeHtml(capa)}"></div>`;
+function coverArt(id, y) {
+  return `<div class="capa" style="--capa-y:${y}" role="img" aria-label="Capa ${escapeHtml(Cmd.COVER_NAMES?.[id] || id)}"><div class="capa__recorte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${escapeHtml(id)}"/></svg></div></div>`;
 }
 
-async function setCover(capa) {
+function coverBand() {
+  const cover = Cmd.resolveCover(state.frontmatter);
+  if (!cover) return '';
+  if (cover.kind === 'cor') {
+    const paint = cover.color === 'estante' ? 'var(--estante-cor, var(--accent-soft))' : `var(--shelf-${cover.color}, var(--accent-soft))`;
+    return `<div class="capa capa--cor" style="--capa-y:${cover.y};--estante-cor:${paint}" role="img" aria-label="Capa cor ${escapeHtml(cover.color)}"></div>`;
+  }
+  if (cover.kind === 'arquivo')
+    return `<div class="capa" style="--capa-y:${cover.y}" data-arquivo="${escapeHtml(cover.src)}"><div class="capa__recorte"><img class="capa__img" alt="" src="${escapeHtml(cover.src)}"></div></div>`;
+  return coverArt(cover.id, cover.y);
+}
+
+function coverPicker() {
+  const daily = /^Diário\/\d{4}-\d{2}-\d{2}\.md$/.test(state.active || '');
+  if (daily && !Cmd.resolveCover(state.frontmatter)) return '';
+  const current = Cmd.resolveCover(state.frontmatter);
+  const options = Cmd.COVER_IDS.map((id) => {
+    const checked = current?.kind === 'arte' && current.id === id ? 'checked' : '';
+    return `<label class="capa-opcao"><input type="radio" name="capa" value="sophy:${id}" ${checked}><span class="capa-opcao__arte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${id}"/></svg></span><span class="capa-opcao__nome">${escapeHtml(Cmd.COVER_NAMES[id] || id)}</span></label>`;
+  }).join('');
+  const y = Math.round((current?.y ?? 0.5) * 100);
+  return `<fieldset class="capa-galeria"><legend>Capas</legend>${options}</fieldset><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label>`;
+}
+
+async function setCover(capa, y) {
   if (!state.active || !state.doc) return;
   const frontmatter = { ...(state.frontmatter || {}), capa };
+  if (y != null) frontmatter.capa_y = `${y}%`;
   const result = await tool('note.write', {
     path: state.active,
     body: state.doc.body,
@@ -777,7 +808,7 @@ function paintSettings(center) {
   center.querySelectorAll('[name="cfg-fonte"]').forEach((input) => {
     input.onchange = async () => {
       state.settings.readingFont = input.value;
-      document.documentElement.dataset.font = input.value;
+      applyReadingFont(input.value);
       await sophy.saveSettings({ readingFont: input.value });
     };
   });
@@ -819,32 +850,11 @@ function paintSettings(center) {
     };
   });
   const point = $('#cfg-versao');
-  if (point)
-    point.onclick = async () => {
-      await tool('version.point', { label: 'manual' });
-      toast('Ponto gravado.');
-    };
+  if (point) point.onclick = () => showVersions();
   const site = $('#cfg-site');
-  if (site)
-    site.onclick = async () => {
-      const folder = await sophy.chooseFolder();
-      if (!folder) return;
-      const theme = themeName() === 'dark' ? 'dark' : 'light';
-      const result = await tool('site.export', { destination: folder, theme });
-      toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
-    };
+  if (site) site.onclick = () => openExport('site');
   const pdf = $('#cfg-pdf');
-  if (pdf)
-    pdf.onclick = async () => {
-      if (!state.active || !state.doc) {
-        toast('Abra uma nota para exportar o PDF.', 'erro');
-        return;
-      }
-      const title = baseName(state.active);
-      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(state.doc.body)}</pre></body></html>`;
-      const saved = await sophy.exportPdf(html);
-      if (saved) toast('PDF em papel claro.');
-    };
+  if (pdf) pdf.onclick = () => openExport('pdf');
 }
 
 async function showCards() {
@@ -859,11 +869,11 @@ function paintCards(center) {
   const due = (state.cardRows || []).filter((card) => card.due <= today);
   const card = due[0];
   if (!card) {
-    center.innerHTML = `<div class="vazio-ensina"><h2>Flashcards</h2><p>Escreva <span class="kbd">pergunta :: resposta</span> numa nota. Cada estante vira um baralho.</p></div>`;
+    center.innerHTML = `<div class="vazio-ensina"><h2>Flashcards</h2><p>Escreva <span class="kbd">pergunta :: resposta</span> ou <span class="kbd">frente ::: verso</span> numa nota. Cada estante vira um baralho.</p></div>`;
     return;
   }
-  const face = state.cardFace === 'back' ? card.back : card.front;
-  center.innerHTML = `<div class="inicio"><h2>Flashcards</h2><p>${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje</p><button type="button" id="carta-virar" class="cartao-estante"><strong>${escapeHtml(face)}</strong></button><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao">Não sabia</button><button type="button" class="btn btn--primario" id="carta-sim">Sabia</button></div></div>`;
+  const side = state.cardFace === 'back' ? 'verso' : 'frente';
+  center.innerHTML = `<div class="inicio"><h2>Flashcards</h2><p>${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p><button type="button" class="btn btn--secundario" id="carta-virar">Mostrar resposta</button></p><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao">Não sabia</button><button type="button" class="btn btn--primario" id="carta-sim">Sabia</button></div></div>`;
   $('#carta-virar').onclick = () => {
     state.cardFace = state.cardFace === 'back' ? 'front' : 'back';
     paintCenter();
@@ -906,6 +916,7 @@ function paintCenter() {
   syncNav();
   bindBlockDrag();
   syncWeekly();
+  $('#conexoes')?.classList.toggle('is-oculta', state.view === 'tasks' || state.view === 'cards');
 }
 
 function bindBlockDrag() {
@@ -1009,6 +1020,10 @@ function paintCenterBody(center) {
     paintCards(center);
     return;
   }
+  if (state.view === 'versions') {
+    paintVersions(center);
+    return;
+  }
   if (state.view === 'settings') {
     paintSettings(center);
     return;
@@ -1077,18 +1092,26 @@ function paintCenterBody(center) {
     .join('');
   const cover = coverBand();
   const strip = dailyStrip(state.active);
-  const capas = [1, 2, 3, 4, 5, 6]
-    .map(
-      (number) =>
-        `<button type="button" class="capa-opcao" data-capa="sophy:${number}" aria-label="Capa ${number}"></button>`,
-    )
-    .join('');
-  center.innerHTML = `${conflict}<article class="coluna${state.reading ? ' is-leitura' : ''}" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<span class="capa-opcoes" aria-label="Capas">${capas}</span><button type="button" class="btn btn--fantasma" id="modo-leitura">${state.reading ? 'Editar' : 'Modo leitura'}</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${blocks}</article>`;
+  const capas = coverPicker();
+  center.innerHTML = `${conflict}<article class="coluna${state.reading ? ' is-leitura' : ''}" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="modo-leitura">${state.reading ? 'Editar' : 'Modo leitura'}</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
-  $('#coluna').querySelectorAll('[data-capa]').forEach((button) => {
-    button.onclick = () => setCover(button.dataset.capa);
+  $('#coluna').querySelectorAll('[name="capa"]').forEach((input) => {
+    input.onchange = () => setCover(input.value, $('#capa-y')?.value);
   });
+  const y = $('#capa-y');
+  if (y)
+    y.oninput = () => {
+      const output = y.parentElement?.querySelector('output');
+      if (output) output.textContent = `${y.value}%`;
+      const band = $('#coluna .capa');
+      if (band) band.style.setProperty('--capa-y', String(Number(y.value) / 100));
+    };
+  if (y)
+    y.onchange = () => {
+      const chosen = $('#coluna [name="capa"]:checked');
+      if (chosen) setCover(chosen.value, y.value);
+    };
   $('#coluna').querySelectorAll('[data-dia]').forEach((button) => {
     button.onclick = () => openDailyOn(button.dataset.dia);
   });
@@ -1984,8 +2007,9 @@ async function showCalendar() {
   state.calendarMode = state.calendarMode || 'mes';
   state.calendarCursor = state.calendarCursor || isoToday();
   const cursor = state.calendarCursor;
-  const from = state.calendarMode === 'semana' ? weekStart(cursor) : `${cursor.slice(0, 7)}-01`;
-  const to = state.calendarMode === 'semana' ? addIso(from, 6) : addIso(from, 41);
+  const mode = state.calendarMode || 'mes';
+  const from = mode === 'semana' || mode === 'agenda' ? weekStart(cursor) : `${cursor.slice(0, 7)}-01`;
+  const to = mode === 'agenda' ? addIso(from, 20) : mode === 'semana' ? addIso(from, 6) : addIso(from, 41);
   state.calendarItems = await tool('calendar.query', { from, to });
   paintCenter();
 }
@@ -2004,9 +2028,23 @@ function isoTodayFrom(date) {
 function weekStart(iso) {
   const [year, month, day] = iso.split('-').map(Number);
   const date = new Date(year, month - 1, day);
-  const offset = (date.getDay() + 6) % 7;
+  const startsOn = Number(state.settings.weekStartsOn ?? 1) === 0 ? 0 : 1;
+  const offset = startsOn === 0 ? date.getDay() : (date.getDay() + 6) % 7;
   date.setDate(date.getDate() - offset);
   return isoTodayFrom(date);
+}
+
+function readableDate(iso) {
+  const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const [, month, day] = String(iso).split('-');
+  if (!month || !day) return iso;
+  return `${Number(day)} de ${months[Number(month) - 1] || month}`;
+}
+
+function calendarLabel(title) {
+  const text = String(title || '').replace(/^[●◆]\s*/, '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return readableDate(text);
+  return text;
 }
 
 function shortDate(iso) {
@@ -2062,12 +2100,11 @@ function paintTasks(center) {
     ['sem', 'Sem prazo'],
   ];
   const statuses = [
-    ['', 'Status'],
     ['aberta', 'Abertas'],
     ['andamento', 'Andamento'],
     ['feita', 'Feitas'],
   ];
-  const shelves = [['', 'Estante']].concat((state.workspaces || []).map((shelf) => [shelf.name, shelf.name]));
+  const shelves = (state.workspaces || []).map((shelf) => [shelf.name, shelf.name]);
   const columns = ['aberta', 'andamento', 'feita']
     .map((status) => {
       const label = status === 'aberta' ? 'A fazer' : status === 'andamento' ? 'Em andamento' : 'Concluídas';
@@ -2115,7 +2152,9 @@ function paintCalendar(center) {
   const count = mode === 'semana' ? 7 : 42;
   const days = Array.from({ length: count }, (_, index) => addIso(start, index));
   const items = state.calendarItems || [];
-  const cells = days
+  const cells = mode === 'agenda'
+    ? ''
+    : days
     .map((date) => {
       const mine = items.filter((item) => item.date === date);
       const marks = mine
@@ -2123,7 +2162,7 @@ function paintCalendar(center) {
         .map((item) => {
           if (item.kind === 'tarefa')
             return `<button type="button" class="cal-item" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}">${escapeHtml(item.title)}</button>`;
-          return `<span class="cal-item">${item.kind === 'nota' ? '●' : '◆'} ${escapeHtml(item.title)}</span>`;
+          return `<span class="cal-item">${escapeHtml(calendarLabel(item.title))}</span>`;
         })
         .join('');
       const outside = date.slice(0, 7) !== cursor.slice(0, 7) ? ' is-fora' : '';
@@ -2135,20 +2174,27 @@ function paintCalendar(center) {
   const weekdays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
     .map((name) => `<span>${name}</span>`)
     .join('');
-  const previous = mode === 'semana' ? 'Semana anterior' : 'Mês anterior';
-  const next = mode === 'semana' ? 'Próxima semana' : 'Próximo mês';
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>`;
+  const agenda = (state.calendarItems || [])
+    .filter((item) => item.date >= isoToday())
+    .map((item) => `<li><button type="button" class="menu__item" data-open-note="${escapeHtml(item.path)}"><b>${escapeHtml(readableDate(item.date))}</b> ${escapeHtml(calendarLabel(item.title))}</button></li>`)
+    .join('');
+  const previous = mode === 'mes' ? 'Mês anterior' : 'Semana anterior';
+  const next = mode === 'mes' ? 'Próximo mês' : 'Próxima semana';
+  const body = mode === 'agenda'
+    ? `<ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>`
+    : `<div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div>`;
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
       state.calendarMode = button.dataset.cal;
-      if (button.dataset.cal === 'semana') state.calendarCursor = isoToday();
+      if (button.dataset.cal === 'semana' || button.dataset.cal === 'agenda') state.calendarCursor = isoToday();
       showCalendar();
     };
   });
   center.querySelectorAll('[data-passo]').forEach((button) => {
     button.onclick = () => {
       const step = Number(button.dataset.passo);
-      if ((state.calendarMode || 'mes') === 'semana') {
+      if ((state.calendarMode || 'mes') === 'semana' || state.calendarMode === 'agenda') {
         state.calendarCursor = addIso(state.calendarCursor || isoToday(), step * 7);
       } else {
         const [y, m] = (state.calendarCursor || isoToday()).split('-').map(Number);
@@ -2157,6 +2203,9 @@ function paintCalendar(center) {
       }
       showCalendar();
     };
+  });
+  center.querySelectorAll('[data-open-note]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.openNote);
   });
   bindTaskDrag(center);
 }
@@ -2214,6 +2263,12 @@ function runCommand(id) {
       document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
     },
     cartas: () => showCards(),
+    config: () => {
+      state.view = 'settings';
+      state.nav = 'config';
+      paintCenter();
+    },
+    versoes: () => showVersions(),
     buscar: () => openPalette(),
     comandos: () => openCommands(),
     biblioteca: () => {
@@ -2252,7 +2307,7 @@ async function openDailyOn(iso) {
   try {
     await tool('note.create', {
       path,
-      body: `# ${iso}\n\n`,
+      body: `# ${readableDate(iso)}\n\n`,
       frontmatter: { data: iso },
     });
   } catch {
@@ -2282,7 +2337,8 @@ function dailyStrip(notePath) {
 function openAgent() {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Sofi"><h2>Sofi</h2><p class="nota-privacidade">A chave fica no cofre do sistema, nunca na biblioteca e nunca numa tool.</p><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
+  const theme = themeName() === 'dark' ? 'escuro' : 'claro';
+  overlay.innerHTML = `<div class="agente" role="dialog" aria-label="Sofi"><div class="msg"><div class="msg__avatar"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div><div><div class="msg__autor">Sofi</div><div class="msg__balao">A chave fica no cofre do sistema. Nada dela entra na biblioteca.</div></div></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
   $('#agente-guardar').onclick = async () => {
     const response = await sophy.agentKeySet($('#agente-chave').value);
     $('#agente-chave').value = '';
@@ -2382,16 +2438,16 @@ async function paintViews(center) {
         ? `<div class="inicio__cartoes">${cards}</div>`
         : `<div class="visao-lista">${list}</div>`;
   center.innerHTML = `<div class="inicio"><h2>Visões</h2>
-    <div class="segmentado" role="radiogroup" aria-label="Modo da visão">
-      ${['lista', 'quadro', 'tabela'].map((item) => `<label class="segmentado__opcao"><input type="radio" name="visao-modo" value="${item}" ${mode === item ? 'checked' : ''}><span>${item}</span></label>`).join('')}
+    <div class="vabas" role="tablist" aria-label="Visões">
+      ${['tabela', 'lista', 'quadro'].map((item) => `<button type="button" class="vaba" role="tab" data-visao-modo="${item}" aria-selected="${mode === item}">${item}</button>`).join('')}
     </div>
     ${body}
     <button type="button" class="btn btn--secundario" id="salvar-visao">Salvar visão</button>
     <ul>${views.map((view) => `<li><button type="button" data-visao="${escapeHtml(view.path)}" data-modo="${escapeHtml(view.modo)}" data-estante="${escapeHtml(view.estante || '')}">${escapeHtml(view.nome)} · ${escapeHtml(view.modo)}</button></li>`).join('')}</ul>
   </div>`;
-  center.querySelectorAll('[name="visao-modo"]').forEach((input) => {
-    input.onchange = () => {
-      state.viewMode = input.value;
+  center.querySelectorAll('[data-visao-modo]').forEach((button) => {
+    button.onclick = () => {
+      state.viewMode = button.dataset.visaoModo;
       paintCenter();
     };
   });
@@ -2463,13 +2519,109 @@ function confirmDialog(message) {
   });
 }
 
-async function importObsidian() {
-  const folder = await sophy.chooseFolder();
-  if (!folder) return;
-  const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
-  await refreshLibrary();
-  paintTree();
-  toast(`${result.copied} arquivo(s) copiados para Importado. A pasta de origem não foi alterada.`);
+async function showVersions() {
+  state.view = 'versions';
+  state.versionRows = await tool('version.list', {});
+  paintCenter();
+}
+
+function paintVersions(center) {
+  const rows = state.versionRows || [];
+  const items = rows
+    .map(
+      (row) =>
+        `<li><button type="button" class="versao" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(row.label || row.id)}</b><span>${escapeHtml(row.id)}</span><small>${row.bytes} B</small></button></li>`,
+    )
+    .join('');
+  center.innerHTML = `<div class="inicio"><h2>Histórico</h2><p>90 dias ou 1 GB. A mais antiga sai primeiro.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></div>`;
+  const save = $('#gravar-ponto');
+  if (save)
+    save.onclick = async () => {
+      await tool('version.point', { label: 'manual' });
+      toast('Ponto gravado.');
+      await showVersions();
+    };
+  center.querySelectorAll('[data-restaurar]').forEach((button) => {
+    button.onclick = async () => {
+      await tool('version.restore', { id: button.dataset.restaurar });
+      await refreshLibrary();
+      toast('Versão restaurada.');
+      paintTree();
+    };
+  });
+}
+
+function openExport(kind) {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  const title = state.active ? baseName(state.active) : 'Biblioteca';
+  const preview = kind === 'pdf'
+    ? `<div class="pdf-pagina" role="img" aria-label="Prévia do PDF"><h3>${escapeHtml(title)}</h3><p>Papel claro, mesmo no tema escuro.</p><footer>Sophy · 1</footer></div>`
+    : `<div class="site-previa" data-theme="${themeName()}"><h3>${escapeHtml(title)}</h3><p>O site usa o tema de quem está lendo.</p></div>`;
+  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Exportar"><h3>Exportar</h3><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="nota" checked><b>Esta nota</b><small>${escapeHtml(title)}</small></label><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="estante"><b>A estante</b><small>${escapeHtml(state.selectedShelf || 'Biblioteca')}</small></label>${preview}<button type="button" class="btn btn--primario" id="exportar-seguir">Continuar</button></div>`;
+  $('#exportar-seguir').onclick = async () => {
+    overlay.hidden = true;
+    if (kind === 'pdf') {
+      if (!state.active || !state.doc) {
+        toast('Abra uma nota para exportar o PDF.', 'erro');
+        return;
+      }
+      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(state.doc.body)}</pre></body></html>`;
+      const saved = await sophy.exportPdf(html);
+      if (saved) toast('PDF em papel claro.');
+      return;
+    }
+    const folder = await sophy.chooseFolder();
+    if (!folder) return;
+    const theme = themeName() === 'dark' ? 'dark' : 'light';
+    const result = await tool('site.export', { destination: folder, theme });
+    toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+  };
+}
+
+function importObsidian() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  let step = 1;
+  let folder = '';
+  const paint = () => {
+    const steps = ['Cofre', 'Prévia', 'Importando', 'Pronto']
+      .map((label, index) => {
+        const number = index + 1;
+        const stateAttr = number < step ? ' data-estado="feito"' : number === step ? ' aria-current="step"' : '';
+        return `<li${stateAttr}>${label}</li>`;
+      })
+      .join('');
+    const body = step === 1
+      ? `<p>O cofre original não é alterado. O Sophy só copia.</p><button type="button" class="btn btn--primario" id="importar-cofre">Escolher cofre</button>`
+      : step === 2
+        ? `<p>Pasta escolhida. A prévia conta Markdown e canvas. Nada foi gravado ainda.</p><p class="nota-privacidade">${escapeHtml(folder)}</p><button type="button" class="btn btn--primario" id="importar-seguir">Importar</button>`
+        : step === 3
+          ? `<p>Importando…</p>`
+          : `<p>Pronto. As notas estão na estante Importado.</p>`;
+    overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Importar do Obsidian"><h3>Importar do Obsidian</h3><ol class="passos">${steps}</ol>${body}</div>`;
+    const pick = $('#importar-cofre');
+    if (pick)
+      pick.onclick = async () => {
+        folder = await sophy.chooseFolder();
+        if (!folder) return;
+        step = 2;
+        paint();
+      };
+    const go = $('#importar-seguir');
+    if (go)
+      go.onclick = async () => {
+        step = 3;
+        paint();
+        const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
+        step = 4;
+        paint();
+        await refreshLibrary();
+        paintTree();
+        toast(`${result.copied} arquivo(s) copiados. A origem não foi alterada.`);
+      };
+  };
+  paint();
 }
 
 function insertBlockBelow(index) {
@@ -2578,7 +2730,8 @@ async function applyLibrary(root, libraries) {
   state.tabs = [];
   state.active = null;
   state.doc = null;
-  state.view = 'empty';
+  state.view = 'home';
+  state.nav = 'inicio';
   state.selectedShelf = null;
   await refreshLibrary();
   paintTabs();
@@ -3223,6 +3376,14 @@ function openPalette() {
           segments: [],
         })),
       );
+      const unique = [];
+      const paths = new Set();
+      for (const hit of hits) {
+        if (paths.has(hit.path)) continue;
+        paths.add(hit.path);
+        unique.push(hit);
+      }
+      hits = unique;
     }
     const list = $('#paleta-lista');
     const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
@@ -3332,7 +3493,10 @@ document.addEventListener('mousedown', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeMenus();
+  if (event.key === 'Escape') {
+    closeMenus();
+    closePalette();
+  }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Space') {
     event.preventDefault();
     openCapture();
@@ -3412,7 +3576,13 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 async function boot() {
   const sprite = await fetch('ui/assets/sprite.svg').then((response) => response.text());
+  const covers = await fetch('ui/assets/sprite-capas.svg').then((response) => response.text());
   $('#sprite').innerHTML = sprite;
+  const host = document.createElement('div');
+  host.id = 'sprite-capas';
+  host.hidden = true;
+  host.innerHTML = covers;
+  document.body.prepend(host);
   const started = await sophy.boot();
   if (!started.ok) {
     document.body.textContent = started.error || 'Não foi possível abrir.';
@@ -3422,8 +3592,8 @@ async function boot() {
   state.libraryPath = started.value.libraryPath;
   applyTheme(themeName());
   syncMotion();
-  if (state.settings.readingFont === 'literata')
-    document.documentElement.style.setProperty('--font-reading', 'var(--font-reading-serif)');
+  if (state.settings.readingFont === 'literata' || state.settings.readingFont === 'inter')
+    applyReadingFont(state.settings.readingFont);
   sophy.onCommand(applyCommand);
   if (!state.settings.onboarded || !state.libraryPath) paintOnboarding();
   else await showShell();

@@ -24,9 +24,13 @@ test('ligar menções escreve wikilinks e a importação não mexe na origem', (
   const source = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-vault-'));
   const library = openLibrary(root);
   createNote(library, 'Estudos/Leitura.md', '# Leitura\n');
-  createNote(library, 'Estudos/Resumo.md', 'A Leitura ficou de fora do colchete.\n');
+  createNote(library, 'Estudos/Resumo.md', 'A Leitura ficou de fora do colchete. 2026-11-17\n');
+  createNote(library, 'Diário/2026-11-17.md', '# dia\n');
+  createNote(library, 'Estudos/Oi.md', 'Oi\n');
   const found = unlinkedMentions(library);
   assert.equal(found.some((row) => row.title === 'Leitura' && row.total === 1), true);
+  assert.equal(found.some((row) => row.title === '2026-11-17'), false);
+  assert.equal(found.some((row) => row.title === 'Oi'), false);
   const linked = linkMentions(library, 'Leitura');
   assert.equal(linked.links, 1);
   assert.match(fs.readFileSync(path.join(root, 'Estudos/Resumo.md'), 'utf8'), /\[\[Leitura\]\]/);

@@ -109,7 +109,7 @@ button.nav__item {
 }
 .quadro {
   display: grid;
-  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   overflow-x: auto;
   align-items: start;
   gap: 8px;
@@ -162,6 +162,10 @@ button.nav__item {
   }
   .lateral.is-aberta {
     transform: none;
+  }
+  #lateral,
+  #arvore {
+    padding-bottom: calc(var(--statusbar-h) + 16px);
   }
 }
 .lateral.is-fechada {
@@ -710,7 +714,7 @@ button.arvore__linha[aria-selected='true'] {
   flex-wrap: wrap;
 }
 .quadro__coluna {
-  min-width: 240px;
+  min-width: 0;
   background: var(--sidebar);
   border-radius: 12px;
   padding: 12px;
@@ -745,8 +749,21 @@ button.arvore__linha[aria-selected='true'] {
   padding: 0 6px;
 }
 .canvas-area.tem-capa {
-  background: linear-gradient(145deg, var(--cover-bg), var(--cover-3) 60%, var(--cover-4));
+  background: var(--cover-bg);
 }
+.capa-quadro { height: 120px; margin: 0; border-radius: 0; }
+#conexoes.is-oculta { display: none; }
+.lateral__topo .biblioteca-seletor { flex: 1; min-width: 0; }
+.lateral__acoes { align-items: center; }
+.lateral__acoes #novo { flex: 1; width: auto; }
+.lateral__acoes #filtrar,
+.lateral__topo #recolher { width: auto; flex: none; }
+.site-previa { padding: 16px; border-radius: 12px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+.site-previa[data-theme="dark"] { background: #14131a; color: #f4f1ea; }
+.agente { position: relative; }
+.agente img { width: 72px; height: 72px; }
+.agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.canvas-vazio { position: absolute; inset: 72px 24px auto; text-align: center; }
 .semana-diaria { display: flex; gap: 6px; margin-bottom: 12px; }
 .semana-diaria__dia { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; min-width: 44px; cursor: pointer; }
 .semana-diaria__dia.is-hoje { border-color: var(--accent); }
@@ -755,23 +772,6 @@ button.arvore__linha[aria-selected='true'] {
 .grafo__quadros { display: grid; grid-template-columns: repeat(3, minmax(80px, 1fr)); gap: 8px; }
 .visao-tabela { width: 100%; border-collapse: collapse; }
 .visao-lista { display: grid; gap: 6px; }
-.capa {
-  height: 140px;
-  border-radius: 16px;
-  margin: 0 0 16px;
-  background:
-    radial-gradient(circle at 20% 30%, var(--cover-hi), transparent 28%),
-    linear-gradient(145deg, var(--cover-bg), var(--cover-3) 55%, var(--cover-4));
-}
-.capa-opcoes { display: inline-flex; gap: 6px; margin-left: 8px; }
-.capa-opcao {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid var(--line-strong);
-  background: linear-gradient(145deg, var(--cover-2), var(--cover-4));
-  cursor: pointer;
-}
 .inicio, .config { padding: 32px; overflow: auto; height: 100%; }
 .inicio__cartoes, .acentos { display: flex; flex-wrap: wrap; gap: 12px; }
 .cartao-estante {

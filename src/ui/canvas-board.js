@@ -73,19 +73,31 @@
       .join('');
     const covers = document.createElement('div');
     covers.className = 'capa-opcoes';
-    covers.innerHTML = [1, 2, 3, 4, 5, 6]
+    const names = ['rede', 'estante', 'jardim', 'horizonte', 'cerrado', 'ondas'];
+    covers.innerHTML = names
       .map(
-        (number) =>
-          `<button type="button" class="capa-opcao" data-capa="sophy:${number}" aria-label="Capa do quadro ${number}"></button>`,
+        (id) =>
+          `<button type="button" class="capa-opcao" data-capa="sophy:${id}" aria-label="Capa ${id}"><svg class="capa__arte" viewBox="0 0 1600 400"><use href="#capa-${id}"/></svg></button>`,
       )
       .join('');
     tools.after(covers);
     const paintCover = () => {
       const capa = state.document.capa;
-      const on = typeof capa === 'string' && /^sophy:[1-6]$/.test(capa);
+      const id = typeof capa === 'string' && capa.startsWith('sophy:') ? capa.slice(6) : '';
+      const on = /^(rede|estante|jardim|horizonte|cerrado|ondas|[1-6])$/.test(id);
       area.classList.toggle('tem-capa', on);
-      if (on) area.dataset.sophy = capa.slice(6);
-      else delete area.dataset.sophy;
+      let art = area.querySelector('.capa-quadro');
+      if (!on) {
+        art?.remove();
+        return;
+      }
+      const name = { 1: 'rede', 2: 'estante', 3: 'jardim', 4: 'horizonte', 5: 'cerrado', 6: 'ondas' }[id] || id;
+      if (!art) {
+        art = document.createElement('div');
+        art.className = 'capa capa-quadro';
+        area.prepend(art);
+      }
+      art.innerHTML = `<div class="capa__recorte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice"><use href="#capa-${name}"/></svg></div>`;
     };
     paintCover();
     covers.querySelectorAll('[data-capa]').forEach((button) => {
@@ -98,6 +110,15 @@
     zoomBar.innerHTML = `<button type="button" class="btn btn--icone" data-zoom="out" aria-label="Afastar">−</button><span class="canvas-zoom__valor">100%</span><button type="button" class="btn btn--icone" data-zoom="in" aria-label="Aproximar">+</button><button type="button" class="btn btn--secundario" data-zoom="fit">Ajustar</button>`;
 
     const paint = () => {
+      const empty = area.querySelector('.canvas-vazio');
+      if (!state.document.nodes.length) {
+        if (!empty) {
+          const note = document.createElement('div');
+          note.className = 'canvas-vazio vazio-ensina';
+          note.innerHTML = '<h2>Quadro vazio</h2><p>Use Texto, Grupo ou Conector. Se a leitura falhar, o quadro mostra o erro em vez de um cartão.</p>';
+          area.append(note);
+        }
+      } else empty?.remove();
       const camera = state.camera;
       world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`;
       zoomBar.querySelector('.canvas-zoom__valor').textContent =

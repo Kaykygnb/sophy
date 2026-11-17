@@ -20,6 +20,7 @@ import {
   exportSite,
   listCards,
   listVersions,
+  restoreVersion,
   reviewCard,
   saveVersionPoint,
   semanticSearch,
@@ -354,6 +355,13 @@ export const tools = [
     z.object({ libraryPath, label: z.string().min(1), origin }),
     ({ libraryPath: folder, label, origin: source }) =>
       tracked(folder, source, 'version.point', label, (library) => saveVersionPoint(library, label)),
+  ),
+  define(
+    'version.restore',
+    'Copia de volta os Markdown e canvas de um ponto em .sophy/versoes.',
+    z.object({ libraryPath, id: z.string().min(1), origin }),
+    ({ libraryPath: folder, id, origin: source }) =>
+      tracked(folder, source, 'version.restore', `Restaurar ${id}`, (library) => restoreVersion(library, id)),
   ),
   define(
     'site.export',

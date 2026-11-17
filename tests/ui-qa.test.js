@@ -74,6 +74,18 @@ test('a árvore marca só o item ativo', () => {
   assert.equal(commands.treeMarked('note', 'Estudos/Leitura.md', shelf), false);
 });
 
+test('a capa resolve a coleção, a cor, o arquivo e a migração', () => {
+  assert.equal(commands.resolveCover({ capa: 'sophy:ondas', capa_y: '40%' }).id, 'ondas');
+  assert.equal(commands.resolveCover({ capa: 'sophy:ondas', capa_y: '40%' }).y, 0.4);
+  assert.equal(commands.resolveCover({ capa: 'sophy:1' }).id, 'rede');
+  assert.equal(commands.resolveCover({ ilustracao: 3 }).id, 'horizonte');
+  assert.equal(commands.resolveCover({ capa: 'cor:estante' }).kind, 'cor');
+  assert.equal(commands.resolveCover({ capa: 'cor:2' }).color, '2');
+  assert.equal(commands.resolveCover({ capa: 'assets/foto.png' }).kind, 'arquivo');
+  assert.equal(commands.resolveCover({ capa_y: '50%' }), null);
+  assert.equal(commands.COVER_IDS.length, 24);
+});
+
 test('a estante conhecida tem ícone fixo e a nota fica no nível 2', () => {
   assert.equal(commands.shelfMark('Estudos').icon, 'capelo');
   assert.equal(commands.shelfMark('Diário').icon, 'nota-diaria');

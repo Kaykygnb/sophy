@@ -18,6 +18,7 @@ import {
   exportSite,
   lightPaperHtml,
   listCards,
+  restoreVersion,
   reviewCard,
   saveVersionPoint,
   semanticSearch,
@@ -27,10 +28,12 @@ import {
 test('cartão ignora código, a revisão espaça e o índice só existe ligado', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-estudo-'));
   const library = openLibrary(root);
-  createNote(library, 'Estudos/Cartas.md', 'capital :: Brasília\n```\nfalso :: não\n```\n');
+  createNote(library, 'Estudos/Cartas.md', 'capital :: Brasília\nágua ::: 100 °C\n```\nfalso :: não\n```\n');
   const cards = listCards(library, '2026-11-17');
-  assert.equal(cards.length, 1);
+  assert.equal(cards.length, 2);
   assert.equal(cards[0].front, 'capital');
+  assert.equal(cards[1].reversible, true);
+  assert.equal(cards[1].back, '100 °C');
   const reviewed = reviewCard(library, cards[0].id, true, '2026-11-17');
   assert.equal(reviewed.box, 1);
   assert.notEqual(reviewed.due, '2026-11-17');
@@ -74,6 +77,9 @@ test('versão apaga a mais antiga, o site não entra na biblioteca e o aviso é 
   const names = fs.readdirSync(path.join(agedRoot, '.sophy', 'versoes'));
   assert.equal(names.some((name) => name.startsWith('2026-01-01')), false);
   assert.equal(names.some((name) => name.startsWith('2026-11-17')), true);
+  fs.writeFileSync(path.join(agedRoot, 'Diário/nota.md'), '# Mudou\n');
+  restoreVersion(agedLibrary, names.find((name) => name.startsWith('2026-11-17')));
+  assert.match(fs.readFileSync(path.join(agedRoot, 'Diário/nota.md'), 'utf8'), /# Nota/);
 
   const site = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-site-'));
   const before = fs.readFileSync(path.join(root, 'Diário/nota.md'));
