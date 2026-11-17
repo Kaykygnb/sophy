@@ -20,6 +20,22 @@ test('Sem título ganha um número quando o nome já existe', () => {
   assert.equal(commands.uniqueTitle(['Sem título', 'Sem título 2']), 'Sem título 3');
 });
 
+test('a prévia do cartão não mostra o Markdown cru da tarefa', () => {
+  const html = commands.notePreviewHtml(
+    '# Título\n\nA memória se liga a [[Estudos/Grafo|o grafo]].\n- [ ] abrir 📅 2026-11-20 ⏫\n- [x] lido\n',
+  );
+  assert.match(html, /data-status="aberta"/);
+  assert.match(html, /data-status="feita"/);
+  assert.match(html, /class="wikilink"/);
+  assert.match(html, /o grafo/);
+  assert.match(html, /2026-11-20/);
+  assert.match(html, /Alta/);
+  assert.equal(html.includes('- [ ]'), false);
+  assert.equal(html.includes('[['), false);
+  assert.equal(html.includes('📅'), false);
+  assert.equal(html.includes('⏫'), false);
+});
+
 test('a estante conhecida tem ícone fixo e a nota fica no nível 2', () => {
   assert.equal(commands.shelfMark('Estudos').icon, 'capelo');
   assert.equal(commands.shelfMark('Diário').icon, 'nota-diaria');

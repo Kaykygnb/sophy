@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
+import { parseCanvas, serializeCanvas } from './canvas.ts';
 import { listFiles, listNotes, moveEntry, readText, writeText, type Library } from './library.ts';
 import { splitMarkdown } from './markdown.ts';
 import { rewriteLinks } from './rewrite.ts';
@@ -52,6 +53,7 @@ export function syncLinks(library: Library) {
   const cache = caches.get(library.root) ?? new Map<string, CachedNote>();
   caches.set(library.root, cache);
   const notes = listNotes(library);
+  const canvases = listFiles(library).filter((file) => file.kind === 'canvas');
   const seen = new Set<string>();
   for (const note of notes) {
     seen.add(note.path);
@@ -60,6 +62,15 @@ export function syncLinks(library: Library) {
       cache.set(
         note.path,
         loadNote(library, note.path, note.workspace, note.modifiedAt, note.size),
+      );
+  }
+  for (const canvas of canvases) {
+    seen.add(canvas.path);
+    const current = cache.get(canvas.path);
+    if (!current || current.mtime !== canvas.modifiedAt || current.size !== canvas.size)
+      cache.set(
+        canvas.path,
+        loadCanvas(library, canvas.path, canvas.workspace, canvas.modifiedAt, canvas.size),
       );
   }
   for (const cached of cache.keys()) if (!seen.has(cached)) cache.delete(cached);
@@ -132,6 +143,15 @@ export function relocate(library: Library, source: string, target: string) {
       throw new EngineError('conflict', 'O arquivo mudou durante a reescrita dos links.');
     updated.push(mapPath(note.path));
   }
+  for (const canvas of listFiles(library).filter((file) => file.kind === 'canvas')) {
+    const doc = readText(library, canvas.path);
+    const next = rewriteCanvas(doc.content, canvas.path, notePaths, files, mapPath);
+    if (next === doc.content) continue;
+    const written = writeText(library, canvas.path, next, doc.revision);
+    if (written.conflict)
+      throw new EngineError('conflict', 'O arquivo mudou durante a reescrita dos links.');
+    updated.push(mapPath(canvas.path));
+  }
   const moved = moveEntry(library, source, target);
   const cache = caches.get(library.root);
   if (cache) {
@@ -159,7 +179,8 @@ export function watchLibrary(library: Library, enabled: boolean) {
     if (!filename) return;
     const relative = String(filename).split(path.sep).join('/');
     if (relative.split('/').some((part) => part.startsWith('.'))) return;
-    if (!relative.toLowerCase().endsWith('.md')) return;
+    const lower = relative.toLowerCase();
+    if (!lower.endsWith('.md') && !lower.endsWith('.canvas')) return;
     caches.get(library.root)?.delete(relative);
     generations.set(library.root, (generations.get(library.root) ?? 0) + 1);
   });
@@ -250,6 +271,107 @@ function frontmatterText(frontmatter: Record<string, unknown> | null) {
   return values.join('\n');
 }
 
+function loadCanvas(
+  library: Library,
+  relative: string,
+  workspace: string | null,
+  mtime: number,
+  size: number,
+): CachedNote {
+  const content = readText(library, relative).content;
+  const file = parseCanvas(content);
+  const scanned: ScannedLink[] = [];
+  const texts: string[] = [];
+  for (const node of file.nodes) {
+    if (node.type === 'text' && typeof node.text === 'string') {
+      texts.push(node.text);
+      scanned.push(...scan(node.text));
+    }
+    if (node.type === 'file' && typeof node.file === 'string' && node.file.trim())
+      scanned.push(fileNodeLink(node.file));
+  }
+  return {
+    path: relative,
+    workspace,
+    title: basename(relative),
+    tags: [],
+    headings: [],
+    blockIds: [],
+    plain: plainText(texts.join('\n')),
+    frontmatterText: '',
+    mtime,
+    size,
+    scanned,
+  };
+}
+
+function fileNodeLink(file: string): ScannedLink {
+  const note = file.replace(/\.md$/i, '');
+  return {
+    format: 'wiki',
+    raw: `[[${note}]]`,
+    target: note,
+    note,
+    anchor: '',
+    alias: null,
+    start: 0,
+    end: 0,
+    targetStart: 0,
+    targetEnd: 0,
+  };
+}
+
+function rewriteCanvas(
+  content: string,
+  source: string,
+  notePaths: string[],
+  filePaths: string[],
+  mapPath: (filePath: string) => string,
+) {
+  let file;
+  try {
+    file = parseCanvas(content);
+  } catch {
+    return content;
+  }
+  let changed = false;
+  for (const node of file.nodes) {
+    if (node.type === 'text' && typeof node.text === 'string') {
+      const next = rewriteLinks(node.text, source, notePaths, filePaths, mapPath);
+      if (next !== node.text) {
+        node.text = next;
+        changed = true;
+      }
+    }
+    if (node.type === 'file' && typeof node.file === 'string') {
+      const next = rewriteFileRef(node.file, notePaths, filePaths, mapPath);
+      if (next !== node.file) {
+        node.file = next;
+        changed = true;
+      }
+    }
+  }
+  return changed ? serializeCanvas(file) : content;
+}
+
+function rewriteFileRef(
+  file: string,
+  notePaths: string[],
+  filePaths: string[],
+  mapPath: (filePath: string) => string,
+) {
+  const pool = [...notePaths, ...filePaths];
+  const match = pool.find(
+    (item) => item === file || item === `${file}.md` || item.replace(/\.md$/i, '') === file,
+  );
+  if (!match) return file;
+  const next = mapPath(match);
+  if (next === match) return file;
+  if (/\.md$/i.test(file)) return /\.md$/i.test(next) ? next : `${next}.md`;
+  if (/\.[^/]+$/i.test(file)) return next;
+  return next.replace(/\.md$/i, '');
+}
+
 function basename(filePath: string) {
-  return (filePath.split('/').pop() ?? filePath).replace(/\.md$/i, '');
+  return (filePath.split('/').pop() ?? filePath).replace(/\.md$/i, '').replace(/\.canvas$/i, '');
 }

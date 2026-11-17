@@ -1,0 +1,211 @@
+/* ==========================================================================
+   Sophy · componentes da fase 7 (17/11/2026) · somam-se a components.css
+   e components-fase6.css. Depende também de fase7/tokens-acentos.css.
+   Mesmas convenções: estados reais (:hover, :focus-visible, :checked,
+   [aria-pressed], [aria-selected], [aria-current], :disabled); .is-* só no kit.
+   Movimento: só CSS, com --dur-*; tudo tem versão parada em
+   prefers-reduced-motion (e .motion-reduce, usada pelo kit para simular).
+   ========================================================================== */
+
+/* ---------- 1. Cor de destaque (seletor) ---------- */
+.acentos { display: flex; flex-wrap: wrap; gap: 4px 12px; border: 0; margin: 0; padding: 0; }
+.acentos legend { font: 600 13px/1.4 var(--font-ui); color: var(--ink); padding: 0; margin-bottom: var(--space-2); }
+.acento { position: relative; display: grid; justify-items: center; gap: 6px; width: 76px; padding: 6px 0; cursor: pointer; border-radius: var(--radius-md); }
+.acento input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
+.acento__bola { width: 32px; height: 32px; border-radius: 50%; background: var(--cor); display: grid; place-items: center;
+  transition: transform var(--dur-fast) var(--ease); }
+.acento__bola .icon { width: 16px; height: 16px; color: var(--on-accent); opacity: 0; }
+.acento__nome { font: 500 12.5px/1.2 var(--font-ui); color: var(--ink-2); }
+.acento:hover .acento__bola, .acento.is-hover .acento__bola { transform: scale(1.08); }
+.acento:has(input:focus-visible), .acento.is-foco { box-shadow: var(--focus-ring); }
+.acento:has(input:checked) .acento__bola, .acento.is-ativo .acento__bola { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.acento:has(input:checked) .acento__bola .icon, .acento.is-ativo .acento__bola .icon { opacity: 1; }
+.acento:has(input:checked) .acento__nome, .acento.is-ativo .acento__nome { color: var(--ink); font-weight: 600; }
+.acento:has(input:disabled) { opacity: .4; cursor: not-allowed; }
+.previa-acento { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg); max-width: 560px; }
+.previa-acento__linha { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.contraste-ok { display: flex; align-items: center; gap: 6px; font: var(--text-detail); color: var(--ink-2); }
+.contraste-ok .icon { width: 16px; height: 16px; color: var(--success); }
+
+/* ---------- 2. Modo foco ---------- */
+.modo-foco { position: relative; background: var(--surface); padding: 56px var(--space-5) 40px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.modo-foco__dica { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 12px; border-radius: 16px; background: var(--hover-subtle); border: 1px solid var(--line); font: var(--text-detail); color: var(--ink-2); white-space: nowrap; }
+.modo-foco__dica strong { color: var(--ink); }
+.modo-foco__texto { max-width: 680px; margin: 0 auto; font-family: var(--font-reading-serif, var(--font-reading)); font-size: 19px; line-height: 1.75; }
+.modo-foco__texto p { margin: 0 0 18px; color: var(--ink-3); transition: color var(--dur-medium) var(--ease); position: relative; }
+.modo-foco__texto p[aria-current="true"] { color: var(--ink); }
+.modo-foco__texto p[aria-current="true"]::before { content: ""; position: absolute; left: -24px; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--accent); }
+.modo-foco__rodape { display: flex; justify-content: space-between; margin-top: var(--space-4); font: var(--text-detail); color: var(--ink-3); }
+
+/* ---------- 3. Revisão da semana ---------- */
+.revisao { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+.revisao-cartao { display: flex; flex-direction: column; min-height: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.revisao-cartao__topo { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 0 10px; padding: var(--space-4); border-bottom: 1px solid var(--line); }
+.revisao-cartao__icone { width: 30px; height: 30px; border-radius: 9px; background: var(--hover-subtle); display: grid; place-items: center; grid-row: span 2; }
+.revisao-cartao__icone .icon { width: 16px; height: 16px; color: var(--tom, var(--accent)); }
+.revisao-cartao__titulo { font-weight: 600; font-size: 14px; }
+.revisao-cartao__sub { font: var(--text-detail); color: var(--ink-3); grid-column: 2; }
+.revisao-cartao__num { grid-row: 1 / span 2; grid-column: 3; font: 600 28px/1 var(--font-display); }
+.revisao-cartao ul { list-style: none; margin: 0; padding: var(--space-2) var(--space-4); flex: 1; }
+.revisao-cartao li { padding: 6px 0; font-size: 13.5px; font-weight: 500; }
+.revisao-cartao li small { display: block; font: 400 12px/1.4 var(--font-ui); color: var(--ink-3); }
+.revisao-cartao li small.atrasada { color: var(--danger); }
+.revisao-cartao__acao { margin: 0 var(--space-4) var(--space-4); }
+.barras-semana { display: flex; align-items: flex-end; gap: 12px; height: 96px; padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.barras-semana div { flex: 1; display: grid; justify-items: center; gap: 4px; font: 500 12px/1 var(--font-ui); color: var(--ink-2); }
+.barras-semana i { display: block; width: 100%; height: calc(var(--v) * 12px + 2px); border-radius: 4px; background: var(--accent); }
+.barras-semana i[style*="--v:0"] { background: var(--line-strong); }
+
+/* ---------- 4. Capa da nota ---------- */
+.capa { position: relative; height: 200px; background: var(--capa-cor, var(--hover)); background-size: cover; background-position: center var(--capa-y, 50%); }
+.capa__acoes { position: absolute; right: var(--space-4); bottom: var(--space-3); display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.capa:hover .capa__acoes, .capa:focus-within .capa__acoes, .capa.is-hover .capa__acoes { opacity: 1; }
+.capa__acoes .btn { background: var(--surface); box-shadow: var(--shadow-sm); }
+.capa__icone { position: absolute; left: var(--space-5); bottom: -28px; width: 64px; height: 64px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-md); display: grid; place-items: center; }
+.capa__icone .icon { width: 32px; height: 32px; }
+.cartao-capa { width: 240px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.cartao-capa__img { height: 84px; background: var(--capa-cor, var(--hover)); background-size: cover; background-position: center; }
+.cartao-capa__corpo { padding: 12px 14px 14px; }
+.cartao-capa__titulo { font-weight: 600; font-size: 14px; margin: 0 0 4px; }
+.cartao-capa__texto { font: var(--text-detail); color: var(--ink-2); margin: 0; }
+.cartao-capa--sem-capa { border-top: 4px solid var(--estante-cor, var(--line-strong)); }
+.cartao-capa:focus-visible, .cartao-capa.is-foco { outline: none; box-shadow: var(--focus-ring); }
+.cartao-capa[aria-selected="true"], .cartao-capa.is-ativo { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* ---------- 5. Exportar ---------- */
+.opcao-cartao { position: relative; display: grid; grid-template-columns: 18px 20px 1fr; align-items: center; gap: 2px 12px; padding: 12px 16px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); cursor: pointer; max-width: 440px; }
+.opcao-cartao input { margin: 0; accent-color: var(--accent); width: 16px; height: 16px; grid-row: span 2; }
+.opcao-cartao .icon { width: 16px; height: 16px; grid-row: span 2; }
+.opcao-cartao b { font-weight: 600; font-size: 14px; }
+.opcao-cartao small { grid-column: 3; font: var(--text-detail); color: var(--ink-3); }
+.opcao-cartao:hover, .opcao-cartao.is-hover { background: var(--hover-subtle); }
+.opcao-cartao:has(input:checked), .opcao-cartao.is-ativo { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 .5px var(--accent); }
+.opcao-cartao:has(input:focus-visible), .opcao-cartao.is-foco { box-shadow: var(--focus-ring); }
+.pdf-pagina { width: 300px; aspect-ratio: 1 / 1.414; background: #FFFFFF; color: #1E1C29; box-shadow: var(--shadow-md); padding: 34px 36px; font: 400 11.5px/1.65 var(--font-reading-serif, var(--font-reading)); overflow: hidden; }
+.pdf-pagina h3 { font: 600 20px/1.2 var(--font-display); margin: 0 0 10px; color: #1E1C29; }
+.pdf-pagina p { margin: 0 0 8px; font-size: 12px; }
+.pdf-pagina a { color: #4B52B0; }
+.pdf-pagina footer { margin-top: 14px; font: 400 12px var(--font-ui); color: #575468; }
+
+/* ---------- 6. Importar do Obsidian ---------- */
+.passos { display: grid; grid-template-columns: repeat(var(--n, 4), 1fr); gap: 8px; list-style: none; margin: 0; padding: 0; counter-reset: p; }
+.passos li { padding-top: 12px; border-top: 4px solid var(--line-strong); font: 500 12.5px/1.3 var(--font-ui); color: var(--ink-3); display: flex; gap: 4px; align-items: center; }
+.passos li .icon { width: 14px; height: 14px; color: var(--accent); }
+.passos li[data-estado="feito"] { border-color: var(--accent); color: var(--accent); }
+.passos li[aria-current="step"] { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.progresso { position: relative; height: 8px; border-radius: 4px; background: var(--line-strong); overflow: hidden; }
+.progresso__barra { position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); border-radius: 4px; background: var(--accent); transition: width var(--dur-medium) var(--ease); }
+.progresso--indeterminado .progresso__barra { width: 30%; animation: sophy-vai-vem 1.4s var(--ease) infinite; }
+@keyframes sophy-vai-vem { 0% { left: -30%; } 100% { left: 100%; } }
+.progresso__rotulo { display: flex; justify-content: space-between; font: var(--text-detail); color: var(--ink-2); margin-bottom: 6px; }
+.progresso__rotulo b { color: var(--ink); font-size: 14px; }
+.log-import { list-style: none; margin: 0; padding: var(--space-3) var(--space-4); background: var(--code); border: 1px solid var(--line); border-radius: var(--radius-lg); font-size: 13.5px; }
+.log-import li { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.log-import .icon { width: 16px; height: 16px; }
+.log-import .ok .icon { color: var(--success); } .log-import .aviso .icon { color: var(--warning); } .log-import .agora .icon { color: var(--accent); }
+.aviso-linha { display: grid; grid-template-columns: 16px 1fr auto; gap: 2px 12px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--warning); border-radius: 12px; background: var(--surface); max-width: 680px; }
+.aviso-linha .icon { width: 16px; height: 16px; color: var(--warning); grid-row: span 2; }
+.aviso-linha b { font-size: 14px; font-weight: 600; }
+.aviso-linha span { grid-column: 2; font: var(--text-detail); color: var(--ink-2); }
+.aviso-linha .btn { grid-column: 3; grid-row: 1 / span 2; }
+.aviso-linha--info { border-left-color: var(--line-strong); } .aviso-linha--info .icon { color: var(--ink-2); }
+
+/* ---------- 7. Flashcards ---------- */
+.fc-linha { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: var(--radius-md); font-size: 16px; max-width: 640px; }
+.fc-linha__chip { width: 24px; height: 24px; border-radius: 6px; background: var(--accent-soft); display: grid; place-items: center; flex: none; }
+.fc-linha__chip .icon { width: 16px; height: 16px; color: var(--accent); }
+.fc-linha__p { font-weight: 600; }
+.fc-linha__seta { width: 16px; height: 16px; color: var(--ink-3); }
+.fc-linha__r { color: var(--ink-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-linha__quando { font: 500 12px/1 var(--font-ui); color: var(--ink-3); white-space: nowrap; }
+.fc-linha__quando--novo { padding: 4px 10px; border-radius: 10px; background: var(--hover-subtle); color: var(--ink-2); font-weight: 600; }
+.fc-linha--cru { background: var(--hover-subtle); font: 400 14px/1.5 var(--font-mono); color: var(--ink-2); }
+.fc-linha--cru b { color: var(--accent); }
+.fc-revisao { perspective: 1200px; max-width: 640px; }
+.fc-cartao { position: relative; min-height: 300px; transform-style: preserve-3d; transition: transform var(--dur-slow) var(--ease); }
+.fc-revisao[data-lado="verso"] .fc-cartao { transform: rotateY(180deg); }
+.fc-face { position: absolute; inset: 0; backface-visibility: hidden; display: grid; place-content: center; gap: 10px; text-align: center; padding: 32px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 18px; box-shadow: var(--shadow-lg); }
+.fc-face--verso { transform: rotateY(180deg); }
+.fc-face__origem { position: absolute; top: 18px; left: 24px; font: var(--text-detail); color: var(--ink-3); }
+.fc-face__p { font: 600 26px/1.3 var(--font-display); margin: 0; }
+.fc-face__r { font: 400 21px/1.5 var(--font-reading-serif, var(--font-reading)); margin: 0; }
+.fc-face__extra { font: 400 15px/1.5 var(--font-reading-serif, var(--font-reading)); color: var(--ink-2); margin: 0; }
+.respostas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 720px; margin-top: var(--space-5); }
+.resposta { position: relative; min-width: 132px; display: grid; gap: 2px; text-align: left; padding: 12px 16px 12px 18px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--tom-bg); cursor: pointer; color: var(--ink); }
+.resposta::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--tom); }
+.resposta b { font-size: 15px; font-weight: 600; }
+.resposta small { font: 500 13px/1.3 var(--font-ui); color: var(--tom); }
+.resposta .kbd { position: absolute; right: 10px; top: 10px; }
+.resposta:hover, .resposta.is-hover { border-color: var(--tom); }
+.resposta:focus-visible, .resposta.is-foco { outline: none; box-shadow: var(--focus-ring); }
+.resposta:active, .resposta.is-ativo { transform: translateY(1px); }
+.resposta:disabled { opacity: .45; cursor: not-allowed; }
+.resposta--errei { --tom: var(--danger); --tom-bg: var(--danger-bg); }
+.resposta--dificil { --tom: var(--warning); --tom-bg: var(--warning-bg); }
+.resposta--bom { --tom: var(--success); --tom-bg: var(--success-bg); }
+.resposta--facil { --tom: var(--accent); --tom-bg: var(--accent-soft); }
+.contador-dia { display: flex; gap: 20px; font: 500 13px/1 var(--font-ui); color: var(--ink-2); }
+.contador-dia b { font-size: 15px; font-weight: 700; margin-right: 4px; }
+.contador-dia .novos b { color: var(--ink-2); } .contador-dia .revisar b { color: var(--accent); } .contador-dia .feitos b { color: var(--success); }
+
+/* ---------- 8. Versões ---------- */
+.versoes-lista { list-style: none; margin: 0; padding: 0; max-width: 320px; }
+.versoes-lista__dia { font: 600 12.5px/1 var(--font-ui); color: var(--ink-3); padding: 12px 0 6px; }
+.versao { position: relative; display: grid; grid-template-columns: 52px 1fr auto; gap: 2px 8px; align-items: center; width: 100%; padding: 8px 12px 8px 28px; border: 1px solid transparent; border-radius: 10px; background: none; text-align: left; cursor: pointer; color: var(--ink); }
+.versao::before { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: var(--line-strong); }
+.versao::after { content: ""; position: absolute; left: 5px; top: calc(50% - 6px); width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.6px solid var(--input-border); box-sizing: border-box; }
+.versao b { font-size: 13px; font-weight: 600; }
+.versao span { font-size: 13.5px; }
+.versao small { grid-column: 1 / span 2; font: 500 12.5px/1.2 var(--font-ui); color: var(--ink-2); }
+.versao:hover, .versao.is-hover { background: var(--hover-subtle); }
+.versao:focus-visible, .versao.is-foco { outline: none; box-shadow: var(--focus-ring); }
+.versao[aria-pressed="true"], .versao.is-ativo { background: var(--accent-soft); border-color: var(--accent); }
+.versao[aria-pressed="true"]::after, .versao.is-ativo::after, .versao--atual::after { background: var(--accent); border-color: var(--accent); }
+.diff { font: 400 13.5px/1.75 var(--font-mono); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px; max-width: 520px; }
+.diff div { padding: 0 8px 0 28px; position: relative; border-radius: 4px; white-space: pre-wrap; }
+.diff .diff__del { background: var(--danger-bg); } .diff .diff__del::before { content: "−"; position: absolute; left: 8px; color: var(--danger); font-weight: 700; }
+.diff .diff__add { background: var(--success-bg); } .diff .diff__add::before { content: "+"; position: absolute; left: 8px; color: var(--success); font-weight: 700; }
+
+/* ---------- 9. Busca por significado ---------- */
+.busca-modos { display: flex; gap: 8px; align-items: center; }
+.modo-busca { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 15px; background: none; cursor: pointer; font-weight: 500; font-size: 13px; color: var(--ink); }
+.modo-busca .icon { width: 16px; height: 16px; }
+.modo-busca:hover, .modo-busca.is-hover { background: var(--hover-subtle); }
+.modo-busca:focus-visible, .modo-busca.is-foco { outline: none; box-shadow: var(--focus-ring); }
+.modo-busca[aria-pressed="true"], .modo-busca.is-ativo { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.modo-busca[aria-pressed="true"] .icon { color: var(--accent); }
+.modo-busca:disabled { opacity: .45; cursor: not-allowed; }
+.semelhanca { display: inline-flex; align-items: flex-end; gap: 2px; font: 600 12px/1 var(--font-ui); color: var(--ink-2); }
+.semelhanca i { display: block; width: 4px; border-radius: 1px; background: var(--line-strong); }
+.semelhanca i:nth-child(1) { height: 6px; } .semelhanca i:nth-child(2) { height: 8.5px; } .semelhanca i:nth-child(3) { height: 11px; } .semelhanca i:nth-child(4) { height: 13.5px; } .semelhanca i:nth-child(5) { height: 16px; }
+.semelhanca i.on { background: var(--accent); }
+.semelhanca span { margin-left: 6px; }
+.resultado-sem { display: grid; grid-template-columns: 16px 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 14px; border-radius: 10px; max-width: 700px; }
+.resultado-sem .icon { width: 16px; height: 16px; }
+.resultado-sem b { font-size: 14.5px; font-weight: 600; }
+.resultado-sem p { grid-column: 2 / span 2; margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.resultado-sem mark { background: none; color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+.resultado-sem[aria-selected="true"], .resultado-sem.is-ativo { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
+.resultado-sem:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---------- Movimento reduzido: tudo parado, estado final visível ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .progresso--indeterminado .progresso__barra { animation: none !important; }
+  .progresso--indeterminado .progresso__barra { left: 0; width: 100%; opacity: .35; }
+  .fc-cartao { transition: none; }
+  .modo-foco__texto p { transition: none; }
+}
+.motion-reduce .progresso--indeterminado .progresso__barra { animation: none !important; }
+.motion-reduce .progresso--indeterminado .progresso__barra { left: 0; width: 100%; opacity: .35; }
+.motion-reduce .fc-cartao { transition: none; }
+
+/* ---------- Piso de 12 px (correção do kit v3) ----------
+   Fases 5 e 6 tinham 4 exceções abaixo de 12 px (teclas, rótulo de seta do canvas,
+   marcas da linha do tempo e dia da semana). A partir do kit v3 nada fica abaixo de 12 px. */
+.kbd { font-size: 12px; }
+.cv-rotulo { font-size: 12px; }
+.tempo__marcas { font-size: 12px; }
+.dia small { font-size: 12px; }
+.pdf-pagina { font-size: 12px; }
