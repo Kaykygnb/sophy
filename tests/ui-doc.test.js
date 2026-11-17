@@ -38,6 +38,17 @@ test('Enter separa o parágrafo, Backspace junta e a colagem vira blocos', () =>
   assert.match(doc.serializeDocument(soft.doc), /Primeiro \nparágrafo\./);
 });
 
+test('negrito, itálico, riscado, destaque e código voltam no Markdown', () => {
+  const raw = '**memória** e *mais* ~~não~~ ==aqui== `ok`';
+  const parts = doc.parseInlines(raw);
+  assert.equal(doc.serializeInlines(parts), raw);
+  assert.equal(parts.some((part) => part.type === 'bold' && part.text === 'memória'), true);
+  assert.equal(parts.some((part) => part.type === 'italic'), true);
+  assert.equal(parts.some((part) => part.type === 'strike'), true);
+  assert.equal(parts.some((part) => part.type === 'highlight'), true);
+  assert.equal(parts.some((part) => part.type === 'code' && part.text === 'ok'), true);
+});
+
 test('negrito e itálico envolvem o trecho no Markdown', () => {
   const start = doc.parseDocument('memória\n');
   const bold = doc.wrapBlock(start, 0, 0, 7, '**', '**');

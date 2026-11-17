@@ -82,12 +82,70 @@ body {
 .lateral__busca {
   margin: 12px;
 }
-.arvore {
+.arvore,
+#arvore {
   width: auto;
   flex: 1;
+  min-height: 0;
   overflow: auto;
   border-radius: 0;
   background: transparent;
+}
+button.nav__item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.conexoes h3,
+.conexoes__titulo {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.quadro {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  align-items: start;
+}
+.kcard__meta {
+  grid-column: 2;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cal-semana {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  color: var(--ink-3);
+  font: 500 12px/1 var(--font-ui);
+  margin-bottom: 4px;
+}
+.cal-dia.is-fora {
+  color: var(--ink-3);
+}
+@media (max-width: 900px) {
+  .miolo {
+    position: relative;
+  }
+  .lateral {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-105%);
+  }
+  .lateral.is-aberta {
+    transform: none;
+  }
+}
+.lateral.is-fechada {
+  display: none;
 }
 .centro {
   flex: 1;

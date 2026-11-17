@@ -160,7 +160,6 @@ test('troca de biblioteca, formatação e comandos', async () => {
     selection.addRange(range);
     document.dispatchEvent(new Event('selectionchange'));
   });
-  await page.locator('.bloco-linha').first().hover();
   await expect(page.locator('.barra-formato')).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-formato-claro.png') });
   await page.locator('.barra-formato button[aria-label="Negrito"]').click();
@@ -263,8 +262,13 @@ test('Enter cria bloco, Ctrl+B formata e a árvore marca um item', async () => {
     selection.removeAllRanges();
     selection.addRange(range);
   });
-  await page.keyboard.press('Control+B');
+  await paragraph.press('Control+B');
   await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('**');
+  fs.appendFileSync(file, '\n**negrito** e *itálico*\n');
+  await page.getByRole('button', { name: 'Leitura', exact: true }).click();
+  await expect(page.locator('.bloco--texto strong')).toHaveText('negrito');
+  await page.screenshot({ path: path.join(artifacts, 'ui-formatado-claro.png') });
+  await expect(page.locator('.bloco--texto em')).toHaveText('itálico');
   await app.close();
 });
 
@@ -285,7 +289,8 @@ test('tarefas e calendário listam a biblioteca', async () => {
   await expect.poll(() => fs.readFileSync(file, 'utf8')).toMatch(/\[x\] abrir o capítulo/);
   await page.screenshot({ path: path.join(artifacts, 'ui-tarefas-claro.png') });
   await page.locator('[data-nav="calendario"]').click();
-  await expect(page.getByRole('heading', { name: 'Calendário' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /novembro de 2026/i })).toBeVisible();
+  await expect(page.locator('.cal-semana')).toContainText('seg');
   await expect(page.locator('.cal-dia.is-hoje')).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-calendario-claro.png') });
   await app.close();
@@ -296,6 +301,25 @@ test('tarefas e calendário listam a biblioteca', async () => {
   await darkPage.locator('[data-nav="calendario"]').click();
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-calendario-escuro.png') });
   await dark.close();
+});
+
+test('Canvas da navegação lista sem criar e a busca não duplica', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const folder = path.join(root, 'Estudos');
+  const before = fs.readdirSync(folder).filter((name) => name.endsWith('.canvas'));
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  await page.locator('[data-nav="canvas"]').click();
+  await expect(page.locator('[data-nav="canvas"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('.nav__item').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Canvas' })).toBeVisible();
+  expect(fs.readdirSync(folder).filter((name) => name.endsWith('.canvas'))).toEqual(before);
+  await page.keyboard.press('Control+k');
+  await page.locator('#paleta-q').fill('Mapa');
+  await expect(page.locator('.menu__grupo', { hasText: 'Canvas' })).toBeVisible();
+  await expect(page.locator('#paleta-lista .menu__item', { hasText: 'Mapa' })).toHaveCount(1);
+  await app.close();
 });
 
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
