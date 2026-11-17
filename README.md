@@ -63,7 +63,7 @@ Cadastros são gravados por arquivo temporário e substituição atômica. Um ca
 - `src/preload.js`: métodos específicos via contextBridge.
 - `src/renderer.js`, `src/index.html`, `src/styles.css`: interface sem Node.js.
 - `src/workspace-core.js`: núcleo local compartilhado entre o app e integrações sem interface.
-- `src/mcp.js`: servidor MCP local por stdio para automação de mundos, áreas e arquivos Markdown.
+- `engine/cli.ts`: servidor MCP local por stdio, preso a uma biblioteca (`npm run mcp -- --biblioteca <pasta>`).
 
 Sandbox e contextIsolation permanecem habilitados. Operações IPC são serializadas.
 
@@ -91,7 +91,7 @@ Limites iniciais: notas até 8 MB, prévias de imagens até 20 MB, árvore até 
 
 O servidor MCP da engine usa transporte stdio e a biblioteca indicada. Execute `npm run mcp -- --biblioteca /caminho/da/biblioteca`, ou configure o cliente para iniciar `node --experimental-strip-types` com `engine/cli.ts` e os argumentos `mcp --biblioteca`. O protocolo usa stdin/stdout; mensagens de diagnóstico vão para stderr.
 
-As ferramentas `sophy_*` permitem listar, criar e abrir mundos; listar, criar, cadastrar, abrir e renomear áreas; listar arquivos, buscar e ler notas; e criar, editar, mover ou criar notas-alvo para links. `sophy_show_app` abre ou focaliza a interface; `sophy_close_app` solicita o fechamento gracioso e deixa o servidor MCP ativo. Se houver alterações não salvas, a interface apresenta seu aviso habitual. Escritas exigem a revisão obtida na leitura, evitando sobrescrever alterações externas. O servidor não oferece exclusão permanente de arquivos ou pastas.
+As tools da engine listam, leem, buscam, criam e editam notas, canvas, tarefas e links. Escritas exigem a revisão obtida na leitura. O servidor não apaga de forma permanente: a lixeira é a do sistema quando a janela está aberta, e uma cópia para a lixeira local quando o arquivo está em outro disco.
 
 ## Links internos
 

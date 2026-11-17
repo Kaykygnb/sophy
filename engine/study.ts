@@ -347,6 +347,9 @@ function pageHtml(title: string, body: string, theme: 'light' | 'dark') {
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>');
       if (line.startsWith('# ')) return `<h2>${html.slice(2)}</h2>`;
+      const task = line.match(/^[-*] \[([ xX])\] (.*)$/);
+      if (task) return `<p>${task[1].toLowerCase() === 'x' ? '☑' : '☐'} ${escape(task[2])}</p>`;
+      if (/^[-*] /.test(line)) return `<ul><li>${escape(line.slice(2))}</li></ul>`;
       return `<p>${html}</p>`;
     })
     .join('');
