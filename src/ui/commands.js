@@ -48,8 +48,7 @@
     const marker = before.lastIndexOf('[[');
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
-    if (query.includes(']]') || query.includes('\n') || query.includes('|') || query.includes('#'))
-      return null;
+    if (/[\]\n|#*.]/.test(query)) return null;
     return { start: marker, query };
   }
 
@@ -333,7 +332,6 @@
     { id: 'visoes', rotulo: 'Visões salvas', grupo: 'Navegar', icone: 'lista', atalho: '', quando: 'biblioteca' },
     { id: 'mencoes', rotulo: 'Menções sem link', grupo: 'Editar', icone: 'link', atalho: '', quando: 'biblioteca' },
     { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
-    { id: 'leitura', rotulo: 'Modo leitura', grupo: 'Editar', icone: 'leitura', atalho: '', quando: 'editor' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
     { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
@@ -457,6 +455,13 @@
       label: 'Destaque',
       icon: 'destaque',
       insert: '> [!note]\n> ',
+    },
+    {
+      group: 'Inserir',
+      id: 'recolhivel',
+      label: 'Lista recolhível',
+      icon: 'lista',
+      insert: '> [!toggle]\n> ',
     },
     { group: 'Comandos', id: 'link', label: 'Link para nota', icon: 'link', insert: '[[' },
     {

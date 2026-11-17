@@ -68,7 +68,7 @@
     ]
       .map(
         ([id, label, key]) =>
-          `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ' ' + key : ''}">${options.icon(id === 'text' ? 'nota-adesiva' : id === 'group' ? 'agrupar' : id === 'connect' ? 'link' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : id === 'align' ? 'divisor' : 'mais')}<span class="sr-only">${label}</span></button>`,
+          `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ' ' + key : ''}">${options.icon(id === 'text' ? 'nota-adesiva' : id === 'group' ? 'agrupar' : id === 'connect' ? 'link' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : id === 'align' ? 'divisor' : 'selecionar')}<span class="sr-only">${label}</span></button>`,
       )
       .join('');
     const covers = document.createElement('div');
@@ -213,6 +213,12 @@
       });
       world.querySelectorAll('[data-text]').forEach((editor) => {
         editor.addEventListener('pointerdown', (event) => event.stopPropagation());
+        editor.addEventListener('focus', () => {
+          const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
+          if (!node || editor.dataset.editing === '1') return;
+          editor.dataset.editing = '1';
+          editor.textContent = node.text || '';
+        });
         editor.addEventListener('input', () => offerWiki(editor));
         editor.addEventListener('blur', () => commitText(editor));
       });
@@ -322,8 +328,16 @@
     const commitText = (editor) => {
       const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
       if (!node) return;
-      node.text = readEditable(editor);
+      const text = editor.dataset.editing === '1' ? editor.textContent || '' : readEditable(editor);
+      if (!text.trim()) {
+        state.document.nodes = state.document.nodes.filter((item) => item.id !== node.id);
+        commit();
+        paint();
+        return;
+      }
+      node.text = text;
       commit();
+      paint();
     };
 
     const commit = () => options.onChange(structuredClone(state.document));
@@ -342,8 +356,13 @@
       if (type === 'group') node.label = 'Grupo';
       state.document.nodes.push(node);
       state.selected = new Set([id]);
+      if (type === 'text') state.tool = 'select';
       paint();
       commit();
+      if (type === 'text') {
+        const created = id;
+        setTimeout(() => world.querySelector(`[data-text="${created}"]`)?.focus(), 0);
+      }
     };
 
     area.addEventListener('pointerdown', (event) => {
@@ -475,11 +494,15 @@
 
     function inline(text) {
       return window.SophyDoc.parseInlines(text)
-        .map((part) =>
-          part.type === 'text'
-            ? escape(part.text)
-            : `<a href="#" class="wikilink" contenteditable="false" data-raw="${escape(part.raw)}" data-target="${escape(part.target)}">${escape(part.label)}</a>`,
-        )
+        .map((part) => {
+          if (part.type === 'text') return escape(part.text);
+          if (part.type === 'bold') return `<strong>${escape(part.text)}</strong>`;
+          if (part.type === 'italic') return `<em>${escape(part.text)}</em>`;
+          if (part.type === 'strike') return `<s>${escape(part.text)}</s>`;
+          if (part.type === 'highlight') return `<mark>${escape(part.text)}</mark>`;
+          if (part.type === 'code') return `<code>${escape(part.text)}</code>`;
+          return `<a href="#" class="wikilink" contenteditable="false" data-raw="${escape(part.raw || '')}" data-target="${escape(part.target || '')}">${escape(part.label || part.text || '')}</a>`;
+        })
         .join('');
     }
 

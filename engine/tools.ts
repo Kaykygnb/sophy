@@ -346,8 +346,8 @@ export const tools = [
   define(
     'version.list',
     'Lista os pontos em .sophy/versoes.',
-    z.object({ libraryPath }),
-    ({ libraryPath: folder }) => listVersions(openLibrary(folder)),
+    z.object({ libraryPath, path: z.string().optional() }),
+    ({ libraryPath: folder, path }) => listVersions(openLibrary(folder), path),
   ),
   define(
     'version.point',
@@ -556,6 +556,37 @@ export const tools = [
 
 export function listTools() {
   return tools.map((tool) => ({ name: tool.name, description: tool.description }));
+}
+
+const MUTATIONS = new Set([
+  'library.watch',
+  'workspace.create',
+  'directory.create',
+  'note.create',
+  'note.write',
+  'entry.move',
+  'entry.trash',
+  'history.undo',
+  'shelf.style.set',
+  'mention.link',
+  'vault.import',
+  'view.save',
+  'card.review',
+  'version.point',
+  'version.restore',
+  'site.export',
+  'search.semantic.enable',
+  'task.update',
+  'canvas.create',
+  'canvas.update',
+  'canvas.node.put',
+  'canvas.node.remove',
+  'canvas.edge.put',
+  'canvas.edge.remove',
+]);
+
+export function toolMutates(name: string) {
+  return MUTATIONS.has(name);
 }
 
 export function callTool(name: string, raw: unknown) {

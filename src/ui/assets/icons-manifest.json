@@ -3168,7 +3168,7 @@
     },
     {
       "nome": "leitura",
-      "rotulo": "Modo leitura",
+      "rotulo": "Leitura",
       "categoria": "editor",
       "svg": "icones/svg/leitura.svg",
       "sprite_id": "i-leitura",

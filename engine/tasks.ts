@@ -125,8 +125,12 @@ export function listTasks(library: Library, query: TaskQuery = {}) {
   const weekEnd = addDays(today, 6);
   const tasks: TaskItem[] = [];
   for (const note of listNotes(library)) {
-    const file = readText(library, note.path);
-    tasks.push(...scan(file.content, note.path, note.workspace, file.revision));
+    try {
+      const file = readText(library, note.path);
+      tasks.push(...scan(file.content, note.path, note.workspace, file.revision));
+    } catch {
+      /* um item com nome inválido não esconde as tarefas das outras notas */
+    }
   }
   return tasks.filter((task) => matches(task, query, today, weekEnd));
 }
@@ -192,7 +196,12 @@ export type CalendarItem = {
 export function queryCalendar(library: Library, from: string, to: string) {
   const items: CalendarItem[] = [];
   for (const note of listNotes(library)) {
-    const file = readText(library, note.path);
+    let file;
+    try {
+      file = readText(library, note.path);
+    } catch {
+      continue;
+    }
     const document = splitMarkdown(file.content);
     for (const task of scan(file.content, note.path, note.workspace, file.revision)) {
       for (const date of [task.due, task.scheduled]) {

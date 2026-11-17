@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld(
   'sophy',
   Object.freeze({
+    testing: process.argv.some((arg) => arg.startsWith('--test-user-data=')),
     boot: () => ipcRenderer.invoke('sophy:boot'),
     tool: (name, input) => ipcRenderer.invoke('sophy:tool', name, input),
     chooseFolder: () => ipcRenderer.invoke('sophy:choose-folder'),
@@ -19,6 +20,12 @@ contextBridge.exposeInMainWorld(
     agentKeyClear: () => ipcRenderer.invoke('sophy:agent-key-clear'),
     agentAsk: (message) => ipcRenderer.invoke('sophy:agent-ask', message),
     window: (action) => ipcRenderer.invoke('sophy:window', action),
+    onFlush: (listener) => {
+      const wrapped = () => listener();
+      ipcRenderer.on('sophy:flush-request', wrapped);
+      return () => ipcRenderer.removeListener('sophy:flush-request', wrapped);
+    },
+    flushed: () => ipcRenderer.send('sophy:flushed'),
     onCommand: (listener) => {
       const wrapped = (_event, command) => listener(command);
       ipcRenderer.on('sophy:command', wrapped);

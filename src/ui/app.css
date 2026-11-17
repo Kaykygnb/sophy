@@ -212,6 +212,9 @@ html.motion-reduce .lateral,
   overflow: auto;
   padding-bottom: var(--statusbar-h);
 }
+#abrir-conexoes { display: none; }
+.aba-wrap { display: inline-flex; align-items: center; }
+.aba-fechar { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
 .conexoes {
   width: 280px;
   flex: none;
@@ -522,8 +525,11 @@ button.arvore__linha[aria-selected='true'] {
   color: var(--ink-3);
 }
 .canvas-ferramentas {
+  top: 12px;
   left: 50%;
-  bottom: 16px;
+  bottom: auto;
+  display: flex;
+  flex-direction: row;
   transform: translateX(-50%);
   z-index: 3;
 }
@@ -830,7 +836,12 @@ button.arvore__linha[aria-selected='true'] {
 .semana-diaria__dia { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; min-width: 44px; cursor: pointer; }
 .semana-diaria__dia.is-hoje { border-color: var(--accent); }
 .is-foco .lateral, .is-foco #conexoes { display: none; }
-.is-leitura [data-block] { cursor: default; }
+.bloco.is-selecionado,
+[data-block].is-selecionado { outline: 2px solid var(--accent); border-radius: 8px; }
+.bloco--tabela { width: 100%; border-collapse: collapse; }
+.bloco--tabela td { border: 1px solid var(--line); padding: 6px 8px; min-width: 4rem; }
+.bloco--destaque { background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; }
+.bloco--recolhivel { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
 .grafo__quadros { display: grid; grid-template-columns: repeat(3, minmax(80px, 1fr)); gap: 8px; }
 .visao-tabela { width: 100%; border-collapse: collapse; }
 .visao-lista button,
@@ -1132,6 +1143,22 @@ button.arvore__linha[aria-selected='true'] {
   .conexoes {
     display: none;
   }
+  .conexoes.is-gaveta {
+    display: block;
+    position: absolute;
+    z-index: 16;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(280px, 100%);
+    overflow: auto;
+    transform: translateX(105%);
+    transition: transform 200ms ease-out;
+  }
+  .conexoes.is-gaveta.is-aberta {
+    transform: none;
+  }
+  #abrir-conexoes { display: inline-flex; }
   .lateral.is-fechada {
     display: none;
   }
@@ -1144,7 +1171,9 @@ button.arvore__linha[aria-selected='true'] {
   .sofi img {
     animation: none;
   }
-  .lateral {
+  .lateral,
+  .conexoes.is-gaveta {
     transition: none;
   }
 }
+.arvore__linha.is-invalido .arvore__nome { text-decoration: underline dotted; }

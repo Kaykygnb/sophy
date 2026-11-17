@@ -8,7 +8,11 @@ app.setName('Sophy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Sophy'));
 
 const testData = process.argv.find((arg) => arg.startsWith('--test-user-data='));
-if (testData) app.setPath('userData', testData.slice('--test-user-data='.length));
+if (testData) {
+  const userData = testData.slice('--test-user-data='.length);
+  app.setPath('userData', userData);
+  process.env.SOPHY_UI_DIR = path.join(userData, 'presenca');
+}
 const presetLibrary = process.argv.find((arg) => arg.startsWith('--biblioteca='));
 const presetTheme = process.argv.find((arg) => arg.startsWith('--theme='));
 
@@ -130,11 +134,32 @@ function setupIpc() {
     };
   });
 
-  handle('sophy:tool', (_event, name, input) => {
+  handle('sophy:tool', async (_event, name, input) => {
     if (typeof name !== 'string' || !/^[a-z]+(\.[A-Za-z]+)+$/.test(name))
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
-    return gate(name, input && typeof input === 'object' ? input : {});
+    const body = input && typeof input === 'object' ? input : {};
+    if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
+      const full = path.resolve(sessionPath, ...body.path.split('/').filter(Boolean));
+      const root = path.resolve(sessionPath) + path.sep;
+      if (full.startsWith(root)) {
+        try {
+          const library = engine.openLibrary(sessionPath);
+          const before = engine.capture(library);
+          await shell.trashItem(full);
+          engine.pushHistory(library, {
+            origin: 'ui',
+            tool: 'entry.trash',
+            summary: `Lixeira ${body.path}`,
+            changes: engine.diff(before, engine.capture(library)),
+          });
+          return { path: body.path, trashed: true, trashPath: '' };
+        } catch {
+          /* a engine copia e apaga quando a lixeira do sistema recusa */
+        }
+      }
+    }
+    return gate(name, body);
   });
 
   handle('sophy:agent-status', () => ({
@@ -160,11 +185,22 @@ function setupIpc() {
     if (!fs.existsSync(agentKeyFile())) throw new Error('Guarde a chave no cofre antes de pedir.');
     if (!safeStorage.isEncryptionAvailable()) throw new Error('O cofre do sistema não está disponível.');
     const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
+    const owner = BrowserWindow.getFocusedWindow() || [...windows][0];
     const turn = await engine.runAgentTurn({
       libraryPath: sessionPath,
       message: message.trim(),
       key,
       fetchImpl: fetch,
+      confirm: async (question) => {
+        const chosen = await dialog.showMessageBox(owner, {
+          type: 'question',
+          buttons: ['Cancelar', 'Confirmar'],
+          defaultId: 0,
+          cancelId: 0,
+          message: question,
+        });
+        return chosen.response === 1;
+      },
     });
     return { text: turn.text };
   });
@@ -182,6 +218,8 @@ function setupIpc() {
     if (typeof folder !== 'string' || !folder.trim())
       throw new Error('Escolha o local da biblioteca.');
     const target = path.resolve(folder);
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(path.basename(target)))
+      throw new Error('Esse nome é reservado pelo Windows.');
     fs.mkdirSync(target, { recursive: true });
     fs.mkdirSync(path.join(target, '.sophy'), { recursive: true });
     const opened = gate('library.open', { path: target });
@@ -290,10 +328,24 @@ function setupIpc() {
     else if (action === 'maximize') {
       if (window.isMaximized()) window.unmaximize();
       else window.maximize();
-    } else if (action === 'close') window.close();
+    } else if (action === 'close') requestClose(window);
     else throw new Error('Ação de janela desconhecida.');
     return true;
   });
+}
+
+function requestClose(window) {
+  if (window.__sophyClosing) return;
+  window.__sophyClosing = true;
+  const timer = setTimeout(() => window.destroy(), 1500);
+  const done = () => {
+    clearTimeout(timer);
+    if (!window.isDestroyed()) window.destroy();
+  };
+  ipcMain.once('sophy:flushed', (event) => {
+    if (event.sender === window.webContents) done();
+  });
+  window.webContents.send('sophy:flush-request');
 }
 
 function createWindow() {
@@ -316,6 +368,11 @@ function createWindow() {
     },
   });
   windows.add(window);
+  window.on('close', (event) => {
+    if (window.__sophyClosing) return;
+    event.preventDefault();
+    requestClose(window);
+  });
   window.on('closed', () => windows.delete(window));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());

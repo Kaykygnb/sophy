@@ -79,17 +79,18 @@ function assertNotProtected(root: string, options: OpenOptions) {
 
 export function validateSegment(segment: string, kind: 'workspace' | 'entry' = 'entry') {
   const limit = kind === 'workspace' ? MAX_WORKSPACE_NAME : MAX_SEGMENT_LENGTH;
-  if (
-    typeof segment !== 'string' ||
-    !segment ||
-    segment.length > limit ||
-    segment === '.' ||
-    segment === '..' ||
-    segment.startsWith('.') ||
-    /[. ]$/.test(segment) ||
-    /[\x00-\x1f<>:"|?*\\/]/.test(segment)
-  )
-    throw new EngineError('invalid-path', 'Caminho inválido ou reservado.');
+  if (typeof segment !== 'string' || !segment) throw new EngineError('invalid-path', 'Informe um nome.');
+  if (segment.length > limit)
+    throw new EngineError('invalid-path', 'O nome passou do tamanho permitido.');
+  if (segment === '.' || segment === '..' || segment.startsWith('.'))
+    throw new EngineError('invalid-path', 'Nome inválido: não pode começar com ponto nem ser “..”.');
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(segment))
+    throw new EngineError('invalid-path', 'Esse nome é reservado pelo Windows.');
+  const forbidden = segment.match(/[\x00-\x1f<>:"|?*\\/]/);
+  if (forbidden)
+    throw new EngineError('invalid-path', `O caractere “${forbidden[0]}” não pode entrar no nome.`);
+  if (/[. ]$/.test(segment))
+    throw new EngineError('invalid-path', 'O nome não pode terminar com ponto ou espaço.');
 }
 
 /** Caminho relativo POSIX, preso à biblioteca. Não segue link simbólico. */
@@ -106,13 +107,21 @@ export function resolveInside(
   let current = root;
   for (let index = 0; index < parts.length; index++) {
     const segment = parts[index];
-    validateSegment(segment, 'entry');
+    if (!segment || segment === '.' || segment === '..' || segment.startsWith('.'))
+      validateSegment(segment, 'entry');
+    let nameError: EngineError | null = null;
+    try {
+      validateSegment(segment, 'entry');
+    } catch (error) {
+      nameError = error instanceof EngineError ? error : new EngineError('invalid-path', 'Caminho inválido.');
+    }
     const next = path.join(current, segment);
     const last = index === parts.length - 1;
     let listed: fs.Stats;
     try {
       listed = fs.lstatSync(next);
     } catch (error) {
+      if (nameError) throw nameError;
       if (
         error &&
         typeof error === 'object' &&

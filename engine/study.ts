@@ -223,7 +223,7 @@ function dirSize(directory: string) {
   return total;
 }
 
-export function listVersions(library: Library) {
+export function listVersions(library: Library, focus?: string) {
   const directory = path.join(library.root, '.sophy', 'versoes');
   if (!fs.existsSync(directory)) return [];
   return fs
@@ -237,12 +237,15 @@ export function listVersions(library: Library) {
       } catch {
         /* ponto sem rótulo */
       }
-      let preview = '';
       const notes = collectNotes(full);
-      if (notes[0]) {
-        const text = fs.readFileSync(notes[0].full, 'utf8').replace(/^---[\s\S]*?---\n?/, '');
-        const line = text.split('\n').find((item) => item.trim());
-        preview = (line || '').replace(/^#{1,6}\s*/, '').slice(0, 80);
+      const chosen =
+        (focus && notes.find((note) => note.relative === focus)) ||
+        (focus && notes.find((note) => note.relative.endsWith(`/${focus}`))) ||
+        notes[0];
+      let preview = '';
+      if (chosen) {
+        const text = fs.readFileSync(chosen.full, 'utf8').replace(/^---[\s\S]*?---\n?/, '');
+        preview = text.replace(/\s+/g, ' ').trim().slice(0, 240);
       }
       return { id: entry.name, label, bytes: dirSize(full), preview };
     });
@@ -307,18 +310,28 @@ export function exportSite(library: Library, destination: string, theme: 'light'
       throw new EngineError('invalid-path', 'O site não é gravado dentro da biblioteca.');
   }
   fs.mkdirSync(target, { recursive: true });
+  const existing = fs.readdirSync(target).filter((name) => !name.startsWith('.'));
+  const dir = existing.length ? path.join(target, `Sophy-site-${Date.now()}`) : target;
+  if (dir !== target) fs.mkdirSync(dir, { recursive: true });
   const notes = listNotes(library);
+  const used = new Set<string>();
   const pages = notes.map((note) => {
     const doc = readNote(library, note.path);
-    const name = `${note.path.replace(/\.md$/i, '').replaceAll('/', '-')}.html`;
+    let name = `${note.path.replace(/\.md$/i, '').replaceAll('/', '-')}.html`;
+    let suffix = 2;
+    while (used.has(name)) {
+      name = `${note.path.replace(/\.md$/i, '').replaceAll('/', '-')}-${suffix}.html`;
+      suffix += 1;
+    }
+    used.add(name);
     const html = pageHtml(note.path, doc.body, theme);
-    fs.writeFileSync(path.join(target, name), html);
+    fs.writeFileSync(path.join(dir, name), html);
     return { href: name, title: note.name.replace(/\.md$/i, '') };
   });
   const index = `<!doctype html><html data-theme="${theme}"><head><meta charset="utf-8"><title>Biblioteca</title>${siteStyle()}</head><body><h1>Biblioteca</h1><ul>${pages
     .map((page) => `<li><a href="${escape(page.href)}">${escape(page.title)}</a></li>`)
     .join('')}</ul></body></html>\n`;
-  fs.writeFileSync(path.join(target, 'index.html'), index);
+  fs.writeFileSync(path.join(dir, 'index.html'), index);
   return { pages: pages.length, theme };
 }
 
@@ -326,10 +339,40 @@ export function lightPaperHtml(title: string, body: string) {
   return pageHtml(title, body, 'light');
 }
 
+function siteInline(text: string) {
+  return escape(text)
+    .replace(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (_match, target, label) => label || String(target).split('/').pop())
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
 function pageHtml(title: string, body: string, theme: 'light' | 'dark') {
-  const blocks = body
-    .split(/\r?\n\r?\n/)
-    .map((block) => `<p>${escape(block)}</p>`)
+  const source = body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  const blocks = source
+    .split(/\n{2,}/)
+    .map((block) => {
+      const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+      if (!lines.length) return '';
+      if (lines.every((line) => /^[-*] \[[ xX]\] /.test(line)))
+        return `<ul>${lines
+          .map((line) => {
+            const task = line.match(/^[-*] \[([ xX])\] (.*)$/);
+            return `<li>${task?.[1].toLowerCase() === 'x' ? '☑' : '☐'} ${siteInline(task?.[2] || '')}</li>`;
+          })
+          .join('')}</ul>`;
+      if (lines.every((line) => /^[-*] /.test(line)))
+        return `<ul>${lines.map((line) => `<li>${siteInline(line.slice(2))}</li>`).join('')}</ul>`;
+      return lines
+        .map((line) => {
+          const heading = line.match(/^(#{1,6}) (.*)$/);
+          if (heading) {
+            const level = Math.min(6, heading[1].length + 1);
+            return `<h${level}>${siteInline(heading[2])}</h${level}>`;
+          }
+          return `<p>${siteInline(line)}</p>`;
+        })
+        .join('');
+    })
     .join('');
   return `<!doctype html><html data-theme="${theme}"><head><meta charset="utf-8"><title>${escape(title)}</title>${siteStyle()}</head><body><article><h1>${escape(title)}</h1>${blocks}</article></body></html>\n`;
 }

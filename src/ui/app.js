@@ -32,10 +32,14 @@ const state = {
   namingShelf: false,
   renaming: null,
   selectTitle: false,
+  openSeq: 0,
+  dirty: false,
+  warnedUnsafe: false,
 };
 
 const slash = Cmd.createSlashSession();
 let saveTimer = 0;
+let saveJob = Promise.resolve();
 let lottiePromise = null;
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -363,9 +367,14 @@ async function nextStep() {
       return;
     }
     try {
+      const libraryName = (state.libraryNameInput || 'Biblioteca').trim();
+      if (state.folderMode === 'criar' && (!libraryName || libraryName === '.' || libraryName === '..' || /[\\/]/.test(libraryName) || reservedName(libraryName))) {
+        toast(reservedName(libraryName) ? 'Esse nome é reservado pelo Windows.' : 'Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
+        return;
+      }
       const target =
         state.folderMode === 'criar'
-          ? `${state.folder.replace(/\/$/, '')}/${(state.libraryNameInput || 'Biblioteca').trim()}`
+          ? `${state.folder.replace(/\/$/, '')}/${libraryName}`
           : state.folder;
       const opened =
         state.folderMode === 'criar'
@@ -427,6 +436,7 @@ function openDrawer(opener) {
 function closeDrawer() {
   $('#lateral')?.classList.remove('is-aberta');
   $('#sofi-gaveta')?.classList.remove('is-aberta');
+  $('#conexoes')?.classList.remove('is-gaveta', 'is-aberta');
   if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.remove();
   const opener = state.drawerOpener || $('#abrir-lateral');
@@ -576,7 +586,9 @@ function paintTree() {
             state.renaming?.kind === 'note' && state.renaming.path === note.path
               ? `<input class="arvore__renomear" data-rename="note" value="${escapeHtml(baseName(note.path))}" aria-label="Nome da nota" />`
               : `<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span>`;
-          return `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}">
+          const unsafe = note.unsafe ? ' is-invalido' : '';
+          const unsafeTitle = note.unsafe ? ' title="Nome inválido no Windows"' : '';
+          return `<li role="treeitem"><button type="button" class="arvore__linha${unsafe}" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}"${unsafeTitle}>
             ${icon('nota')}${label}</button></li>`;
         })
         .join('');
@@ -592,7 +604,8 @@ function paintTree() {
         state.renaming?.kind === 'shelf' && state.renaming.name === workspace.name
           ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
-      return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}>
+      const shelfUnsafe = workspace.unsafe ? ' title="Nome inválido no Windows"' : '';
+      return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}${shelfUnsafe}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
@@ -612,6 +625,11 @@ function paintTree() {
   const name = host.parentElement?.querySelector('.biblioteca-seletor__nome');
   if (name) name.textContent = state.libraryName || 'Biblioteca';
   host.innerHTML = `<ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
+  const unsafeCount = state.notes.filter((note) => note.unsafe).length + state.workspaces.filter((workspace) => workspace.unsafe).length;
+  if (unsafeCount && !state.warnedUnsafe) {
+    state.warnedUnsafe = true;
+    toast(`${unsafeCount} item(ns) com nome inválido no Windows continuam na árvore, marcados para renomear.`, 'erro');
+  }
   host.querySelectorAll('[data-open]').forEach((button) => {
     button.draggable = true;
     button.ondragstart = (event) => event.dataTransfer.setData('text/plain', button.dataset.open);
@@ -619,7 +637,7 @@ function paintTree() {
       state.selectedShelf = button.dataset.open.includes('/')
         ? button.dataset.open.split('/')[0]
         : null;
-      openNote(button.dataset.open);
+      openNote(button.dataset.open).catch((error) => toast(error.message, 'erro'));
     };
     button.oncontextmenu = (event) => openTreeMenu(event, 'note', button.dataset.open);
   });
@@ -658,13 +676,22 @@ function paintTree() {
     bindNameField(
       noteRename,
       async (name) => {
+        if (name.includes('/') || name.includes('\\')) {
+          toast('O nome não pode conter /.', 'erro');
+          return;
+        }
         const from = state.renaming.path;
         const folder = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : '';
         state.renaming = null;
         const to = `${folder}${name}.md`;
-        if (to !== from) await tool('entry.move', { from, to });
-        await refreshLibrary();
-        await openNote(to);
+        try {
+          if (to !== from) await tool('entry.move', { from, to });
+          state.tabs = state.tabs.map((tab) => (tab === from ? to : tab));
+          await refreshLibrary();
+          await openNote(to);
+        } catch (error) {
+          toast(error.message, 'erro');
+        }
       },
       () => {
         state.renaming = null;
@@ -679,10 +706,22 @@ function paintTree() {
       async (name) => {
         const from = state.renaming.name;
         state.renaming = null;
-        if (name !== from) await tool('entry.move', { from, to: name });
+        if (name !== from) {
+          await flushNote();
+          await tool('entry.move', { from, to: name });
+          const remap = (tab) => (tab === from || tab.startsWith(`${from}/`) ? `${name}${tab.slice(from.length)}` : tab);
+          state.tabs = state.tabs.map(remap);
+          if (state.active?.startsWith(`${from}/`) || state.active === from)
+            state.active = `${name}${state.active.slice(from.length)}`;
+          if (state.canvasPath?.startsWith(`${from}/`) || state.canvasPath === from)
+            state.canvasPath = `${name}${state.canvasPath.slice(from.length)}`;
+        }
         state.selectedShelf = name;
         await refreshLibrary();
+        paintTabs();
         paintTree();
+        if (state.active) await openNote(state.active, { force: true });
+        else paintLinks();
       },
       () => {
         state.renaming = null;
@@ -719,19 +758,63 @@ function paintTabs() {
   const host = $('#abas');
   if (!host) return;
   host.innerHTML = state.tabs
-    .map(
-      (
-        file,
-      ) => `<button type="button" class="aba" role="tab" aria-selected="${file === state.active}" data-tab="${escapeHtml(file)}">
-        ${icon('nota')}<span>${escapeHtml(baseName(file))}</span></button>`,
-    )
+    .map((file) => {
+      const canvas = file.toLowerCase().endsWith('.canvas');
+      return `<span class="aba-wrap"><button type="button" class="aba" role="tab" aria-selected="${file === state.active || file === state.canvasPath}" data-tab="${escapeHtml(file)}">${icon(canvas ? 'canvas' : 'nota')}<span>${escapeHtml(baseName(file))}</span></button><button type="button" class="aba-fechar" data-fechar-aba="${escapeHtml(file)}" aria-label="Fechar ${escapeHtml(baseName(file))}">×</button></span>`;
+    })
     .join('');
   host.querySelectorAll('[data-tab]').forEach((button) => {
-    button.onclick = () =>
+    button.onclick = () => {
       button.dataset.tab.toLowerCase().endsWith('.canvas')
         ? openCanvas(button.dataset.tab)
-        : openNote(button.dataset.tab);
+        : openNote(button.dataset.tab).catch((error) => toast(error.message, 'erro'));
+    };
   });
+  host.querySelectorAll('[data-fechar-aba]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      closeTab(button.dataset.fecharAba);
+    };
+  });
+}
+
+async function closeTab(file) {
+  if (state.active === file) await flushNote();
+  state.tabs = state.tabs.filter((tab) => tab !== file);
+  if (state.active !== file && state.canvasPath !== file) {
+    paintTabs();
+    return;
+  }
+  state.active = null;
+  state.doc = null;
+  state.dirty = false;
+  state.canvasPath = null;
+  state.view = 'home';
+  state.nav = 'inicio';
+  paintTabs();
+  paintTree();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+}
+
+function setFocusMode(on) {
+  state.focusMode = !!on;
+  document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
+  const button = $('#modo-foco');
+  if (button) button.textContent = state.focusMode ? 'Sair do foco' : 'Foco';
+}
+
+function openConnections() {
+  const panel = $('#conexoes');
+  if (!panel) return;
+  if (window.innerWidth > 1024) return;
+  state.sofiOpen = false;
+  paintLinks();
+  panel.classList.add('is-gaveta');
+  requestAnimationFrame(() => panel.classList.add('is-aberta'));
+  ensureVeil();
+  state.drawerOpener = $('#abrir-conexoes');
 }
 
 const SHELF_COLOR_NAMES = ['Índigo', 'Azul', 'Verde-água', 'Oliva', 'Ocre', 'Terracota', 'Lavanda', 'Grafite'];
@@ -841,9 +924,13 @@ function openCoverPicker() {
     input.focus();
   };
   pop.querySelector('#capa-remover').onclick = () => setCover('', y);
-  pop.querySelector('#capa-y').oninput = (event) => {
+  const height = pop.querySelector('#capa-y');
+  height.oninput = (event) => {
     event.target.parentElement.querySelector('output').textContent = `${event.target.value}%`;
+    const cover = document.querySelector('#coluna .capa');
+    if (cover) cover.style.setProperty('--capa-y', String(Number(event.target.value) / 100));
   };
+  height.onchange = (event) => setCover(state.frontmatter?.capa || '', event.target.value);
 }
 
 function coverPicker() {
@@ -858,7 +945,7 @@ async function setCover(capa, y) {
   if (y != null) frontmatter.capa_y = `${y}%`;
   const result = await tool('note.write', {
     path: state.active,
-    body: state.doc.body,
+    body: Doc.serializeBlocks(state.doc.blocks),
     frontmatter,
     expectedRevision: state.revision,
   });
@@ -973,7 +1060,7 @@ function paintSettings(center) {
     input.onchange = async () => {
       state.settings.weekStartsOn = Number(input.value);
       await sophy.saveSettings({ weekStartsOn: Number(input.value) });
-      paintCenter();
+      if (state.view === 'settings') paintCenter();
     };
   });
   const review = $('#abrir-revisao');
@@ -1062,10 +1149,13 @@ function bindBlockDrag() {
       if ([...event.dataTransfer.types].includes('application/x-sophy-block')) event.preventDefault();
     };
     row.ondrop = (event) => {
+      if (event.defaultPrevented) return;
       const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
       const block = row.querySelector('[data-block]');
       if (!block || Number.isNaN(from)) return;
       event.preventDefault();
+      event.stopPropagation();
+      checkpoint(true);
       state.doc = Doc.moveBlock(state.doc, from, Number(block.dataset.block));
       paintCenter();
       scheduleSave();
@@ -1230,7 +1320,7 @@ function paintCenterBody(center) {
   const cover = coverBand();
   const strip = dailyStrip(state.active);
   const capas = cover ? '' : coverActions();
-  center.innerHTML = `${conflict}<article class="coluna${state.reading ? ' is-leitura' : ''}" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="modo-leitura">${state.reading ? 'Editar' : 'Modo leitura'}</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
+  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="abrir-conexoes">Conexões</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   const changeCover = $('#trocar-capa');
@@ -1238,21 +1328,12 @@ function paintCenterBody(center) {
   $('#coluna').querySelectorAll('[data-dia]').forEach((button) => {
     button.onclick = () => openDailyOn(button.dataset.dia);
   });
-  const reading = $('#modo-leitura');
-  if (reading)
-    reading.onclick = () => {
-      state.reading = !state.reading;
-      paintCenter();
-    };
   const focusMode = $('#modo-foco');
-  if (focusMode)
-    focusMode.onclick = () => {
-      state.focusMode = !state.focusMode;
-      document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
-      paintCenter();
-    };
+  if (focusMode) focusMode.onclick = () => setFocusMode(!state.focusMode);
+  const openLinks = $('#abrir-conexoes');
+  if (openLinks) openLinks.onclick = () => openConnections();
   $('#coluna')
-    .querySelectorAll('[data-block]')
+    .querySelectorAll('[data-block]:not(table)')
     .forEach((el) => bindBlock(el));
   $('#coluna')
     .querySelectorAll('[data-mais]')
@@ -1263,6 +1344,29 @@ function paintCenterBody(center) {
     ?.querySelectorAll('[data-menu]')
     .forEach((button) => {
       button.onclick = (event) => openBlockMenu(event.currentTarget, Number(button.dataset.menu));
+      button.draggable = true;
+      button.ondragstart = (event) => {
+        event.dataTransfer.setData('application/x-sophy-block', button.dataset.menu);
+        event.dataTransfer.effectAllowed = 'move';
+      };
+    });
+  $('#coluna')
+    ?.querySelectorAll('[data-block]')
+    .forEach((block) => {
+      block.addEventListener('dragover', (event) => {
+        if (event.dataTransfer.types.includes('application/x-sophy-block')) event.preventDefault();
+      });
+      block.addEventListener('drop', (event) => {
+        const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
+        const to = Number(block.dataset.block);
+        if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+        event.preventDefault();
+        event.stopPropagation();
+        checkpoint(true);
+        state.doc = Doc.moveBlock(state.doc, from, to);
+        paintCenter();
+        scheduleSave();
+      });
     });
   $('#coluna')
     .querySelectorAll('[data-target]')
@@ -1303,10 +1407,10 @@ function renderBlock(block, index) {
   if (block.type === 'hr') return `<hr data-block="${index}" />`;
   if (block.type === 'heading') {
     const text = block.raw.replace(/^#{1,6}\s?/, '').replace(/\n$/, '');
-    return `<h${Math.min(block.level, 6)} class="bloco bloco--titulo bloco--titulo${block.level}" data-block="${index}" contenteditable="true">${escapeHtml(text)}</h${Math.min(block.level, 6)}>`;
+    return `<h${Math.min(block.level, 6)} class="bloco bloco--titulo bloco--titulo${block.level}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</h${Math.min(block.level, 6)}>`;
   }
   if (block.type === 'code') {
-    const inner = block.raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```\n?$/, '');
+    const inner = Doc.codeParts(block.raw).body;
     return `<pre class="bloco bloco--codigo" data-block="${index}" contenteditable="true">${escapeHtml(inner)}</pre>`;
   }
   if (block.type === 'task' && block.task) {
@@ -1328,14 +1432,15 @@ function renderBlock(block, index) {
     ].join('');
     return `<div class="${Cmd.taskBlockClass(task.status)}">
       <button type="button" class="check" data-task="${index}" data-status="${kit}" aria-label="Alternar tarefa"></button>
-      <div class="tarefa__texto" data-block="${index}" contenteditable="true">${escapeHtml(task.title)}</div>
+      <div class="tarefa__texto" data-block="${index}" contenteditable="true">${inlineHtml(task.title) || '<br>'}</div>
       <div class="tarefa__meta">${chips}</div></div>`;
   }
   if (block.type === 'item') {
     const marker = block.raw.match(/^\s*(\d+)\./);
     const text = block.raw.replace(/^\s*(?:[-*+]|\d+\.)\s?/, '').replace(/\n$/, '');
+    const spaces = (block.raw.match(/^ */ ) || [''])[0].length;
     const ordem = marker ? ` data-ordem="${marker[1]}"` : '';
-    return `<div class="bloco bloco--item" data-block="${index}"${ordem} contenteditable="true">${inlineHtml(text)}</div>`;
+    return `<div class="bloco bloco--item" data-block="${index}"${ordem} style="margin-left:${22 + spaces * 12}px" contenteditable="true">${inlineHtml(text)}</div>`;
   }
   if (block.type === 'quote') {
     const text = block.raw
@@ -1343,11 +1448,26 @@ function renderBlock(block, index) {
       .map((line) => line.replace(/^>\s?/, ''))
       .join('\n')
       .replace(/\n$/, '');
-    return `<blockquote class="bloco bloco--citacao" data-block="${index}" contenteditable="true">${inlineHtml(text)}</blockquote>`;
+    if (text.startsWith('[!toggle]')) {
+      const body = text.replace(/^\[!toggle\]\n?/, '');
+      return `<details class="bloco bloco--recolhivel" open><summary>Recolhível</summary><div class="bloco bloco--citacao" data-block="${index}" data-toggle="1" contenteditable="true">${inlineHtml(body) || '<br>'}</div></details>`;
+    }
+    const callout = text.startsWith('[!') ? ' bloco--destaque' : '';
+    return `<blockquote class="bloco bloco--citacao${callout}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</blockquote>`;
+  }
+  if (block.type === 'table') {
+    const rows = tableRows(block.raw);
+    const body = rows
+      .map(
+        (row, rowIndex) =>
+          `<tr>${row.map((cell, cellIndex) => `<td data-block="${index}" data-cell="${rowIndex}:${cellIndex}" contenteditable="true">${inlineHtml(cell) || '<br>'}</td>`).join('')}</tr>`,
+      )
+      .join('');
+    return `<table class="bloco bloco--tabela" data-block="${index}"><tbody>${body}</tbody></table>`;
   }
   const embed = block.raw.trim().match(/^!\[\[([^\]\n]+)\]\]$/);
   if (embed) {
-    return `<figure class="embed" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure>`;
+    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><figure class="embed" data-block="${index}" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure></div>`;
   }
   const text = block.raw.replace(/\n$/, '');
     const empty = text.trim() === '';
@@ -1376,91 +1496,104 @@ function inlineHtml(text) {
 }
 
 function bindBlock(el) {
-  if (state.reading) el.contentEditable = 'false';
   el.addEventListener('input', () => onBlockInput(el));
+  el.addEventListener('beforeinput', (event) => {
+    if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') event.preventDefault();
+  });
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('paste', (event) => onBlockPaste(event, el));
-  el.addEventListener('focus', () => {
-    if (state.painting || el.dataset.fonte === '1') return;
-    const block = state.doc?.blocks[Number(el.dataset.block)];
-    if (!block || block.type === 'code') return;
-    const selection = getSelection();
-    let start = null;
-    let end = null;
-    if (selection?.rangeCount && el.contains(selection.anchorNode)) {
-      start = offsetAt(el, selection.anchorNode, selection.anchorOffset);
-      end = offsetAt(el, selection.focusNode, selection.focusOffset);
-    }
-    el.dataset.fonte = '1';
-    el.textContent = Doc.visibleOf(block);
-    if (start == null || end == null || !selection) return;
-    const node = [...el.childNodes].find((child) => child.nodeType === Node.TEXT_NODE);
-    if (!node) return;
-    const range = document.createRange();
-    const from = Math.max(0, Math.min(start, end, node.textContent.length));
-    const to = Math.max(from, Math.min(Math.max(start, end), node.textContent.length));
-    range.setStart(node, from);
-    range.setEnd(node, to);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  });
-  el.addEventListener('blur', () => {
-    if (state.painting || state.wrapping) return;
-    if (el.dataset.fonte === '1') {
+  el.addEventListener('mousedown', (event) => {
+    if (!event.shiftKey) state.blockRange = null;
+    else {
       const index = Number(el.dataset.block);
-      state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
-      el.dataset.fonte = '';
+      if (!state.blockRange) state.blockRange = { anchor: index, end: index };
+      else state.blockRange.end = index;
+      paintBlockSelection();
     }
-    closeMenus();
-    requestAnimationFrame(() => {
-      if (state.painting || state.wrapping) return;
-      paintCenter();
-    });
   });
+}
+
+function markdownFromDom(el) {
+  if (!el) return '';
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/\u200b/g, '');
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    if (node.dataset?.raw) return node.dataset.raw;
+    const tag = node.tagName;
+    if (tag === 'BR') return '\n';
+    const inner = [...node.childNodes].map(walk).join('');
+    if (tag === 'STRONG' || tag === 'B') return `**${inner}**`;
+    if (tag === 'EM' || tag === 'I') return `*${inner}*`;
+    if (tag === 'S' || tag === 'DEL') return `~~${inner}~~`;
+    if (tag === 'MARK') return `==${inner}==`;
+    if (tag === 'CODE') return `\`${inner}\``;
+    if (tag === 'A') {
+      const href = node.getAttribute('href') || '';
+      return `[${inner}](${href})`;
+    }
+    if (tag === 'DIV' || tag === 'P') return `\n${inner}`;
+    return inner;
+  };
+  return walk(el).replace(/^\n/, '');
 }
 
 function rawFromEditor(el, block) {
-  const ending = block.raw.endsWith('\n') ? '\n' : '';
+  if (!block) return '\n';
   if (block.type === 'heading') {
     const marks = '#'.repeat(block.level || 1);
-    return `${marks} ${el.textContent.replace(/\n/g, ' ').trim()}${ending || '\n'}`;
+    return `${marks} ${markdownFromDom(el).replace(/\n/g, ' ').trim()}\n`;
   }
   if (block.type === 'code') {
-    const lang = (block.raw.match(/^```([^\n]*)/) || [, ''])[1];
-    return '```' + lang + '\n' + el.textContent.replace(/\n$/, '') + '\n```\n';
+    const parts = Doc.codeParts(block.raw);
+    return Doc.codeRaw(parts.fence, parts.info, el.textContent.replace(/\n$/, ''));
   }
   if (block.type === 'task' && block.task) {
-    const task = { ...block.task, title: el.textContent.replace(/\n/g, ' ').trim() };
-    return Doc.serializeTask(task) + (block.raw.endsWith('\n') ? '\n' : '\n');
+    const task = { ...block.task, title: markdownFromDom(el).replace(/\n/g, ' ').trim() };
+    return `${Doc.serializeTask(task)}\n`;
   }
   if (block.type === 'item') {
     const marker = (block.raw.match(/^\s*(?:[-*+]|\d+\.)/) || ['-'])[0];
-    return `${marker} ${readEditable(el).trim()}\n`;
+    return `${marker} ${markdownFromDom(el).replace(/\n$/, '')}\n`;
   }
   if (block.type === 'quote') {
-    const lines = readEditable(el).split('\n');
-    return lines.map((line) => `> ${line}`).join('\n') + '\n';
+    const lines = markdownFromDom(el).replace(/\n$/, '').split('\n');
+    const body = el.dataset.toggle === '1' ? ['[!toggle]', ...lines] : lines;
+    return `${body.map((line) => `> ${line}`).join('\n')}\n`;
   }
-  return readEditable(el).replace(/\n$/, '') + '\n';
+  const text = markdownFromDom(el).replace(/\n$/, '');
+  return `${text}\n`;
 }
 
 function readEditable(el) {
-  let text = '';
-  for (const node of el.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
-    else if (node.dataset && node.dataset.raw) text += node.dataset.raw;
-    else if (node.tagName === 'BR') text += '\n';
-    else if (node.tagName === 'DIV' || node.tagName === 'P') text += `\n${node.textContent}`;
-    else text += node.textContent;
-  }
-  return text;
+  return markdownFromDom(el);
+}
+
+function tableRows(raw) {
+  return Doc.tableModel(raw).rows;
+}
+
+function wrapWidth(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) return [0, 0];
+  if (node.dataset?.raw) return [0, 0];
+  const tag = node.tagName;
+  if (tag === 'STRONG' || tag === 'B' || tag === 'S' || tag === 'DEL' || tag === 'MARK') return [2, 2];
+  if (tag === 'EM' || tag === 'I' || tag === 'CODE') return [1, 1];
+  if (tag === 'A' && !node.dataset?.raw) return [1, `](${node.getAttribute('href') || ''})`.length];
+  return [0, 0];
 }
 
 function onBlockInput(el) {
-  if (state.conflict) return;
+  if (state.conflict || !state.doc || state.restoring || state.painting) return;
+  checkpoint();
+  if (el.dataset.cell != null) {
+    syncTable(el.closest('table'));
+    return;
+  }
+  const block = state.doc.blocks[Number(el.dataset.block)];
+  if (block && block.type !== 'code') renderClosedMarks(el);
+  if (promoteBlock(el)) return;
   const index = Number(el.dataset.block);
-  const raw = rawFromEditor(el, state.doc.blocks[index]);
-  state.doc = Doc.withBlockRaw(state.doc, index, raw);
+  state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
   const cursor = modelOffset(el);
   const text = readEditable(el);
   const found = slash.offer(text, cursor);
@@ -1470,6 +1603,227 @@ function onBlockInput(el) {
   else closeMenus();
   scheduleSave();
   paintStatus();
+}
+
+const LIVE_MARK = /(\[\[[^\[\]\n]+\]\]|\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+?`|(?<!\*)\*(?!\s)[^*\n]+?\*(?!\*))/;
+
+function renderClosedMarks(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let current;
+  while ((current = walker.nextNode())) {
+    if (current.parentElement?.closest('strong, em, s, code, mark, a')) continue;
+    nodes.push(current);
+  }
+  for (const node of nodes) {
+    const match = node.textContent.match(LIVE_MARK);
+    if (!match) continue;
+    const start = match.index || 0;
+    const html = inlineHtml(match[0]);
+    const placed = replaceTextSlice(node, start, match[0].length, html);
+    const selection = getSelection();
+    const range = document.createRange();
+    if (placed) range.setStartAfter(placed);
+    else {
+      const next = node.parentNode?.childNodes[0];
+      if (next) range.setStart(next, Math.min(start + match[0].length, next.textContent?.length || 0));
+      else range.setStart(el, 0);
+    }
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+}
+
+function replaceTextSlice(node, start, length, html) {
+  const text = node.textContent;
+  const holder = document.createElement('span');
+  holder.innerHTML = html;
+  const frag = document.createDocumentFragment();
+  if (start > 0) frag.append(document.createTextNode(text.slice(0, start)));
+  let placed = null;
+  [...holder.childNodes].forEach((child) => {
+    if (!placed && child.nodeType === Node.ELEMENT_NODE) placed = child;
+    frag.append(child);
+  });
+  if (start + length < text.length) frag.append(document.createTextNode(text.slice(start + length)));
+  node.parentNode.replaceChild(frag, node);
+  return placed;
+}
+
+function promoteBlock(el) {
+  const index = Number(el.dataset.block);
+  const block = state.doc?.blocks[index];
+  if (!block) return false;
+  const text = markdownFromDom(el).replace(/\n$/, '');
+  if (block.type === 'item') {
+    const task = text.match(/^\[([ xX]?)\] (.*)$/);
+    if (!task) return false;
+    const status = task[1].toLowerCase() === 'x' ? 'x' : ' ';
+    const indent = (block.raw.match(/^\s*/) || [''])[0];
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, `${indent}- [${status}] ${task[2]}\n`);
+    state.caret = { index, offset: task[2].length };
+    closeMenus();
+    paintCenter();
+    scheduleSave();
+    return true;
+  }
+  if (block.type !== 'paragraph' && block.type !== 'blank') return false;
+  let raw = '';
+  let caret = 0;
+  const heading = text.match(/^(#{1,6}) (.*)$/);
+  const taskLine = text.match(/^- \[([ xX]?)\] (.*)$/);
+  if (taskLine) {
+    const status = taskLine[1].toLowerCase() === 'x' ? 'x' : ' ';
+    raw = `- [${status}] ${taskLine[2]}\n`;
+    caret = taskLine[2].length;
+  } else if (heading) {
+    raw = `${heading[1]} ${heading[2]}\n`;
+    caret = heading[2].length;
+  } else if (/^[-*+] /.test(text)) {
+    raw = `${text}\n`;
+    caret = text.replace(/^[-*+] /, '').length;
+  } else if (/^\d+\. /.test(text)) {
+    raw = `${text}\n`;
+    caret = text.replace(/^\d+\. /, '').length;
+  } else if (/^(?:\[\]|\[ \]) /.test(text)) {
+    const title = text.replace(/^(?:\[\]|\[ \]) /, '');
+    raw = `- [ ] ${title}\n`;
+    caret = title.length;
+  } else if (/^> /.test(text)) {
+    raw = `${text
+      .split('\n')
+      .map((line) => (line.startsWith('>') ? line : `> ${line}`))
+      .join('\n')}\n`;
+    caret = text.replace(/^> /, '').length;
+  } else if (/^```\w*$/.test(text)) {
+    raw = `${text}\n\n\`\`\`\n`;
+    caret = 0;
+  } else if (text === '---' || text === '***' || text === '___') {
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, '---\n');
+    const blocks = state.doc.blocks.slice();
+    blocks.splice(index + 1, 0, { type: 'paragraph', raw: '\n' });
+    state.doc = { ...state.doc, blocks, body: Doc.serializeBlocks(blocks) };
+    state.caret = { index: index + 1, offset: 0 };
+    closeMenus();
+    paintCenter();
+    scheduleSave();
+    return true;
+  } else return false;
+  checkpoint(true);
+  state.doc = Doc.replaceBlock(state.doc, index, raw);
+  state.caret = { index, offset: caret };
+  closeMenus();
+  paintCenter();
+  scheduleSave();
+  return true;
+}
+
+function syncTable(table) {
+  if (!table) return;
+  const index = Number(table.dataset.block);
+  const model = Doc.tableModel(state.doc.blocks[index]?.raw || '');
+  const rows = [...table.querySelectorAll('tr')].map((row) =>
+    [...row.querySelectorAll('[data-cell]')].map((cell) => markdownFromDom(cell).replace(/\n/g, ' ').trim()),
+  );
+  if (!rows.length) return;
+  state.doc = Doc.withBlockRaw(state.doc, index, Doc.tableRaw(rows, model.align));
+  scheduleSave();
+  paintStatus();
+}
+
+function rememberCaret() {
+  const el = document.activeElement?.closest?.('[data-block]');
+  if (!el || el.dataset.block == null) return;
+  state.editorCaret = { index: Number(el.dataset.block), offset: modelOffset(el) };
+}
+
+function editorSnap() {
+  return JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+}
+
+function checkpoint(force) {
+  if (!state.doc || state.restoring) return;
+  rememberCaret();
+  if (state.undoOpen && !force) return;
+  const snap = editorSnap();
+  state.editorPast = state.editorPast || [];
+  state.editorFuture = state.editorFuture || [];
+  if (state.editorPast.at(-1) !== snap) state.editorPast.push(snap);
+  if (state.editorPast.length > 80) state.editorPast.shift();
+  state.editorFuture.length = 0;
+  state.undoOpen = !force;
+  clearTimeout(state.undoTimer);
+  if (!force) {
+    state.undoTimer = setTimeout(() => {
+      state.undoOpen = false;
+      if (!state.doc || state.restoring) return;
+      const latest = editorSnap();
+      if (state.editorPast.at(-1) !== latest) state.editorPast.push(latest);
+    }, 700);
+  }
+}
+
+function applyEditorSnap(snap) {
+  state.restoring = true;
+  const blocks = JSON.parse(snap).map((block) => ({ ...block, task: Doc.parseTask(block.raw) }));
+  state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+  const caret = state.editorCaret;
+  paintCenter();
+  if (caret) {
+    const target = document.querySelector(`[data-block="${Math.min(caret.index, blocks.length - 1)}"]`);
+    if (target) placeCaret(target, Math.min(caret.offset, markdownFromDom(target).length));
+  }
+  state.restoring = false;
+  scheduleSave();
+}
+
+function undoDoc() {
+  if (!state.doc) return;
+  state.editorPast = state.editorPast || [];
+  state.editorFuture = state.editorFuture || [];
+  const current = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+  if (state.editorPast.at(-1) === current) state.editorPast.pop();
+  const snap = state.editorPast.pop();
+  if (!snap) return;
+  state.editorFuture.push(current);
+  state.undoOpen = false;
+  applyEditorSnap(snap);
+}
+
+function redoDoc() {
+  const snap = state.editorFuture?.pop();
+  if (!snap || !state.doc) return;
+  const current = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
+  state.editorPast = state.editorPast || [];
+  state.editorPast.push(current);
+  state.undoOpen = false;
+  applyEditorSnap(snap);
+}
+
+function focusSibling(index, direction) {
+  let next = index + direction;
+  while (state.doc.blocks[next] && (state.doc.blocks[next].type === 'hr' || state.doc.blocks[next].type === 'blank')) next += direction;
+  const target = document.querySelector(`[data-block="${next}"]`);
+  if (!target) return;
+  placeCaret(target, direction < 0 ? markdownFromDom(target).length : 0);
+}
+
+function paintBlockSelection() {
+  const range = state.blockRange;
+  document.querySelectorAll('[data-block]').forEach((block) => {
+    const index = Number(block.dataset.block);
+    if (!range) {
+      block.classList.remove('is-selecionado');
+      return;
+    }
+    const low = Math.min(range.anchor, range.end);
+    const high = Math.max(range.anchor, range.end);
+    block.classList.toggle('is-selecionado', low !== high && index >= low && index <= high);
+  });
 }
 
 function onBlockKey(event, el) {
@@ -1516,11 +1870,18 @@ function onBlockKey(event, el) {
     runCommand('sofi');
     return;
   }
-  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+    event.preventDefault();
+    setFocusMode(!state.focusMode);
+    return;
+  }
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
     event.preventDefault();
     const index = Number(el.dataset.block);
     const text = readEditable(el).replace(/\n$/, '');
-    state.doc = Doc.withBlockRaw(state.doc, index, `- [ ] ${text}\n`);
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, `- [ ] ${text}\n`);
+    state.caret = { index, offset: text.length };
     paintCenter();
     scheduleSave();
     return;
@@ -1545,8 +1906,101 @@ function onBlockKey(event, el) {
     return;
   }
   const index = Number(el.dataset.block);
+  if (event.key === 'Tab' && !event.altKey) {
+    event.preventDefault();
+    const block = state.doc.blocks[index];
+    if (block && (block.type === 'item' || block.type === 'task')) {
+      checkpoint(true);
+      const raw = event.shiftKey ? block.raw.replace(/^ {1,2}/, '') : `  ${block.raw}`;
+      const caret = modelOffset(el);
+      state.doc = Doc.withBlockRaw(state.doc, index, raw);
+      state.caret = { index, offset: caret };
+      paintCenter();
+      scheduleSave();
+    }
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && ['c', 'x'].includes(event.key.toLowerCase()) && state.blockRange && state.blockRange.anchor !== state.blockRange.end) {
+    event.preventDefault();
+    const low = Math.min(state.blockRange.anchor, state.blockRange.end);
+    const high = Math.max(state.blockRange.anchor, state.blockRange.end);
+    const copied = state.doc.blocks.slice(low, high + 1).map((block) => block.raw).join('');
+    state.clip = copied;
+    navigator.clipboard?.writeText(copied).catch(() => {});
+    if (event.key.toLowerCase() === 'x') {
+      checkpoint(true);
+      const blocks = state.doc.blocks.filter((_, position) => position < low || position > high);
+      state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+      state.blockRange = null;
+      state.caret = { index: Math.max(0, low - 1), offset: 0 };
+      paintCenter();
+      scheduleSave();
+    }
+    return;
+  }
+  if (event.key === 'ArrowUp' && !event.shiftKey && modelOffset(el) === 0) {
+    event.preventDefault();
+    focusSibling(index, -1);
+    return;
+  }
+  if (event.key === 'ArrowDown' && !event.shiftKey && modelOffset(el) >= markdownFromDom(el).length) {
+    event.preventDefault();
+    focusSibling(index, 1);
+    return;
+  }
+  if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.shiftKey && (event.key === 'ArrowUp' ? modelOffset(el) === 0 : modelOffset(el) >= markdownFromDom(el).length)) {
+    event.preventDefault();
+    const direction = event.key === 'ArrowUp' ? -1 : 1;
+    if (!state.blockRange) state.blockRange = { anchor: index, end: index };
+    const next = state.blockRange.end + direction;
+    if (state.doc.blocks[next]) state.blockRange.end = next;
+    paintBlockSelection();
+    return;
+  }
+  if ((event.key === 'Backspace' || event.key === 'Delete') && state.blockRange && state.blockRange.anchor !== state.blockRange.end) {
+    event.preventDefault();
+    const low = Math.min(state.blockRange.anchor, state.blockRange.end);
+    const high = Math.max(state.blockRange.anchor, state.blockRange.end);
+    checkpoint(true);
+    const blocks = state.doc.blocks.filter((_, position) => position < low || position > high);
+    state.doc = { ...state.doc, blocks, body: blocks.map((block) => block.raw).join('') };
+    state.blockRange = null;
+    state.caret = { index: Math.max(0, low - 1), offset: 0 };
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  if (event.key === 'Enter' && el.dataset.cell != null) {
+    event.preventDefault();
+    checkpoint(true);
+    const rows = tableRows(state.doc.blocks[index]?.raw || '');
+    const width = rows[0]?.length || 2;
+    rows.push(Array.from({ length: width }, () => ''));
+    const lines = [
+      `| ${rows[0].join(' | ')} |`,
+      `| ${rows[0].map(() => '---').join(' | ')} |`,
+      ...rows.slice(1).map((row) => `| ${row.join(' | ')} |`),
+    ];
+    state.doc = Doc.withBlockRaw(state.doc, index, `${lines.join('\n')}\n`);
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  if (event.key === 'Enter' && el.dataset.toggle === '1') {
+    event.preventDefault();
+    checkpoint(true);
+    const text = markdownFromDom(el);
+    const offset = modelOffset(el);
+    const raw = `> [!toggle]\n> ${text.slice(0, offset)}\n\n> [!toggle]\n> ${text.slice(offset)}\n`;
+    state.doc = Doc.replaceBlock(state.doc, index, raw);
+    state.caret = { index: index + 2, offset: 0 };
+    paintCenter();
+    scheduleSave();
+    return;
+  }
   if (event.key === 'Enter') {
     event.preventDefault();
+    checkpoint(true);
     const offset = modelOffset(el);
     const result = event.shiftKey
       ? Doc.insertInBlock(state.doc, index, offset, '\n')
@@ -1559,7 +2013,18 @@ function onBlockKey(event, el) {
   }
   if (event.key === 'Backspace' && modelOffset(el) === 0 && !event.metaKey && !event.ctrlKey) {
     event.preventDefault();
+    checkpoint(true);
     const result = Doc.joinBlocks(state.doc, index);
+    state.doc = result.doc;
+    state.caret = result.caret;
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  if (event.key === 'Delete' && !event.metaKey && !event.ctrlKey && modelOffset(el) >= markdownFromDom(el).length) {
+    event.preventDefault();
+    checkpoint(true);
+    const result = Doc.joinForward(state.doc, index);
     state.doc = result.doc;
     state.caret = result.caret;
     paintCenter();
@@ -1567,23 +2032,54 @@ function onBlockKey(event, el) {
   }
 }
 
+function spliceParsed(doc, index, offset, text) {
+  const block = doc.blocks[index];
+  const visible = Doc.visibleOf(block);
+  const before = visible.slice(0, offset);
+  const after = visible.slice(offset);
+  const chunks = [];
+  if (before) chunks.push(rawFromPlain(block, before).replace(/\n$/, ''));
+  chunks.push(text.replace(/\n$/, ''));
+  if (after) chunks.push(after);
+  const parsed = Doc.parseDocument(`${chunks.join('\n')}\n`).blocks;
+  const blocks = doc.blocks.slice();
+  blocks.splice(index, 1, ...parsed);
+  return { ...doc, blocks, body: blocks.map((item) => item.raw).join('') };
+}
+
 function onBlockPaste(event, el) {
   const text = event.clipboardData?.getData('text/plain');
-  if (!text) return;
+  if (text == null) return;
   event.preventDefault();
   const index = Number(el.dataset.block);
-  const offset = modelOffset(el);
-  const result = text.includes('\n')
-    ? Doc.pasteLines(state.doc, index, offset, text)
-    : Doc.insertInBlock(state.doc, index, offset, text);
-  state.doc = result.doc;
-  state.caret = result.caret;
+  const range = selectionOffsets(el);
+  const start = Math.min(range.start, range.end);
+  const end = Math.max(range.start, range.end);
+  checkpoint(true);
+  if (el.dataset.cell != null) {
+    const current = markdownFromDom(el);
+    el.textContent = current.slice(0, start) + text.replace(/\n/g, ' ') + current.slice(end);
+    syncTable(el.closest('table'));
+    return;
+  }
+  const block = state.doc.blocks[index];
+  if (block?.type === 'code' || !text.includes('\n')) {
+    const visible = Doc.visibleOf(block);
+    const next = visible.slice(0, start) + text + visible.slice(end);
+    state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(block, next));
+    state.caret = { index, offset: start + text.length };
+  } else {
+    const result = Doc.pasteLines(state.doc, index, start, text, end);
+    state.doc = result.doc;
+    state.caret = result.caret;
+  }
   paintCenter();
   scheduleSave();
 }
 
 function formatBlock(el, prefix, suffix) {
   const index = Number(el.dataset.block);
+  checkpoint(true);
   const range = selectionOffsets(el);
   const result = Doc.wrapBlock(state.doc, index, range.start, range.end, prefix, suffix);
   state.wrapping = true;
@@ -1615,20 +2111,39 @@ function offsetAt(el, node, offset) {
     if (found) return;
     if (current === node) {
       if (current.nodeType === Node.TEXT_NODE) count += Math.min(offset, current.textContent.length);
+      else [...current.childNodes].slice(0, offset).forEach((child) => addWhole(child));
       found = true;
       return;
     }
+    addWhole(current, node);
+  };
+  const addWhole = (current, stop) => {
+    if (found || current === stop) return;
     if (current.nodeType === Node.TEXT_NODE) {
-      count += current.textContent.length;
+      count += current.textContent.replace(/\u200b/g, '').length;
       return;
     }
-    if (current.dataset && current.dataset.raw) {
+    if (current.nodeType !== Node.ELEMENT_NODE) return;
+    if (current.dataset?.raw) {
       count += current.dataset.raw.length;
-      if (current.contains(node)) found = true;
+      if (stop && current.contains(stop)) found = true;
       return;
     }
-    if (current.tagName === 'BR') count += 1;
-    for (const child of current.childNodes) walk(child);
+    if (current.tagName === 'BR') {
+      count += 1;
+      return;
+    }
+    const [open, close] = wrapWidth(current);
+    count += open;
+    for (const child of current.childNodes) {
+      if (child === stop || (stop && child.contains?.(stop))) {
+        walk(child);
+        return;
+      }
+      addWhole(child, stop);
+      if (found) return;
+    }
+    count += close;
   };
   walk(el);
   return count;
@@ -1638,30 +2153,59 @@ function placeCaret(el, offset) {
   el.focus();
   const selection = getSelection();
   const range = document.createRange();
-  let left = offset;
+  let left = Math.max(0, offset);
   const walk = (current) => {
     if (left < 0) return true;
     if (current.nodeType === Node.TEXT_NODE) {
-      if (left <= current.textContent.length) {
-        range.setStart(current, left);
+      const text = current.textContent.replace(/\u200b/g, '');
+      if (left <= text.length) {
+        range.setStart(current, Math.min(left, current.textContent.length));
         range.collapse(true);
         left = -1;
         return true;
       }
-      left -= current.textContent.length;
+      left -= text.length;
       return false;
     }
-    if (current.dataset && current.dataset.raw) {
+    if (current.nodeType !== Node.ELEMENT_NODE) return false;
+    if (current.dataset?.raw) {
+      if (left <= 0) {
+        range.setStartBefore(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       left -= current.dataset.raw.length;
+      if (left <= 0) {
+        range.setStartAfter(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       return false;
     }
     if (current.tagName === 'BR') {
       left -= 1;
+      if (left <= 0) {
+        range.setStartAfter(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       return false;
+    }
+    const [open, close] = wrapWidth(current);
+    left -= open;
+    if (left < 0) {
+      range.setStart(current, 0);
+      range.collapse(true);
+      left = -1;
+      return true;
     }
     for (const child of current.childNodes) {
       if (walk(child)) return true;
     }
+    left -= close;
     return false;
   };
   if (!walk(el)) {
@@ -1701,8 +2245,8 @@ function showWiki(el, found) {
     .filter(
       (note) =>
         !needle ||
-        note.path.toLocaleLowerCase().includes(needle) ||
-        baseName(note.path).toLocaleLowerCase().includes(needle),
+        foldText(note.path).includes(foldText(needle)) ||
+        foldText(baseName(note.path)).includes(foldText(needle)),
     )
     .slice(0, 8);
   const rows = matches
@@ -1720,6 +2264,14 @@ function showWiki(el, found) {
     }
     insertAt(el, found.start, found.start + 2 + found.query.length, button.dataset.insert);
   });
+}
+
+function reservedName(name) {
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name);
+}
+
+function foldText(value) {
+  return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 }
 
 function highlight(text, query) {
@@ -1759,8 +2311,27 @@ function insertAt(el, start, end, text) {
   const current = readEditable(el);
   const next = current.slice(0, start) + text + current.slice(end);
   const block = state.doc.blocks[index];
-  const raw = rawFromPlain(block, next);
-  state.doc = Doc.withBlockRaw(state.doc, index, raw);
+  const structural = /^(?:#{1,6} |[-*+] |\d+\. |> |- \[ \] |```|---)/.test(text);
+  checkpoint(true);
+  if (structural) {
+    const title = `${current.slice(0, start)}${current.slice(end)}`.trim();
+    const raw = text.includes('\n') ? text : `${text}${title}\n`;
+    state.doc = Doc.replaceBlock(state.doc, index, raw);
+  } else {
+    state.doc = Doc.replaceBlock(state.doc, index, rawFromPlain(block, next));
+  }
+  const promoted = state.doc.blocks[index];
+  let caretIndex = index;
+  let offset = 0;
+  if (promoted?.type === 'hr') {
+    const blocks = state.doc.blocks.slice();
+    blocks.splice(index + 1, 0, { type: 'paragraph', raw: '\n' });
+    state.doc = { ...state.doc, blocks, body: blocks.map((item) => item.raw).join('') };
+    caretIndex = index + 1;
+  } else if (promoted?.type === 'code') offset = 0;
+  else if (promoted && promoted.type !== block?.type) offset = Doc.visibleOf(promoted).length;
+  else offset = Math.min((start || 0) + String(text || '').length, Doc.visibleOf(promoted || { raw: '' }).length);
+  state.caret = { index: caretIndex, offset };
   slash.reset();
   closeMenus();
   paintCenter();
@@ -1768,6 +2339,14 @@ function insertAt(el, start, end, text) {
 }
 
 function rawFromPlain(block, text) {
+  if (block?.type === 'code') {
+    const parts = Doc.codeParts(block.raw);
+    return Doc.codeRaw(parts.fence, parts.info, text);
+  }
+  if (block?.type === 'task' && block.task) {
+    const task = { ...block.task, title: text.replace(/\n/g, ' ').trim() };
+    return `${Doc.serializeTask(task)}\n`;
+  }
   if (block.type === 'heading')
     return `${'#'.repeat(block.level || 1)} ${text.replace(/\n/g, ' ')}\n`;
   if (block.type === 'quote')
@@ -1787,36 +2366,8 @@ function rawFromPlain(block, text) {
 
 function modelOffset(el) {
   const selection = getSelection();
-  if (!selection.rangeCount) return readEditable(el).length;
-  const node = selection.anchorNode;
-  const offset = selection.anchorOffset;
-  let count = 0;
-  let found = false;
-  const walk = (current) => {
-    if (found) return;
-    if (current === node) {
-      if (current.nodeType === Node.TEXT_NODE)
-        count += Math.min(offset, current.textContent.length);
-      found = true;
-      return;
-    }
-    if (current.nodeType === Node.TEXT_NODE) {
-      count += current.textContent.length;
-      return;
-    }
-    if (current.dataset && current.dataset.raw) {
-      if (current.contains(node)) {
-        count += current.dataset.raw.length;
-        found = true;
-        return;
-      }
-      count += current.dataset.raw.length;
-      return;
-    }
-    for (const child of current.childNodes) walk(child);
-  };
-  walk(el);
-  return count;
+  if (!selection?.rangeCount || !el.contains(selection.anchorNode)) return markdownFromDom(el).length;
+  return offsetAt(el, selection.anchorNode, selection.anchorOffset);
 }
 
 function today() {
@@ -1829,6 +2380,7 @@ function today() {
 function cycleTask(index) {
   const block = state.doc.blocks[index];
   if (!block || !block.task) return;
+  checkpoint(true);
   const order = [' ', '/', 'x'];
   const next = order[(order.indexOf(block.task.status) + 1) % order.length];
   state.doc = Doc.withBlockRaw(state.doc, index, Doc.setTaskStatus(block.raw, next));
@@ -1851,22 +2403,32 @@ async function followLink(target) {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
+  state.dirty = true;
   const status = $('#st-estado');
   if (status) status.textContent = 'Alterações locais';
   saveTimer = setTimeout(saveNow, 500);
 }
 
 async function saveNow() {
+  const run = saveJob.then(() => saveNowBody());
+  saveJob = run.catch(() => {});
+  return run;
+}
+
+async function saveNowBody() {
   if (!state.active || !state.doc || state.conflict) return;
-  const body = state.doc.blocks.map((block) => block.raw).join('');
+  const path = state.active;
+  const revision = state.revision;
+  const body = Doc.serializeBlocks(state.doc.blocks);
+  clearTimeout(saveTimer);
+  saveTimer = 0;
   try {
     const result = await tool('note.write', {
-      path: state.active,
+      path,
       body,
-      expectedRevision: state.revision,
-      origin: 'mcp',
-      libraryPath: '/outra',
+      expectedRevision: revision,
     });
+    if (state.active !== path) return;
     if (result.conflict) {
       state.conflict = true;
       paintCenter();
@@ -1875,16 +2437,28 @@ async function saveNow() {
     }
     state.revision = result.note.revision;
     state.conflict = false;
+    if (!saveTimer) state.dirty = false;
     const status = $('#st-estado');
     if (status) status.textContent = 'Salvo';
     state.notes = await tool('note.list', {});
-    await loadLinks();
+    const signature = (state.doc?.blocks || []).map((block) => block.raw).join('\n');
+    const links = signature.match(/\[\[[^\[\]\n]+\]\]/g)?.join('|') || '';
+    if (links !== state.linkSig) {
+      state.linkSig = links;
+      await loadLinks();
+    }
   } catch (error) {
     toast(error.message, 'erro');
   }
 }
 
+async function flushNote() {
+  if (state.active && state.doc && !state.conflict) await saveNow();
+  clearTimeout(saveTimer);
+}
+
 async function openCanvas(file) {
+  await flushNote();
   let canvas;
   try {
     canvas = await tool('canvas.read', { path: file });
@@ -1899,6 +2473,7 @@ async function openCanvas(file) {
   state.view = 'canvas';
   state.treeFocus = 'canvas';
   state.canvasPath = canvas.path;
+  state.nav = '';
   state.canvasDoc = canvas.document;
   state.canvasRevision = canvas.revision;
   state.canvasPreviews = {};
@@ -1971,13 +2546,76 @@ async function redoCanvas() {
   await openCanvas(state.canvasPath);
 }
 
+function askConflict() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Conflito"><p>Esta nota mudou fora do Sophy. Manter a minha versão grava o texto da tela por cima do arquivo.</p><button type="button" id="conflito-manter">Manter a minha</button><button type="button" id="conflito-descartar">Descartar a minha</button><button type="button" id="conflito-ficar">Ficar nesta nota</button></div>`;
+  return new Promise((resolve) => {
+    const done = (choice) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.hidden = true;
+      resolve(choice);
+    };
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      done('ficar');
+    };
+    document.addEventListener('keydown', onKey, true);
+    $('#conflito-manter').onclick = () => done('manter');
+    $('#conflito-descartar').onclick = () => done('descartar');
+    $('#conflito-ficar').onclick = () => done('ficar');
+  });
+}
+
 async function openNote(file, options = {}) {
-  if (state.active && state.doc && !state.conflict && state.active !== file) await saveNow();
+  const token = ++state.openSeq;
+  const same = state.active === file;
+  const unsaved = !!saveTimer || state.dirty;
+  if (sophy.testing && window.__sophySlowOpen) {
+    const wait = window.__sophySlowOpen;
+    window.__sophySlowOpen = 0;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    if (token !== state.openSeq) return;
+  }
+  if (state.conflict && state.active && state.active !== file && !options.force) {
+    const choice = await askConflict();
+    if (token !== state.openSeq) return;
+    if (choice === 'ficar') return;
+    if (choice === 'manter') {
+      const disk = await tool('note.read', { path: state.active });
+      const body = Doc.serializeBlocks(state.doc.blocks);
+      const kept = await tool('note.write', {
+        path: state.active,
+        body,
+        expectedRevision: disk.revision,
+      });
+      if (kept.conflict) return;
+    }
+    state.conflict = false;
+    state.dirty = false;
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+  }
+  if (state.active && state.doc && !state.conflict && (!same || unsaved)) await saveNow();
+  if (token !== state.openSeq) return;
+  if (same && unsaved && !options.force && !state.conflict) return;
+  if (state.dirty && !options.force) return;
+  clearTimeout(saveTimer);
+  state.conflict = false;
   const note = await tool('note.read', { path: file });
+  if (token !== state.openSeq) return;
+  if (state.dirty && !options.force) return;
+  state.dirty = false;
   state.active = note.path;
   state.treeFocus = 'note';
   state.view = 'note';
-  state.doc = Doc.parseDocument(note.body);
+  state.doc = Doc.parseBody(note.body);
+  state.editorPast = [JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })))];
+  state.editorFuture = [];
+  state.undoOpen = false;
+  state.blockRange = null;
   state.revision = note.revision;
   state.frontmatter = note.frontmatter;
   state.conflict = false;
@@ -1985,6 +2623,7 @@ async function openNote(file, options = {}) {
     if (!state.tabs.includes(note.path)) state.tabs.push(note.path);
   }
   await loadLinks();
+  if (token !== state.openSeq) return;
   paintTabs();
   paintTree();
   paintCenter();
@@ -2399,6 +3038,15 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
+  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
+  if (leaving && state.view === 'note' && state.doc) {
+    flushNote().finally(() => runCommandNow(id));
+    return;
+  }
+  runCommandNow(id);
+}
+
+function runCommandNow(id) {
   if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
@@ -2414,14 +3062,7 @@ function runCommand(id) {
     visoes: () => showViews(),
     mencoes: () => showMentions(),
     importar: () => importObsidian(),
-    leitura: () => {
-      state.reading = !state.reading;
-      paintCenter();
-    },
-    foco: () => {
-      state.focusMode = !state.focusMode;
-      document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
-    },
+    foco: () => setFocusMode(!state.focusMode),
     cartas: () => showCards(),
     config: () => {
       state.view = 'settings';
@@ -2716,7 +3357,7 @@ function paintReview(center) {
 
 async function showVersions() {
   state.view = 'versions';
-  state.versionRows = await tool('version.list', {});
+  state.versionRows = await tool('version.list', { path: state.active || '' });
   paintCenter();
 }
 
@@ -2751,11 +3392,11 @@ function paintVersions(center) {
   const items = rows
     .map(
       (row) =>
-        `<li><button type="button" class="versao${picked && picked.id === row.id ? ' is-escolhida' : ''}" data-versao="${escapeHtml(row.id)}" data-restaurar="${escapeHtml(row.id)}"><b>${escapeHtml(relativeWhen(row.id))}</b><span>${escapeHtml(row.label || 'ponto')}</span><small>${sizeLabel(row.bytes || 0)}</small></button></li>`,
+        `<li><button type="button" class="versao${picked && picked.id === row.id ? ' is-escolhida' : ''}" data-versao="${escapeHtml(row.id)}"><b>${escapeHtml(relativeWhen(row.id))}</b><span>${escapeHtml(row.label || 'ponto')}</span><small>${sizeLabel(row.bytes || 0)}</small></button></li>`,
     )
     .join('');
   const current = (state.doc?.blocks || []).map(blockPreview).filter(Boolean).slice(0, 6).join('') || '<p>Abra a nota para ver o agora.</p>';
-  center.innerHTML = `<div class="versoes-tela"><div class="versoes-diff"><article><h3>${picked ? escapeHtml(relativeWhen(picked.id)) : 'Versão'}</h3><div class="versoes__previa">${escapeHtml(picked?.preview || 'Sem prévia')}</div></article><article><h3>Agora</h3><div class="versoes__previa">${current}</div></article></div><aside><h2>Linha do tempo</h2><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><p>Guardadas 90 dias ou 1 GB.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></aside></div>`;
+  center.innerHTML = `<div class="versoes-tela"><div class="versoes-diff"><article><h3>${picked ? escapeHtml(relativeWhen(picked.id)) : 'Versão'}</h3><div class="versoes__previa">${escapeHtml(picked?.preview || 'Sem prévia')}</div></article><article><h3>Agora</h3><div class="versoes__previa">${current}</div></article></div><aside><h2>Linha do tempo</h2><div class="versoes-cota" aria-label="Uso das versões"><span style="width:${width}%"></span></div><p>Guardadas 90 dias ou 1 GB. O clique só mostra a prévia.</p><button type="button" class="btn btn--secundario" id="gravar-ponto">Gravar ponto agora</button><button type="button" class="btn btn--fantasma" id="restaurar-versao" ${picked ? '' : 'disabled'}>Restaurar esta versão</button><ul class="versoes-lista">${items || '<li>Nenhum ponto ainda.</li>'}</ul></aside></div>`;
   const save = $('#gravar-ponto');
   if (save)
     save.onclick = async () => {
@@ -2763,18 +3404,40 @@ function paintVersions(center) {
       toast('Ponto gravado.');
       await showVersions();
     };
-  center.querySelectorAll('[data-restaurar]').forEach((button) => {
-    button.onclick = async () => {
-      clearTimeout(saveTimer);
-      await tool('version.restore', { id: button.dataset.restaurar });
-      await refreshLibrary();
-      if (state.active) await openNote(state.active, { force: true });
-      else paintTree();
-      state.conflict = false;
-      paintStatus();
-      toast('Versão restaurada.');
+  center.querySelectorAll('[data-versao]').forEach((button) => {
+    button.onclick = () => {
+      state.versionPick = button.dataset.versao;
+      paintVersions(center);
     };
   });
+  const restore = $('#restaurar-versao');
+  if (restore && picked)
+    restore.onclick = () => {
+      const overlay = $('#overlay');
+      overlay.hidden = false;
+      overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Restaurar versão"><p>Restaurar ${escapeHtml(relativeWhen(picked.id))} substitui as notas e os canvas da biblioteca. Um ponto novo é gravado antes.</p><button type="button" id="confirma-sim">Restaurar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+      $('#confirma-nao').onclick = () => {
+        overlay.hidden = true;
+      };
+      $('#confirma-sim').onclick = async () => {
+        overlay.hidden = true;
+        clearTimeout(saveTimer);
+        await tool('version.point', { label: 'antes-de-restaurar' });
+        await tool('version.restore', { id: picked.id });
+        await refreshLibrary();
+        if (state.active) await openNote(state.active, { force: true });
+        else paintTree();
+        state.conflict = false;
+        paintStatus();
+        toast('Versão restaurada.');
+      };
+    };
+}
+
+async function pickedFolder() {
+  const picked = await sophy.chooseFolder();
+  if (!picked || picked.ok === false) return '';
+  return typeof picked === 'string' ? picked : picked.value || '';
 }
 
 function blockPreview(block) {
@@ -2816,16 +3479,20 @@ function openExport(kind) {
         toast('Abra uma nota para exportar o PDF.', 'erro');
         return;
       }
-      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(state.doc.body)}</pre></body></html>`;
+      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}h1,h2,h3{font-family:Georgia,serif}</style></head><body><h1>${escapeHtml(title)}</h1>${(state.doc?.blocks || []).map(blockPreview).join('')}</body></html>`;
       const saved = await sophy.exportPdf(html);
       if (saved) toast('PDF em papel claro.');
       return;
     }
-    const folder = await sophy.chooseFolder();
+    const folder = await pickedFolder();
     if (!folder) return;
     const theme = themeName() === 'dark' ? 'dark' : 'light';
-    const result = await tool('site.export', { destination: folder, theme });
-    toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+    try {
+      const result = await tool('site.export', { destination: folder, theme });
+      toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+    } catch (error) {
+      toast(error.message, 'erro');
+    }
   };
 }
 
@@ -2853,22 +3520,37 @@ function importObsidian() {
     const pick = $('#importar-cofre');
     if (pick)
       pick.onclick = async () => {
-        folder = await sophy.chooseFolder();
-        if (!folder) return;
-        step = 2;
-        paint();
+        try {
+          folder = await pickedFolder();
+          if (!folder) return;
+          step = 2;
+          paint();
+        } catch (error) {
+          toast(error.message, 'erro');
+        }
       };
     const go = $('#importar-seguir');
     if (go)
       go.onclick = async () => {
-        step = 3;
-        paint();
-        const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
-        step = 4;
-        paint();
-        await refreshLibrary();
-        paintTree();
-        toast(`${result.copied} arquivo(s) copiados. A origem não foi alterada.`);
+        try {
+          step = 3;
+          paint();
+          const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
+          step = 4;
+          paint();
+          await refreshLibrary();
+          paintTree();
+          const skipped = Array.isArray(result.skipped) ? result.skipped.length : 0;
+          toast(
+            skipped
+              ? `${result.copied} arquivo(s) copiados. ${skipped} ficaram de fora: ${result.skipped.slice(0, 3).join('; ')}`
+              : `${result.copied} arquivo(s) copiados. A origem não foi alterada.`,
+          );
+        } catch (error) {
+          step = 1;
+          paint();
+          toast(error.message, 'erro');
+        }
       };
   };
   paint();
@@ -2948,7 +3630,12 @@ async function chooseLibrary(create) {
   const chosen = await sophy.chooseFolder();
   if (!chosen?.ok || !chosen.value) return;
   if (create) {
-    const created = await sophy.createLibrary(chosen.value);
+    const name = (state.libraryNameInput || 'Biblioteca').trim();
+    if (!name || name === '.' || name === '..' || /[\\/]/.test(name) || reservedName(name)) {
+      toast(reservedName(name) ? 'Esse nome é reservado pelo Windows.' : 'Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
+      return;
+    }
+    const created = await sophy.createLibrary(`${chosen.value.replace(/[/\\]$/, '')}/${name}`);
     if (!created.ok) {
       toast(created.error, 'erro');
       return;
@@ -3092,10 +3779,37 @@ function openTreeMenu(event, kind, target) {
     };
   menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
     closeMenus();
-    await tool('entry.trash', { path: target });
-    await refreshLibrary();
-    paintTree();
-    paintCenter();
+    try {
+      if (kind === 'shelf') {
+        const count = state.notes.filter((note) => note.workspace === target || note.path.startsWith(`${target}/`)).length;
+        const overlay = $('#overlay');
+        overlay.hidden = false;
+        overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Mover estante"><p>Mover a estante ${escapeHtml(target)} para a lixeira, com ${count} nota(s)?</p><button type="button" id="confirma-sim">Mover</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+        const ok = await new Promise((resolve) => {
+          $('#confirma-nao').onclick = () => { overlay.hidden = true; resolve(false); };
+          $('#confirma-sim').onclick = () => { overlay.hidden = true; resolve(true); };
+        });
+        if (!ok) return;
+      }
+      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(`${target}/`)))
+        await flushNote();
+      await tool('entry.trash', { path: target });
+      const prefix = kind === 'shelf' ? `${target}/` : target;
+      state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));
+      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(prefix))) {
+        state.active = null;
+        state.doc = null;
+        state.view = 'home';
+        state.nav = 'inicio';
+      }
+      await refreshLibrary();
+      paintTree();
+      paintTabs();
+      paintCenter();
+      toast('Movido para a lixeira.');
+    } catch (error) {
+      toast(error.message, 'erro');
+    }
   };
 }
 
@@ -3124,17 +3838,18 @@ function openBlockMenu(anchor, index) {
     button.onclick = () => {
       const action = button.dataset.bloco;
       closeMenus();
+      checkpoint(true);
       const block = state.doc.blocks[index];
       const text = Doc.visibleOf(block);
       if (action === 'apagar') {
         const blocks = state.doc.blocks.filter((_, position) => position !== index);
         state.doc = { ...state.doc, blocks, body: blocks.map((item) => item.raw).join('') };
       } else if (action === 'titulo') {
-        state.doc = Doc.withBlockRaw(state.doc, index, `# ${text}\n`);
+        state.doc = Doc.replaceBlock(state.doc, index, `# ${text}\n`);
       } else if (action === 'lista') {
-        state.doc = Doc.withBlockRaw(state.doc, index, `- ${text}\n`);
+        state.doc = Doc.replaceBlock(state.doc, index, `- ${text}\n`);
       } else if (action === 'tarefa') {
-        state.doc = Doc.withBlockRaw(state.doc, index, `- [ ] ${text}\n`);
+        state.doc = Doc.replaceBlock(state.doc, index, `- [ ] ${text}\n`);
       }
       paintCenter();
       scheduleSave();
@@ -3149,7 +3864,14 @@ function openSlashAt(index) {
     const insert = item.id === 'hoje' ? today() : item.insert;
     const text = readEditable(el).replace(/\n$/, '');
     const next = text.trim() ? `${insert}${text}` : insert;
-    state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(state.doc.blocks[index], next));
+    const block = state.doc.blocks[index];
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, rawFromPlain(block, next));
+    const promoted = state.doc.blocks[index];
+    state.caret = {
+      index,
+      offset: promoted?.type === 'code' ? 0 : Doc.visibleOf(promoted || { raw: '' }).length,
+    };
     closeMenus();
     paintCenter();
     scheduleSave();
@@ -3550,7 +4272,7 @@ async function focusGraphNote(path) {
   const note = await tool('note.read', { path });
   state.frontmatter = note.frontmatter;
   state.revision = note.revision;
-  state.doc = Doc.parseDocument(note.body);
+  state.doc = Doc.parseBody(note.body);
   await loadLinks();
   const focus = $('#grafo-foco');
   if (focus) focus.textContent = `Foco: ${baseName(path)}`;
@@ -3771,10 +4493,30 @@ document.addEventListener('keydown', (event) => {
       closePalette();
       return;
     }
-    if (drawerNarrow() && ($('#lateral')?.classList.contains('is-aberta') || $('#sofi-gaveta')?.classList.contains('is-aberta'))) {
+    if (drawerNarrow() && ($('#lateral')?.classList.contains('is-aberta') || $('#sofi-gaveta')?.classList.contains('is-aberta') || $('#conexoes')?.classList.contains('is-gaveta'))) {
       closeDrawer();
       return;
     }
+    if (state.focusMode) {
+      setFocusMode(false);
+      return;
+    }
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
+    event.preventDefault();
+    const current = state.active || state.canvasPath;
+    if (current) closeTab(current);
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'p') {
+    event.preventDefault();
+    openPalette();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    openPalette();
+    return;
   }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Space') {
     event.preventDefault();
@@ -3812,6 +4554,15 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     openCommands();
     return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') && state.view === 'note' && state.doc) {
+    const tag = event.target?.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      event.preventDefault();
+      if (event.key.toLowerCase() === 'y' || event.shiftKey) redoDoc();
+      else undoDoc();
+      return;
+    }
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
@@ -3862,6 +4613,13 @@ async function boot() {
   host.hidden = true;
   host.innerHTML = covers;
   document.body.prepend(host);
+  sophy.onFlush?.(async () => {
+    try {
+      await flushNote();
+    } finally {
+      sophy.flushed?.();
+    }
+  });
   const started = await sophy.boot();
   if (!started.ok) {
     document.body.textContent = started.error || 'Não foi possível abrir.';

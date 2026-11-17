@@ -27,8 +27,13 @@
     return line.replace(/\r?\n$/, '');
   }
 
+  function fenceMark(line) {
+    const match = lineText(line).match(/^(```+|~~~+)/);
+    return match ? match[1] : '';
+  }
+
   function isFence(line) {
-    return lineText(line).startsWith('```');
+    return fenceMark(line).length >= 3;
   }
 
   function isHeading(line) {
@@ -51,6 +56,11 @@
     return lineText(line).trim() === '';
   }
 
+  function isTableLine(line) {
+    const text = lineText(line);
+    return text.startsWith('|') && text.endsWith('|') && text.length > 1;
+  }
+
   function parseBlocks(body) {
     const lines = splitLines(body);
     const blocks = [];
@@ -58,15 +68,15 @@
     while (index < lines.length) {
       const line = lines[index];
       if (isFence(line)) {
+        const open = fenceMark(line);
         const chunk = [line];
         index += 1;
-        while (index < lines.length && !isFence(lines[index])) {
+        while (index < lines.length) {
+          const mark = fenceMark(lines[index]);
+          const trimmed = lineText(lines[index]);
           chunk.push(lines[index]);
           index += 1;
-        }
-        if (index < lines.length) {
-          chunk.push(lines[index]);
-          index += 1;
+          if (mark && mark[0] === open[0] && mark.length >= open.length && trimmed === mark) break;
         }
         blocks.push({ type: 'code', raw: chunk.join('') });
         continue;
@@ -97,27 +107,41 @@
         blocks.push({ type: 'quote', raw: chunk.join('') });
         continue;
       }
+      if (isTableLine(line)) {
+        const chunk = [];
+        while (index < lines.length && isTableLine(lines[index])) {
+          chunk.push(lines[index]);
+          index += 1;
+        }
+        blocks.push({ type: 'table', raw: chunk.join('') });
+        continue;
+      }
       if (isBlank(line)) {
-        blocks.push({ type: 'blank', raw: line });
         index += 1;
         continue;
       }
-      const chunk = [];
-      while (
-        index < lines.length &&
-        !isBlank(lines[index]) &&
-        !isFence(lines[index]) &&
-        !isHeading(lines[index]) &&
-        !isRule(lines[index]) &&
-        !isList(lines[index]) &&
-        !isQuote(lines[index])
-      ) {
-        chunk.push(lines[index]);
-        index += 1;
-      }
-      blocks.push({ type: 'paragraph', raw: chunk.join('') });
+      blocks.push({ type: 'paragraph', raw: line.endsWith('\n') ? line : `${line}\n` });
+      index += 1;
     }
     return blocks;
+  }
+
+  function isListBlock(block) {
+    return block && (block.type === 'item' || block.type === 'task');
+  }
+
+  function serializeBlocks(blocks) {
+    let out = '';
+    for (let index = 0; index < blocks.length; index += 1) {
+      const block = blocks[index];
+      const prev = blocks[index - 1];
+      if (prev && !(isListBlock(prev) && isListBlock(block))) {
+        if (!out.endsWith('\n')) out += '\n';
+        if (!out.endsWith('\n\n')) out += '\n';
+      }
+      out += block.raw.endsWith('\n') || block.raw === '' ? block.raw : `${block.raw}\n`;
+    }
+    return out;
   }
 
   function parseDocument(markdown) {
@@ -140,8 +164,97 @@
     return { bom, prefix, body, blocks };
   }
 
+  function parseBody(markdown) {
+    const text = typeof markdown === 'string' ? markdown : '';
+    return { bom: '', prefix: null, body: text, blocks: parseBlocks(text) };
+  }
+
+  function codeParts(raw) {
+    const text = String(raw || '');
+    const openMatch = text.match(/^(```+|~~~+)([^\n]*)\n/);
+    if (!openMatch) return { fence: '```', info: '', body: text.replace(/\n$/, '') };
+    const fence = openMatch[1];
+    const info = openMatch[2];
+    let rest = text.slice(openMatch[0].length);
+    if (rest.endsWith(`\n${fence}\n`)) rest = rest.slice(0, -(fence.length + 2));
+    else if (rest.endsWith(`\n${fence}`)) rest = rest.slice(0, -(fence.length + 1));
+    else if (rest.endsWith('\n')) rest = rest.slice(0, -1);
+    return { fence, info, body: rest };
+  }
+
+  function codeRaw(fence, info, body) {
+    return `${fence}${info || ''}\n${body}\n${fence}\n`;
+  }
+
+  function splitCells(line) {
+    let raw = String(line || '').trim();
+    if (raw.startsWith('|')) raw = raw.slice(1);
+    if (raw.endsWith('|')) raw = raw.slice(0, -1);
+    const cells = [];
+    let current = '';
+    let wiki = 0;
+    for (let index = 0; index < raw.length; index += 1) {
+      if (raw[index] === '\\' && raw[index + 1] === '|') {
+        current += '\\|';
+        index += 1;
+        continue;
+      }
+      if (raw.startsWith('[[', index)) {
+        wiki += 1;
+        current += '[[';
+        index += 1;
+        continue;
+      }
+      if (wiki && raw.startsWith(']]', index)) {
+        wiki -= 1;
+        current += ']]';
+        index += 1;
+        continue;
+      }
+      if (raw[index] === '|' && wiki === 0) {
+        cells.push(current.trim());
+        current = '';
+        continue;
+      }
+      current += raw[index];
+    }
+    cells.push(current.trim());
+    return cells;
+  }
+
+  function tableModel(raw) {
+    const lines = String(raw || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('|') && line.endsWith('|'));
+    const rows = [];
+    let align = null;
+    for (const line of lines) {
+      const cells = splitCells(line);
+      if (cells.length && cells.every((cell) => /^:?-+:?$/.test(cell))) {
+        align = cells;
+        continue;
+      }
+      rows.push(cells);
+    }
+    return { rows, align };
+  }
+
+  function tableRaw(rows, align) {
+    const width = Math.max(align?.length || 0, ...rows.map((row) => row.length), 1);
+    const fit = (row) => Array.from({ length: width }, (_, index) => row[index] || '');
+    const aligned = align ? fit(align) : fit(rows[0] || []).map(() => '---');
+    const body = (rows.length ? rows : [['']]).map(fit);
+    const lines = [
+      `| ${body[0].join(' | ')} |`,
+      `| ${aligned.join(' | ')} |`,
+      ...body.slice(1).map((row) => `| ${row.join(' | ')} |`),
+    ];
+    return `${lines.join('\n')}\n`;
+  }
+
   function serializeDocument(doc) {
-    return doc.bom + (doc.prefix ?? '') + doc.blocks.map((block) => block.raw).join('');
+    return doc.bom + (doc.prefix ?? '') + serializeBlocks(doc.blocks);
   }
 
   function withBlockRaw(doc, index, raw) {
@@ -187,7 +300,7 @@
 
   function parseInlines(text) {
     const parts = [];
-    const pattern = /!?\[\[[^\]\n]*\]\]/g;
+    const pattern = /!?\[\[[^\[\]\n]*\]\]/g;
     let last = 0;
     for (const match of text.matchAll(pattern)) {
       const at = match.index ?? 0;
@@ -283,12 +396,16 @@
         .split('\n')
         .map((line) => line.replace(/^>\s?/, ''))
         .join('\n');
-    if (block.type === 'code') return raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
+    if (block.type === 'code') return codeParts(block.raw).body;
     if (block.type === 'blank') return '';
     return raw;
   }
 
   function rewriteVisible(block, text) {
+    if (block.type === 'code') {
+      const parts = codeParts(block.raw);
+      return { ...block, raw: codeRaw(parts.fence, parts.info, text) };
+    }
     const clean = text.replace(/\n$/, '');
     if (block.type === 'heading')
       return { ...block, raw: `${'#'.repeat(block.level || 1)} ${clean.replace(/\n/g, ' ')}\n` };
@@ -318,63 +435,216 @@
     return { ...doc, blocks, body: blocks.map((block) => block.raw).join('') };
   }
 
+  function renumberNumbered(doc) {
+    const blocks = doc.blocks.slice();
+    let count = 0;
+    let run = false;
+    for (let index = 0; index < blocks.length; index += 1) {
+      const match = blocks[index].type === 'item' && String(blocks[index].raw).match(/^(\s*)(\d+)\. ([\s\S]*)$/);
+      if (!match) {
+        run = false;
+        count = 0;
+        continue;
+      }
+      if (!run) {
+        run = true;
+        count = 0;
+      }
+      count += 1;
+      if (Number(match[2]) !== count) blocks[index] = { ...blocks[index], raw: `${match[1]}${count}. ${match[3]}` };
+    }
+    return withBlocks(doc, blocks);
+  }
+
+  function isEmbedBlock(block) {
+    return !!block && /^!\[\[[^\]\n]+\]\]$/.test(String(block.raw || '').trim());
+  }
+
   function splitBlock(doc, index, offset) {
     const block = doc.blocks[index];
+    if (block?.type === 'code') {
+      const parts = codeParts(block.raw);
+      if (offset >= parts.body.length) {
+        const blocks = doc.blocks.slice();
+        blocks.splice(index + 1, 0, { type: 'paragraph', raw: '\n' });
+        return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+      }
+      const next = `${parts.body.slice(0, offset)}\n${parts.body.slice(offset)}`;
+      const blocks = doc.blocks.slice();
+      blocks[index] = { ...block, raw: codeRaw(parts.fence, parts.info, next) };
+      return { doc: withBlocks(doc, blocks), caret: { index, offset: offset + 1 } };
+    }
     const text = visibleOf(block);
     const before = text.slice(0, offset);
     const after = text.slice(offset);
+    if (block.type === 'item' || block.type === 'task' || block.type === 'quote') {
+      if (!before.trim() && !after.trim()) {
+        const blocks = doc.blocks.slice();
+        blocks.splice(index, 1, { type: 'paragraph', raw: '\n' });
+        return { doc: withBlocks(doc, blocks), caret: { index, offset: 0 } };
+      }
+      if (!before.trim()) {
+        const blocks = doc.blocks.slice();
+        if (block.type === 'task' && block.task) {
+          const emptyTask = {
+            indent: block.task.indent,
+            marker: block.task.marker,
+            status: ' ',
+            title: '',
+            suffix: '',
+            due: null,
+            priority: null,
+          };
+          const keptTask = { ...block.task, title: after.replace(/\n/g, ' ') };
+          blocks.splice(
+            index,
+            1,
+            { type: 'task', task: emptyTask, raw: `${serializeTask(emptyTask)}\n` },
+            { type: 'task', task: keptTask, raw: `${serializeTask(keptTask)}\n` },
+          );
+        } else {
+          blocks.splice(index, 1, rewriteVisible(block, ''), rewriteVisible(block, after));
+        }
+        return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+      }
+    }
+    if (block.type === 'task' && block.task) {
+      const leftTask = { ...block.task, title: before.replace(/\n/g, ' ') };
+      const rightTask = {
+        indent: block.task.indent,
+        marker: block.task.marker,
+        status: ' ',
+        title: after.replace(/\n/g, ' '),
+        suffix: '',
+        due: null,
+        priority: null,
+      };
+      const blocks = doc.blocks.slice();
+      blocks.splice(
+        index,
+        1,
+        { type: 'task', task: leftTask, raw: `${serializeTask(leftTask)}\n` },
+        { type: 'task', task: rightTask, raw: `${serializeTask(rightTask)}\n` },
+      );
+      return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+    }
+    if (block.type === 'quote') {
+      const blocks = doc.blocks.slice();
+      blocks.splice(index, 1, rewriteVisible(block, before), rewriteVisible(block, after));
+      return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+    }
+    if (block.type === 'item') {
+      const blocks = doc.blocks.slice();
+      const left = rewriteVisible(block, before);
+      const numbered = String(block.raw).match(/^(\s*)(\d+)\./);
+      const right = numbered
+        ? { type: 'item', raw: `${numbered[1]}${Number(numbered[2]) + 1}. ${after}\n` }
+        : rewriteVisible(block, after);
+      blocks.splice(index, 1, left, right);
+      return { doc: renumberNumbered(withBlocks(doc, blocks)), caret: { index: index + 1, offset: 0 } };
+    }
     const left = rewriteVisible(block, before);
     const right = { type: 'paragraph', raw: `${after}\n` };
     const blocks = doc.blocks.slice();
-    const separate = block.type === 'paragraph' || block.type === 'heading' || block.type === 'blank';
-    if (separate) blocks.splice(index, 1, left, { type: 'blank', raw: '\n' }, right);
-    else blocks.splice(index, 1, left, right);
-    return {
-      doc: withBlocks(doc, blocks),
-      caret: { index: index + (separate ? 2 : 1), offset: 0 },
-    };
+    blocks.splice(index, 1, left, right);
+    return { doc: withBlocks(doc, blocks), caret: { index: index + 1, offset: 0 } };
+  }
+
+  function replaceBlock(doc, index, raw) {
+    const parsed = parseDocument(raw).blocks;
+    const clean = parsed.filter((block, position) => parsed.length === 1 || block.type !== 'blank' || position !== parsed.length - 1);
+    const blocks = doc.blocks.slice();
+    blocks.splice(index, 1, ...(clean.length ? clean : [{ type: 'paragraph', raw: '\n' }]));
+    return withBlocks(doc, blocks);
+  }
+
+  function isEmptyJoin(block) {
+    if (!block) return false;
+    if (block.type === 'blank') return true;
+    return (block.type === 'paragraph' || block.type === 'heading') && visibleOf(block).trim() === '';
   }
 
   function joinBlocks(doc, index) {
     if (index <= 0) return { doc, caret: { index: 0, offset: 0 } };
-    let target = index - 1;
-    let removeFrom = target;
-    if (doc.blocks[target]?.type === 'blank' && target > 0) {
-      target -= 1;
-      removeFrom = target;
+    const above = doc.blocks[index - 1];
+    if (isEmptyJoin(above)) {
+      const blocks = doc.blocks.slice();
+      blocks.splice(index - 1, 1);
+      const target = index - 2;
+      if (target < 0) return { doc: withBlocks(doc, blocks), caret: { index: 0, offset: 0 } };
+      return { doc: withBlocks(doc, blocks), caret: { index: target, offset: visibleOf(blocks[target]).length } };
     }
-    const offset = visibleOf(doc.blocks[target]).length;
-    const merged = visibleOf(doc.blocks[target]) + visibleOf(doc.blocks[index]);
+    if (isEmbedBlock(above) || isEmbedBlock(doc.blocks[index])) {
+      return { doc, caret: { index, offset: 0 } };
+    }
+    if (above.type === 'task' && above.task && doc.blocks[index].type === 'task' && doc.blocks[index].task) {
+      const upper = above.task;
+      const lower = doc.blocks[index].task;
+      const keeper = lower.suffix || lower.due || lower.priority || lower.status !== ' ' ? lower : upper;
+      const gap = upper.title && lower.title ? ' ' : '';
+      const task = { ...keeper, title: `${upper.title}${gap}${lower.title}`.trim() };
+      const blocks = doc.blocks.slice();
+      blocks.splice(index - 1, 2, { type: 'task', task, raw: `${serializeTask(task)}\n` });
+      return { doc: withBlocks(doc, blocks), caret: { index: index - 1, offset: `${upper.title}${gap}`.length } };
+    }
+    const left = visibleOf(above);
+    const right = visibleOf(doc.blocks[index]);
+    const gap = left && right && !/\s$/.test(left) && !/^\s/.test(right) ? ' ' : '';
     const blocks = doc.blocks.slice();
-    blocks.splice(removeFrom, index - removeFrom + 1, rewriteVisible(doc.blocks[target], merged));
-    return { doc: withBlocks(doc, blocks), caret: { index: removeFrom, offset } };
+    blocks.splice(index - 1, 2, rewriteVisible(above, `${left}${gap}${right}`));
+    return { doc: withBlocks(doc, blocks), caret: { index: index - 1, offset: left.length + gap.length } };
   }
 
-  function pasteLines(doc, index, offset, pasted) {
-    const lines = String(pasted).replace(/\r\n/g, '\n').split('\n');
-    const block = doc.blocks[index];
+  function joinForward(doc, index) {
+    if (!doc.blocks[index + 1])
+      return { doc, caret: { index, offset: visibleOf(doc.blocks[index]).length } };
+    if (doc.blocks[index + 1].type === 'blank' && doc.blocks[index + 2]) {
+      const blocks = doc.blocks.slice();
+      blocks.splice(index + 1, 1);
+      return joinBlocks(withBlocks(doc, blocks), index + 1);
+    }
+    return joinBlocks(doc, index + 1);
+  }
+
+  function pasteLines(doc, index, offset, pasted, end = offset) {
+    const block = doc.blocks[index] || { type: 'paragraph', raw: '\n' };
+    if (block.type === 'code') {
+      const parts = codeParts(block.raw);
+      const from = Math.min(offset, end);
+      const to = Math.max(offset, end);
+      const body = parts.body.slice(0, from) + String(pasted) + parts.body.slice(to);
+      const blocks = doc.blocks.slice();
+      blocks[index] = { ...block, raw: codeRaw(parts.fence, parts.info, body) };
+      return { doc: withBlocks(doc, blocks), caret: { index, offset: from + String(pasted).length } };
+    }
     const text = visibleOf(block);
-    lines[0] = text.slice(0, offset) + lines[0];
-    lines[lines.length - 1] += text.slice(offset);
-    const created = [];
-    lines.forEach((line, position) => {
-      if (position === 0) created.push(rewriteVisible(block, line));
-      else {
-        created.push({ type: 'blank', raw: '\n' });
-        created.push(line === '' ? { type: 'paragraph', raw: '\n' } : { type: 'paragraph', raw: `${line}\n` });
-      }
-    });
+    const from = Math.min(offset, end);
+    const to = Math.max(offset, end);
+    const before = text.slice(0, from);
+    const after = text.slice(to);
+    const source = `${before}${String(pasted).replace(/\r\n/g, '\n')}${after}`;
+    const parsed = parseBody(source.endsWith('\n') ? source : `${source}\n`).blocks;
+    const created = parsed.length ? parsed : [{ type: 'paragraph', raw: '\n' }];
     const blocks = doc.blocks.slice();
-    blocks.splice(index, 1, ...created);
-    const caretIndex = index + created.length - 1;
+    const at = doc.blocks[index] ? index : blocks.length;
+    blocks.splice(at, doc.blocks[index] ? 1 : 0, ...created);
+    const caretIndex = at + created.length - 1;
+    const last = visibleOf(blocks[caretIndex]);
     return {
       doc: withBlocks(doc, blocks),
-      caret: { index: caretIndex, offset: visibleOf(blocks[caretIndex]).length - text.slice(offset).length },
+      caret: { index: caretIndex, offset: Math.max(0, last.length - after.length) },
     };
   }
 
   function insertInBlock(doc, index, offset, chunk) {
     const block = doc.blocks[index];
+    if (block?.type === 'code') {
+      const parts = codeParts(block.raw);
+      const body = parts.body.slice(0, offset) + chunk + parts.body.slice(offset);
+      const blocks = doc.blocks.slice();
+      blocks[index] = { ...block, raw: codeRaw(parts.fence, parts.info, body) };
+      return { doc: withBlocks(doc, blocks), caret: { index, offset: offset + chunk.length } };
+    }
     const text = visibleOf(block);
     const next = text.slice(0, offset) + chunk + text.slice(offset);
     const blocks = doc.blocks.slice();
@@ -407,7 +677,14 @@
 
   return {
     parseDocument,
+    parseBody,
+    codeParts,
+    codeRaw,
+    splitCells,
+    tableModel,
+    tableRaw,
     serializeDocument,
+    serializeBlocks,
     withBlockRaw,
     parseInlines,
     serializeInlines,
@@ -418,7 +695,9 @@
     linkTarget,
     visibleOf,
     splitBlock,
+    replaceBlock,
     joinBlocks,
+    joinForward,
     pasteLines,
     insertInBlock,
     wrapPlain,

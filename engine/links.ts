@@ -12,6 +12,7 @@ import {
   labelOf,
   plainText,
   resolveFile,
+  indexPaths,
   resolvePath,
   scan,
   type LinkFormat,
@@ -58,27 +59,44 @@ export function syncLinks(library: Library) {
   for (const note of notes) {
     seen.add(note.path);
     const current = cache.get(note.path);
-    if (!current || current.mtime !== note.modifiedAt || current.size !== note.size)
-      cache.set(
-        note.path,
-        loadNote(library, note.path, note.workspace, note.modifiedAt, note.size),
-      );
+    if (!current || current.mtime !== note.modifiedAt || current.size !== note.size) {
+      try {
+        cache.set(
+          note.path,
+          loadNote(library, note.path, note.workspace, note.modifiedAt, note.size),
+        );
+      } catch {
+        cache.delete(note.path);
+      }
+    }
   }
   for (const canvas of canvases) {
     seen.add(canvas.path);
     const current = cache.get(canvas.path);
-    if (!current || current.mtime !== canvas.modifiedAt || current.size !== canvas.size)
-      cache.set(
-        canvas.path,
-        loadCanvas(library, canvas.path, canvas.workspace, canvas.modifiedAt, canvas.size),
-      );
+    if (!current || current.mtime !== canvas.modifiedAt || current.size !== canvas.size) {
+      try {
+        cache.set(
+          canvas.path,
+          loadCanvas(library, canvas.path, canvas.workspace, canvas.modifiedAt, canvas.size),
+        );
+      } catch {
+        cache.delete(canvas.path);
+      }
+    }
   }
   for (const cached of cache.keys()) if (!seen.has(cached)) cache.delete(cached);
   return cache;
 }
 
 export function outgoingLinks(library: Library, relative: string): OutgoingLink[] {
-  const cache = syncLinks(library);
+  return readOutgoing(library, syncLinks(library), relative);
+}
+
+export function readOutgoing(
+  library: Library,
+  cache: Map<string, CachedNote>,
+  relative: string,
+): OutgoingLink[] {
   const note = cache.get(relative);
   if (!note) throw new EngineError('not-found', 'Nota não encontrada.');
   return decorate(note, cache, library);
@@ -213,19 +231,50 @@ function loadNote(
   };
 }
 
+const sharedIndexes = new Map<
+  string,
+  {
+    stamp: string;
+    index: ReturnType<typeof indexPaths>;
+    paths: string[];
+    files: string[];
+    outgoing: Map<string, OutgoingLink[]>;
+  }
+>();
+
+function sharedBundle(library: Library, cache: Map<string, CachedNote>) {
+  const stamp = [...cache.values()].map((note) => `${note.path}:${note.mtime}:${note.size}`).join('|');
+  const current = sharedIndexes.get(library.root);
+  if (current && current.stamp === stamp) return current;
+  const paths = [...cache.keys()];
+  const bundle = {
+    stamp,
+    index: indexPaths(paths),
+    paths,
+    files: listFiles(library).map((file) => file.path),
+    outgoing: new Map<string, OutgoingLink[]>(),
+  };
+  sharedIndexes.set(library.root, bundle);
+  return bundle;
+}
+
 function decorate(
   note: CachedNote,
   cache: Map<string, CachedNote>,
   library: Library,
 ): OutgoingLink[] {
-  const notePaths = [...cache.keys()];
-  const files = listFiles(library).map((file) => file.path);
-  return note.scanned.map((link) => {
+  const bundle = sharedBundle(library, cache);
+  const cached = bundle.outgoing.get(note.path);
+  if (cached) return cached;
+  const paths = bundle.paths;
+  const files = bundle.files;
+  const index = bundle.index;
+  const resolvedLinks = note.scanned.map((link) => {
     const fileLike =
       link.format === 'embed' && /\.[^/]+$/.test(link.note) && !/\.md$/i.test(link.note);
     const resolved = fileLike
       ? resolveFile(link.note, note.path, files)
-      : resolvePath(link.note, note.path, notePaths);
+      : resolvePath(link.note, note.path, paths, index);
     let status: LinkStatus = 'broken';
     if (resolved.invalid || (!resolved.path && resolved.candidates.length === 0)) status = 'broken';
     else if (!resolved.path) status = 'ambiguous';
@@ -249,6 +298,8 @@ function decorate(
       candidates: resolved.candidates,
     };
   });
+  bundle.outgoing.set(note.path, resolvedLinks);
+  return resolvedLinks;
 }
 
 function tagsOf(frontmatter: Record<string, unknown> | null) {

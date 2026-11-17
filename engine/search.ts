@@ -1,8 +1,12 @@
 import { indexedNotes } from './links.ts';
 import type { Library } from './library.ts';
 
+export function fold(value: string) {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
+}
+
 export function searchLibrary(library: Library, query: string, workspace?: string) {
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = fold(query.trim());
   if (needle.length < 2) return [];
   const hits = [];
   for (const note of indexedNotes(library)) {
@@ -14,7 +18,8 @@ export function searchLibrary(library: Library, query: string, workspace?: strin
       ['frontmatter', note.frontmatterText],
     ];
     for (const [field, text] of fields) {
-      const index = text.toLocaleLowerCase().indexOf(needle);
+      const folded = fold(text);
+      const index = folded.indexOf(needle);
       if (index < 0) continue;
       hits.push({
         path: note.path,

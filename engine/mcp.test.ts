@@ -23,7 +23,7 @@ function environment() {
 async function connect(root: string) {
   const transport = new StdioClientTransport({
     command: bin,
-    args: ['mcp', '--biblioteca', root],
+    args: ['mcp', '--biblioteca', root, '--escrita'],
     cwd: os.tmpdir(),
     env: environment(),
     stderr: 'pipe',

@@ -26,9 +26,17 @@ const LIMIT = 50;
 
 export function capture(library: Library) {
   const files = new Map<string, Blob>();
-  for (const note of listNotes(library)) files.set(note.path, readBlob(library, note.path));
-  for (const file of listFiles(library)) files.set(file.path, readBlob(library, file.path));
+  for (const note of listNotes(library)) remember(files, library, note.path);
+  for (const file of listFiles(library)) remember(files, library, file.path);
   return { files, directories: new Set(listDirectories(library)) };
+}
+
+function remember(files: Map<string, Blob>, library: Library, relative: string) {
+  try {
+    files.set(relative, readBlob(library, relative));
+  } catch {
+    /* um nome inválido ou ilegível não impede o histórico das outras notas */
+  }
 }
 
 export function diff(

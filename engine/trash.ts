@@ -26,8 +26,13 @@ export function moveToTrash(source: string, options: TrashOptions = {}) {
     '[Trash Info]\n' + `Path=${encodeTrashPath(source)}\n` + `DeletionDate=${stamp}\n`;
   fs.writeFileSync(infoFile, payload, { flag: 'wx' });
   try {
-    fs.renameSync(source, destination);
+    placeInTrash(source, destination);
   } catch (error) {
+    try {
+      fs.rmSync(destination, { recursive: true, force: true });
+    } catch {
+      /* a cópia parcial não pode ficar na lixeira */
+    }
     try {
       fs.unlinkSync(infoFile);
     } catch {
@@ -37,11 +42,22 @@ export function moveToTrash(source: string, options: TrashOptions = {}) {
     throw new EngineError(
       'trash-failed',
       code === 'EXDEV'
-        ? 'Não foi possível mover para a lixeira sem copiar o arquivo. Nada foi apagado.'
+        ? 'Não foi possível mover para a lixeira. Nada foi apagado.'
         : 'Não foi possível mover para a lixeira. Nada foi apagado.',
     );
   }
   return { trashPath: destination, infoPath: infoFile };
+}
+
+function placeInTrash(source: string, destination: string) {
+  try {
+    fs.renameSync(source, destination);
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    if (code !== 'EXDEV') throw error;
+    fs.cpSync(source, destination, { recursive: true, errorOnExist: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
 }
 
 function trashRoot(options: TrashOptions) {
