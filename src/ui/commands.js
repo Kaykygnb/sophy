@@ -26,6 +26,10 @@
     'mention.link',
     'vault.import',
     'view.save',
+    'card.review',
+    'version.point',
+    'site.export',
+    'search.semantic.enable',
   ]);
 
   function slashQuery(text, cursor) {
@@ -329,6 +333,7 @@
     { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
     { id: 'leitura', rotulo: 'Modo leitura', grupo: 'Editar', icone: 'leitura', atalho: '', quando: 'editor' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
+    { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
     { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'tachado', atalho: 'Ctrl+Shift+X', quando: 'editor' },

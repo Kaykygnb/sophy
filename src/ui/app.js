@@ -88,7 +88,8 @@ function themeName() {
 }
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
-  if (state.settings.accent) document.documentElement.dataset.accent = state.settings.accent;
+  if (state.settings.accentSystem) delete document.documentElement.dataset.accent;
+  else if (state.settings.accent) document.documentElement.dataset.accent = state.settings.accent;
   else delete document.documentElement.dataset.accent;
   const logo = $('.titulo__marca img');
   if (logo)
@@ -759,7 +760,10 @@ function paintSettings(center) {
       </div>
       <label class="alternar"><input type="checkbox" id="cfg-motion" ${state.settings.reduceMotion ? 'checked' : ''}><span>Reduzir animações</span></label>
     </section>
-    <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><p class="nota-privacidade">A cor do sistema fica desligada. O acento escolhido vale nesta janela.</p></section>
+    <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><label class="alternar"><input type="checkbox" id="cfg-sistema" ${state.settings.accentSystem ? 'checked' : ''}><span>Seguir a cor do sistema</span></label><p class="nota-privacidade">Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.</p></section>
+    <section><h3>Busca por significado</h3><label class="alternar"><input type="checkbox" id="cfg-busca" ${state.settings.semantic ? 'checked' : ''}><span>${state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'}</span></label><p class="nota-privacidade">Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.</p></section>
+    <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa na segunda.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div></section>
+    <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
   </div>`;
   center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
     input.onchange = async () => {
@@ -786,12 +790,108 @@ function paintSettings(center) {
     };
   center.querySelectorAll('[data-accent]').forEach((button) => {
     button.onclick = async () => {
+      state.settings.accentSystem = false;
       state.settings.accent = button.dataset.accent;
       applyTheme(themeName());
-      await sophy.saveSettings({ accent: button.dataset.accent });
+      await sophy.saveSettings({ accent: button.dataset.accent, accentSystem: false });
       paintCenter();
     };
   });
+  const system = $('#cfg-sistema');
+  if (system)
+    system.onchange = async () => {
+      state.settings.accentSystem = system.checked;
+      applyTheme(themeName());
+      await sophy.saveSettings({ accentSystem: system.checked });
+    };
+  const search = $('#cfg-busca');
+  if (search)
+    search.onchange = async () => {
+      state.settings.semantic = search.checked;
+      if (search.checked) await tool('search.semantic.enable', {});
+      await sophy.saveSettings({ semantic: search.checked });
+      paintCenter();
+    };
+  center.querySelectorAll('[name="cfg-semana"]').forEach((input) => {
+    input.onchange = async () => {
+      state.settings.weekStartsOn = Number(input.value);
+      await sophy.saveSettings({ weekStartsOn: Number(input.value) });
+    };
+  });
+  const point = $('#cfg-versao');
+  if (point)
+    point.onclick = async () => {
+      await tool('version.point', { label: 'manual' });
+      toast('Ponto gravado.');
+    };
+  const site = $('#cfg-site');
+  if (site)
+    site.onclick = async () => {
+      const folder = await sophy.chooseFolder();
+      if (!folder) return;
+      const theme = themeName() === 'dark' ? 'dark' : 'light';
+      const result = await tool('site.export', { destination: folder, theme });
+      toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+    };
+  const pdf = $('#cfg-pdf');
+  if (pdf)
+    pdf.onclick = async () => {
+      if (!state.active || !state.doc) {
+        toast('Abra uma nota para exportar o PDF.', 'erro');
+        return;
+      }
+      const title = baseName(state.active);
+      const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}</style></head><body><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(state.doc.body)}</pre></body></html>`;
+      const saved = await sophy.exportPdf(html);
+      if (saved) toast('PDF em papel claro.');
+    };
+}
+
+async function showCards() {
+  state.view = 'cards';
+  state.cardFace = 'front';
+  state.cardRows = await tool('card.list', { today: isoToday() });
+  paintCenter();
+}
+
+function paintCards(center) {
+  const today = isoToday();
+  const due = (state.cardRows || []).filter((card) => card.due <= today);
+  const card = due[0];
+  if (!card) {
+    center.innerHTML = `<div class="vazio-ensina"><h2>Flashcards</h2><p>Escreva <span class="kbd">pergunta :: resposta</span> numa nota. Cada estante vira um baralho.</p></div>`;
+    return;
+  }
+  const face = state.cardFace === 'back' ? card.back : card.front;
+  center.innerHTML = `<div class="inicio"><h2>Flashcards</h2><p>${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje</p><button type="button" id="carta-virar" class="cartao-estante"><strong>${escapeHtml(face)}</strong></button><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao">Não sabia</button><button type="button" class="btn btn--primario" id="carta-sim">Sabia</button></div></div>`;
+  $('#carta-virar').onclick = () => {
+    state.cardFace = state.cardFace === 'back' ? 'front' : 'back';
+    paintCenter();
+  };
+  $('#carta-sim').onclick = () => answerCard(card, true);
+  $('#carta-nao').onclick = () => answerCard(card, false);
+}
+
+async function answerCard(card, knew) {
+  await tool('card.review', { id: card.id, knew, today: isoToday() });
+  state.cardFace = 'front';
+  state.cardRows = await tool('card.list', { today: isoToday() });
+  paintCenter();
+}
+
+function syncWeekly() {
+  const existing = $('#revisao-semana');
+  if (new Date().getDay() !== 0) {
+    existing?.remove();
+    return;
+  }
+  if (existing || !$('#centro')) return;
+  const bar = document.createElement('div');
+  bar.id = 'revisao-semana';
+  bar.className = 'aviso';
+  bar.setAttribute('role', 'status');
+  bar.textContent = 'Domingo: a revisão da semana está pronta. A Sofi não altera as notas sozinha.';
+  $('#centro').prepend(bar);
 }
 
 function paintCenter() {
@@ -805,6 +905,7 @@ function paintCenter() {
   }
   syncNav();
   bindBlockDrag();
+  syncWeekly();
 }
 
 function bindBlockDrag() {
@@ -902,6 +1003,10 @@ function paintCenterBody(center) {
   }
   if (state.view === 'views') {
     paintViews(center);
+    return;
+  }
+  if (state.view === 'cards') {
+    paintCards(center);
     return;
   }
   if (state.view === 'settings') {
@@ -2108,6 +2213,7 @@ function runCommand(id) {
       state.focusMode = !state.focusMode;
       document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
     },
+    cartas: () => showCards(),
     buscar: () => openPalette(),
     comandos: () => openCommands(),
     biblioteca: () => {

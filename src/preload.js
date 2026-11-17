@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld(
     libraryPick: () => ipcRenderer.invoke('sophy:library-pick'),
     libraryReveal: (folder) => ipcRenderer.invoke('sophy:library-reveal', folder),
     saveSettings: (patch) => ipcRenderer.invoke('sophy:settings', patch),
+    exportPdf: (html) => ipcRenderer.invoke('sophy:export-pdf', html),
     window: (action) => ipcRenderer.invoke('sophy:window', action),
     onCommand: (listener) => {
       const wrapped = (_event, command) => listener(command);
