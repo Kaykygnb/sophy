@@ -486,6 +486,43 @@ test('flashcards e a busca por significado desligada', async () => {
   await app.close();
 });
 
+test('a Sofi abre e a chave não entra na biblioteca', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await expect(page.getByRole('button', { name: 'Hoje' })).toBeVisible();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.getByRole('dialog', { name: 'Sofi' })).toBeVisible();
+  await page.locator('#agente-chave').fill('segredo-da-sofi-teste');
+  await page.screenshot({ path: path.join(artifacts, 'ui-sofi-claro.png') });
+  const leaked = walk(root).includes('segredo-da-sofi-teste');
+  expect(leaked).toBe(false);
+  await app.close();
+  const dark = await launch([`--biblioteca=${root}`, '--theme=dark']);
+  const darkPage = await dark.firstWindow();
+  await expect(darkPage.getByRole('button', { name: 'Hoje' })).toBeVisible();
+  await darkPage.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
+  );
+  await expect(darkPage.getByRole('dialog', { name: 'Sofi' })).toBeVisible();
+  await darkPage.screenshot({ path: path.join(artifacts, 'ui-sofi-escuro.png') });
+  await dark.close();
+});
+
+function walk(directory) {
+  let text = '';
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) text += walk(full);
+    else text += fs.readFileSync(full);
+  }
+  return text;
+}
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();
