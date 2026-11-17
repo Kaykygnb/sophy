@@ -28,6 +28,7 @@ export function queryGraph(library: Library, filter: { workspace?: string; tag?:
       title: note.title,
       workspace: note.workspace,
       tags: note.tags,
+      modifiedAt: note.mtime,
     })),
     edges,
   };

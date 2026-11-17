@@ -71,6 +71,30 @@
           `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ' ' + key : ''}">${options.icon(id === 'text' ? 'nota-adesiva' : id === 'group' ? 'agrupar' : id === 'connect' ? 'link' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : id === 'align' ? 'divisor' : 'mais')}<span class="sr-only">${label}</span></button>`,
       )
       .join('');
+    const covers = document.createElement('div');
+    covers.className = 'capa-opcoes';
+    covers.innerHTML = [1, 2, 3, 4, 5, 6]
+      .map(
+        (number) =>
+          `<button type="button" class="capa-opcao" data-capa="sophy:${number}" aria-label="Capa do quadro ${number}"></button>`,
+      )
+      .join('');
+    tools.after(covers);
+    const paintCover = () => {
+      const capa = state.document.capa;
+      const on = typeof capa === 'string' && /^sophy:[1-6]$/.test(capa);
+      area.classList.toggle('tem-capa', on);
+      if (on) area.dataset.sophy = capa.slice(6);
+      else delete area.dataset.sophy;
+    };
+    paintCover();
+    covers.querySelectorAll('[data-capa]').forEach((button) => {
+      button.onclick = () => {
+        state.document.capa = button.dataset.capa;
+        paintCover();
+        options.onChange?.(state.document);
+      };
+    });
     zoomBar.innerHTML = `<button type="button" class="btn btn--icone" data-zoom="out" aria-label="Afastar">−</button><span class="canvas-zoom__valor">100%</span><button type="button" class="btn btn--icone" data-zoom="in" aria-label="Aproximar">+</button><button type="button" class="btn btn--secundario" data-zoom="fit">Ajustar</button>`;
 
     const paint = () => {

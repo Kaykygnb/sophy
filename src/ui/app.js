@@ -900,6 +900,10 @@ function paintCenterBody(center) {
     paintHome(center);
     return;
   }
+  if (state.view === 'views') {
+    paintViews(center);
+    return;
+  }
   if (state.view === 'settings') {
     paintSettings(center);
     return;
@@ -967,18 +971,35 @@ function paintCenterBody(center) {
     .map((block, index) => renderBlock(block, index + (firstIsTitle ? 1 : 0)))
     .join('');
   const cover = coverBand();
+  const strip = dailyStrip(state.active);
   const capas = [1, 2, 3, 4, 5, 6]
     .map(
       (number) =>
         `<button type="button" class="capa-opcao" data-capa="sophy:${number}" aria-label="Capa ${number}"></button>`,
     )
     .join('');
-  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<span class="capa-opcoes" aria-label="Capas">${capas}</span></div>${blocks}</article>`;
+  center.innerHTML = `${conflict}<article class="coluna${state.reading ? ' is-leitura' : ''}" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<span class="capa-opcoes" aria-label="Capas">${capas}</span><button type="button" class="btn btn--fantasma" id="modo-leitura">${state.reading ? 'Editar' : 'Modo leitura'}</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   $('#coluna').querySelectorAll('[data-capa]').forEach((button) => {
     button.onclick = () => setCover(button.dataset.capa);
   });
+  $('#coluna').querySelectorAll('[data-dia]').forEach((button) => {
+    button.onclick = () => openDailyOn(button.dataset.dia);
+  });
+  const reading = $('#modo-leitura');
+  if (reading)
+    reading.onclick = () => {
+      state.reading = !state.reading;
+      paintCenter();
+    };
+  const focusMode = $('#modo-foco');
+  if (focusMode)
+    focusMode.onclick = () => {
+      state.focusMode = !state.focusMode;
+      document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
+      paintCenter();
+    };
   $('#coluna')
     .querySelectorAll('[data-block]')
     .forEach((el) => bindBlock(el));
@@ -1104,6 +1125,7 @@ function inlineHtml(text) {
 }
 
 function bindBlock(el) {
+  if (state.reading) el.contentEditable = 'false';
   el.addEventListener('input', () => onBlockInput(el));
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('paste', (event) => onBlockPaste(event, el));
@@ -2074,6 +2096,18 @@ function runCommand(id) {
     },
     'novo-canvas': () => createCanvasFile(),
     modelo: () => createFromTemplate(),
+    captura: () => openCapture(),
+    visoes: () => showViews(),
+    mencoes: () => showMentions(),
+    importar: () => importObsidian(),
+    leitura: () => {
+      state.reading = !state.reading;
+      paintCenter();
+    },
+    foco: () => {
+      state.focusMode = !state.focusMode;
+      document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
+    },
     buscar: () => openPalette(),
     comandos: () => openCommands(),
     biblioteca: () => {
@@ -2099,6 +2133,10 @@ function runCommand(id) {
 async function openDaily() {
   const now = new Date();
   const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  await openDailyOn(iso);
+}
+
+async function openDailyOn(iso) {
   const path = `Diário/${iso}.md`;
   try {
     await tool('workspace.create', { name: 'Diário' });
@@ -2106,7 +2144,11 @@ async function openDaily() {
     /* a estante já existe */
   }
   try {
-    await tool('note.create', { path, body: `# ${iso}\n\n`, frontmatter: { data: iso } });
+    await tool('note.create', {
+      path,
+      body: `# ${iso}\n\n`,
+      frontmatter: { data: iso },
+    });
   } catch {
     /* a nota do dia já existe */
   }
@@ -2114,18 +2156,191 @@ async function openDaily() {
   await openNote(path);
 }
 
+function dailyStrip(notePath) {
+  const match = String(notePath || '').match(/^Diário\/(\d{4}-\d{2}-\d{2})\.md$/);
+  if (!match) return '';
+  const current = match[1];
+  const date = new Date(`${current}T12:00:00`);
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  const labels = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+  const days = labels.map((label, index) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + index);
+    const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    return `<button type="button" class="semana-diaria__dia${iso === current ? ' is-hoje' : ''}" data-dia="${iso}">${label}<span>${day.getDate()}</span></button>`;
+  });
+  return `<div class="semana-diaria" aria-label="Semana">${days.join('')}</div>`;
+}
+
+function openCapture() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Captura rápida"><p>Captura rápida</p><input id="captura" placeholder="Título" /><p class="nota-privacidade">Vai para Entrada, com data e hora no nome.</p></div>`;
+  const input = $('#captura');
+  input.focus();
+  input.onkeydown = async (event) => {
+    if (event.key !== 'Enter') return;
+    const title = input.value.trim() || 'Sem título';
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const slug = title.replace(/[\\/]+/g, ' ').trim();
+    const path = `Entrada/${stamp}-${slug}.md`;
+    overlay.hidden = true;
+    await tool('note.create', { path, body: `# ${title}\n\n` });
+    await refreshLibrary();
+    await openNote(path);
+  };
+}
+
 async function createFromTemplate() {
   const models = state.notes.filter((note) => note.workspace === 'Modelos');
   if (!models.length) {
-    toast('Guarde um Markdown em Modelos/. A galeria de modelos entra na etapa seguinte.');
+    toast('Guarde um Markdown em Modelos/.');
     return;
   }
-  const source = await tool('note.read', { path: models[0].path });
-  const name = Cmd.uniqueTitle(state.notes.map((note) => baseName(note.path)), baseName(models[0].path));
-  const path = `Entrada/${name}.md`;
-  await tool('note.create', { path, body: source.body });
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Modelos"><h2>Modelos</h2>${models
+    .map(
+      (note) =>
+        `<button type="button" class="menu__item" data-modelo="${escapeHtml(note.path)}">${escapeHtml(baseName(note.path))}</button>`,
+    )
+    .join('')}<label>Título <input id="modelo-titulo" value="Sem título" /></label></div>`;
+  overlay.querySelectorAll('[data-modelo]').forEach((button) => {
+    button.onclick = async () => {
+      const titulo = $('#modelo-titulo').value.trim() || 'Sem título';
+      const source = await tool('note.read', { path: button.dataset.modelo });
+      const now = new Date();
+      const data = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const hora = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const filled = source.body
+        .replaceAll('{{data}}', data)
+        .replaceAll('{{titulo}}', titulo)
+        .replaceAll('{{hora}}', hora)
+        .replaceAll('{{cursor}}', '');
+      const name = Cmd.uniqueTitle(state.notes.map((note) => baseName(note.path)), titulo);
+      const path = `Entrada/${name}.md`;
+      overlay.hidden = true;
+      await tool('note.create', { path, body: filled });
+      await refreshLibrary();
+      await openNote(path);
+    };
+  });
+}
+
+async function showViews() {
+  state.view = 'views';
+  state.nav = '';
+  paintCenter();
+}
+
+async function paintViews(center) {
+  const views = await tool('view.list', {});
+  const notes = state.notes.filter((note) => !state.selectedShelf || note.workspace === state.selectedShelf);
+  const mode = state.viewMode || 'lista';
+  const rows = notes
+    .map((note) => `<tr><td>${escapeHtml(baseName(note.path))}</td><td>${escapeHtml(note.workspace || '')}</td></tr>`)
+    .join('');
+  const cards = notes
+    .map((note) => `<article class="cartao-estante"><strong>${escapeHtml(baseName(note.path))}</strong><span>${escapeHtml(note.workspace || '')}</span></article>`)
+    .join('');
+  const list = notes.map((note) => `<button type="button" data-open="${escapeHtml(note.path)}">${escapeHtml(baseName(note.path))}</button>`).join('');
+  const body =
+    mode === 'tabela'
+      ? `<table class="visao-tabela"><tbody>${rows}</tbody></table>`
+      : mode === 'quadro'
+        ? `<div class="inicio__cartoes">${cards}</div>`
+        : `<div class="visao-lista">${list}</div>`;
+  center.innerHTML = `<div class="inicio"><h2>Visões</h2>
+    <div class="segmentado" role="radiogroup" aria-label="Modo da visão">
+      ${['lista', 'quadro', 'tabela'].map((item) => `<label class="segmentado__opcao"><input type="radio" name="visao-modo" value="${item}" ${mode === item ? 'checked' : ''}><span>${item}</span></label>`).join('')}
+    </div>
+    ${body}
+    <button type="button" class="btn btn--secundario" id="salvar-visao">Salvar visão</button>
+    <ul>${views.map((view) => `<li><button type="button" data-visao="${escapeHtml(view.path)}" data-modo="${escapeHtml(view.modo)}" data-estante="${escapeHtml(view.estante || '')}">${escapeHtml(view.nome)} · ${escapeHtml(view.modo)}</button></li>`).join('')}</ul>
+  </div>`;
+  center.querySelectorAll('[name="visao-modo"]').forEach((input) => {
+    input.onchange = () => {
+      state.viewMode = input.value;
+      paintCenter();
+    };
+  });
+  const save = $('#salvar-visao');
+  if (save)
+    save.onclick = async () => {
+      const nome = state.selectedShelf || 'Biblioteca';
+      await tool('view.save', {
+        path: `${nome}.view`,
+        nome,
+        modo: state.viewMode || 'lista',
+        estante: state.selectedShelf || '',
+      });
+      toast('Visão salva.');
+      paintCenter();
+    };
+  center.querySelectorAll('[data-visao]').forEach((button) => {
+    button.onclick = () => {
+      state.viewMode = button.dataset.modo;
+      state.selectedShelf = button.dataset.estante || null;
+      paintCenter();
+    };
+  });
+  center.querySelectorAll('[data-open]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.open);
+  });
+}
+
+async function showMentions() {
+  const rows = await tool('mention.unlinked', {});
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Menções sem link"><h2>Menções sem link</h2>${
+    rows.length
+      ? rows
+          .map(
+            (row) =>
+              `<button type="button" class="menu__item" data-ligar="${escapeHtml(row.title)}" data-total="${row.total}">${escapeHtml(row.title)} · ${row.total}</button>`,
+          )
+          .join('')
+      : '<p>Nenhuma menção solta.</p>'
+  }</div>`;
+  overlay.querySelectorAll('[data-ligar]').forEach((button) => {
+    button.onclick = async () => {
+      const total = Number(button.dataset.total);
+      if (total > 10) {
+        const ok = await confirmDialog(`Ligar todas as ${total} menções de ${button.dataset.ligar}? Dá para desfazer.`);
+        if (!ok) return;
+      }
+      await tool('mention.link', { title: button.dataset.ligar });
+      overlay.hidden = true;
+      await refreshLibrary();
+      if (state.active) await openNote(state.active, { force: true });
+      toast('Menções ligadas. Desfazer está no painel de conexões.');
+    };
+  });
+}
+
+function confirmDialog(message) {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Ligar todas</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+  return new Promise((resolve) => {
+    $('#confirma-sim').onclick = () => resolve(true);
+    $('#confirma-nao').onclick = () => {
+      overlay.hidden = true;
+      resolve(false);
+    };
+  });
+}
+
+async function importObsidian() {
+  const folder = await sophy.chooseFolder();
+  if (!folder) return;
+  const result = await tool('vault.import', { sourcePath: folder, shelf: 'Importado' });
   await refreshLibrary();
-  await openNote(path);
+  paintTree();
+  toast(`${result.copied} arquivo(s) copiados para Importado. A pasta de origem não foi alterada.`);
 }
 
 function insertBlockBelow(index) {
@@ -2590,11 +2805,13 @@ async function paintGraph(center) {
         )
         .join('')}</select></label>
       <label>Tag <input id="grafo-tag" value="${escapeHtml(state.graphTag)}" placeholder="filtrar" /></label>
+      <label>Linha do tempo <input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" /></label>
       <span class="nota-privacidade" id="grafo-foco">${state.active ? `Foco: ${escapeHtml(baseName(state.active))}` : ''}</span>
     </div>
     <div class="grafo__palco">
       <canvas id="grafo-canvas"></canvas>
       <div class="grafo__legenda">${legend}</div>
+      <div class="grafo__quadros" id="grafo-quadros"></div>
       <div class="grafo__zoom">
         <button type="button" class="btn btn--icone" id="grafo-mais" aria-label="Aproximar">${icon('zoom-mais')}</button>
         <button type="button" class="btn btn--icone" id="grafo-menos" aria-label="Afastar">${icon('zoom-menos')}</button>
@@ -2610,14 +2827,39 @@ async function paintGraph(center) {
     state.graphTag = event.target.value.trim();
     paintGraph(center);
   };
+  $('#grafo-tempo').oninput = (event) => {
+    state.graphUntil = Number(event.target.value) / 100;
+    drawGraph(state.graphData);
+  };
   const graph = await tool('graph.query', {
     workspace: state.graphWorkspace || undefined,
     tag: state.graphTag || undefined,
   });
+  state.graphData = graph;
   drawGraph(graph);
 }
 
 function drawGraph(graph) {
+  if (!graph) return;
+  const until = state.graphUntil ?? 1;
+  const times = graph.nodes.map((node) => node.modifiedAt || 0).filter(Boolean).sort((a, b) => a - b);
+  const cutoff = times.length ? times[Math.min(times.length - 1, Math.floor(until * (times.length - 1)))] : Infinity;
+  const visibleNodes = until >= 1 ? graph.nodes : graph.nodes.filter((node) => (node.modifiedAt || 0) <= cutoff);
+  const visible = new Set(visibleNodes.map((node) => node.path));
+  graph = {
+    nodes: visibleNodes,
+    edges: graph.edges.filter((edge) => visible.has(edge.from) && visible.has(edge.to)),
+  };
+  const frames = $('#grafo-quadros');
+  if (frames && times.length) {
+    const thirds = [0.33, 0.66, 1].map((ratio, index) => {
+      const end = times[Math.min(times.length - 1, Math.floor(ratio * (times.length - 1)))];
+      const start = index === 0 ? 0 : times[Math.min(times.length - 1, Math.floor([0, 0.33, 0.66][index] * (times.length - 1)))];
+      const count = graph.nodes.filter((node) => (node.modifiedAt || 0) <= end && (index === 0 || (node.modifiedAt || 0) > start)).length;
+      return `<section><h3>${['Antes', 'Agora', 'Depois'][index]}</h3><p>${count}</p></section>`;
+    });
+    frames.innerHTML = thirds.join('');
+  }
   const canvas = $('#grafo-canvas');
   if (!canvas) return;
   const stage = canvas.parentElement;
@@ -2962,6 +3204,11 @@ document.addEventListener('mousedown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeMenus();
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Space') {
+    event.preventDefault();
+    openCapture();
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key === ',') {
     event.preventDefault();
     state.view = 'settings';
