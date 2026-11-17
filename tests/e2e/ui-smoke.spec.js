@@ -462,6 +462,30 @@ test('nota do dia, captura, leitura e grafo no tempo', async () => {
   await app.close();
 });
 
+test('flashcards e a busca por significado desligada', async () => {
+  test.setTimeout(60000);
+  const root = library();
+  fs.appendFileSync(path.join(root, 'Estudos', 'Leitura.md'), '\ncapital :: Brasília\n');
+  const app = await launch([`--biblioteca=${root}`, '--theme=light']);
+  const page = await app.firstWindow();
+  fs.mkdirSync(artifacts, { recursive: true });
+  await expect(page.getByRole('button', { name: 'Hoje' })).toBeVisible();
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
+  );
+  await expect(page.getByRole('heading', { name: 'Busca por significado' })).toBeVisible();
+  await expect(page.locator('#cfg-busca')).not.toBeChecked();
+  await expect(page.locator('#cfg-sistema')).not.toBeChecked();
+  await expect(page.getByText('Desligada', { exact: true })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-config-busca-claro.png') });
+  await page.keyboard.press('Control+Shift+P');
+  await page.locator('#comando-q').fill('Flashcards');
+  await page.locator('#comando-lista .menu__item', { hasText: 'Flashcards' }).click();
+  await expect(page.getByRole('button', { name: 'capital' })).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'ui-flashcards-claro.png') });
+  await app.close();
+});
+
 test('Nota e Estante criam arquivos sem diálogo nativo', async () => {
   test.setTimeout(60000);
   const root = library();

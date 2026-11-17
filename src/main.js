@@ -203,9 +203,15 @@ function setupIpc() {
   handle('sophy:settings', (_event, patch) => {
     if (!patch || typeof patch !== 'object') throw new Error('Configuração inválida.');
     const allowed = {};
-    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion', 'libraries', 'accent']) {
+    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion', 'libraries', 'accent', 'accentSystem', 'semantic', 'weekStartsOn']) {
       if (key in patch) allowed[key] = patch[key];
     }
+    if ('weekStartsOn' in allowed && ![0, 1].includes(allowed.weekStartsOn))
+      throw new Error('A semana começa no domingo ou na segunda.');
+    if ('accentSystem' in allowed && typeof allowed.accentSystem !== 'boolean')
+      throw new Error('A cor do sistema é ligada ou desligada.');
+    if ('semantic' in allowed && typeof allowed.semantic !== 'boolean')
+      throw new Error('A busca por significado é ligada ou desligada.');
     if ('accent' in allowed && !['indigo', 'azul', 'verde-agua', 'musgo', 'ambar', 'vinho', 'grafite'].includes(allowed.accent))
       throw new Error('Cor de destaque inválida.');
     if ('theme' in allowed && !['light', 'dark', 'system'].includes(allowed.theme))
@@ -215,6 +221,29 @@ function setupIpc() {
     if ('libraries' in allowed && !Array.isArray(allowed.libraries))
       throw new Error('Lista de bibliotecas inválida.');
     return writeSettings(allowed);
+  });
+
+  handle('sophy:export-pdf', async (_event, html) => {
+    if (typeof html !== 'string' || !html.includes('data-theme="light"') || html.length > 2_000_000)
+      throw new Error('O PDF sai sempre em papel claro.');
+    const paper = new BrowserWindow({
+      show: false,
+      webPreferences: { sandbox: true, contextIsolation: true },
+    });
+    try {
+      await paper.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      const data = await paper.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+      const parent = BrowserWindow.getFocusedWindow() || windows[0];
+      const chosen = await dialog.showSaveDialog(parent, {
+        defaultPath: 'nota.pdf',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (chosen.canceled || !chosen.filePath) return null;
+      fs.writeFileSync(chosen.filePath, data);
+      return chosen.filePath;
+    } finally {
+      paper.destroy();
+    }
   });
 
   handle('sophy:window', (event, action) => {

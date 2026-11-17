@@ -15,6 +15,16 @@ import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
 import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
 import { readShelfStyles, writeShelfStyle } from './shelves.ts';
+import {
+  enableSemantic,
+  exportSite,
+  listCards,
+  listVersions,
+  reviewCard,
+  saveVersionPoint,
+  semanticSearch,
+  weeklyReview,
+} from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
 import { backlinks, brokenLinks, outgoingLinks, relocate, watchLibrary } from './links.ts';
@@ -320,6 +330,58 @@ export const tools = [
       ),
   ),
   define(
+    'card.list',
+    'Lista os cartões pergunta :: resposta das notas, fora de cercas de código.',
+    z.object({ libraryPath, today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), workspace: z.string().min(1).optional() }),
+    ({ libraryPath: folder, today, workspace }) => listCards(openLibrary(folder), today, workspace),
+  ),
+  define(
+    'card.review',
+    'Marca um cartão como sabido ou não e grava a próxima data em .sophy/flashcards.json.',
+    z.object({ libraryPath, id: z.string().min(1), knew: z.boolean(), today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), origin }),
+    ({ libraryPath: folder, id, knew, today, origin: source }) =>
+      tracked(folder, source, 'card.review', `Cartão ${id}`, (library) => reviewCard(library, id, knew, today)),
+  ),
+  define(
+    'version.list',
+    'Lista os pontos em .sophy/versoes.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listVersions(openLibrary(folder)),
+  ),
+  define(
+    'version.point',
+    'Grava um ponto da biblioteca antes de uma ação. Apaga o mais antigo acima de 90 dias ou 1 GB.',
+    z.object({ libraryPath, label: z.string().min(1), origin }),
+    ({ libraryPath: folder, label, origin: source }) =>
+      tracked(folder, source, 'version.point', label, (library) => saveVersionPoint(library, label)),
+  ),
+  define(
+    'site.export',
+    'Gera um site estático fora da biblioteca, no tema escolhido. Não altera as notas.',
+    z.object({ libraryPath, destination: z.string().min(1), theme: z.enum(['light', 'dark']), origin }),
+    ({ libraryPath: folder, destination, theme, origin: source }) =>
+      tracked(folder, source, 'site.export', 'Exportar site', (library) => exportSite(library, destination, theme)),
+  ),
+  define(
+    'search.semantic',
+    'Busca no índice local. Desligada, não cria arquivo nem envia texto.',
+    z.object({ libraryPath, query: z.string().min(1) }),
+    ({ libraryPath: folder, query }) => semanticSearch(openLibrary(folder), query),
+  ),
+  define(
+    'search.semantic.enable',
+    'Monta o índice local de busca. Não baixa modelo e não envia notas.',
+    z.object({ libraryPath, origin }),
+    ({ libraryPath: folder, origin: source }) =>
+      tracked(folder, source, 'search.semantic.enable', 'Ligar busca local', (library) => enableSemantic(library)),
+  ),
+  define(
+    'review.weekly',
+    'Diz se hoje é domingo, quando o aviso da revisão aparece. A semana começa na segunda, salvo escolha.',
+    z.object({ libraryPath, today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional() }),
+    ({ today, weekStartsOn }) => weeklyReview(new Date(`${today}T12:00:00`), weekStartsOn ?? 1),
+  ),
+  define(
     'task.query',
     'Lista as tarefas de todas as notas, com filtro de status, prazo, prioridade e estante.',
     z.object({
@@ -502,6 +564,7 @@ function tracked<T>(
   run: (library: Library) => T,
 ) {
   const library = openLibrary(folder);
+  if (source === 'mcp' || source === 'agent') saveVersionPoint(library, `${source}:${tool}`);
   const before = capture(library);
   const result = run(library);
   pushHistory(library, { origin: source, tool, summary, changes: diff(before, capture(library)) });
