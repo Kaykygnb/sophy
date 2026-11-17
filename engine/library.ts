@@ -19,7 +19,7 @@ export type Library = {
   identity: { dev: string; ino: string };
 };
 
-export type WorkspaceInfo = { name: string; path: string };
+export type WorkspaceInfo = { name: string; path: string; unsafe?: boolean };
 
 export type NoteInfo = {
   path: string;
@@ -27,6 +27,7 @@ export type NoteInfo = {
   name: string;
   size: number;
   modifiedAt: number;
+  unsafe?: boolean;
 };
 
 /** Nota é só `.md`. Canvas é `.canvas`. Qualquer outro arquivo visível é anexo, sem envelope. */
@@ -54,8 +55,13 @@ export function openLibrary(folder: string, options?: OpenOptions): Library {
 
 export function listWorkspaces(library: Library): WorkspaceInfo[] {
   return readRoot(library)
-    .filter((entry) => entry.kind === 'directory' && safeSegment(entry.name, 'workspace'))
-    .map((entry) => ({ name: entry.name, path: entry.name }))
+    .filter((entry) => entry.kind === 'directory')
+    .map((entry) => {
+      const unsafe = !safeSegment(entry.name, 'workspace');
+      return unsafe
+        ? { name: entry.name, path: entry.name, unsafe: true as const }
+        : { name: entry.name, path: entry.name };
+    })
     .sort(byName);
 }
 
@@ -286,8 +292,9 @@ function walkFiles(library: Library, workspace?: string) {
       if (++count > MAX_TREE_ENTRIES)
         throw new EngineError('too-large', 'A biblioteca ultrapassou o limite de 20 mil itens.');
       const relative = prefix ? prefix + '/' + entry.name : entry.name;
-      if (!relative.split('/').every((part, index) => safeSegment(part, index === 0 ? 'workspace' : 'entry')))
-        continue;
+      const unsafe = !relative
+        .split('/')
+        .every((part, index) => safeSegment(part, index === 0 ? 'workspace' : 'entry'));
       if (entry.isSymbolicLink()) continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) visit(full, relative, depth + 1);
@@ -295,7 +302,11 @@ function walkFiles(library: Library, workspace?: string) {
         const stat = fs.statSync(full);
         const described = describe(relative, stat, names);
         if (workspace !== undefined && described.workspace !== workspace) continue;
-        files.push({ ...described, kind: classifyName(entry.name) });
+        files.push(
+          unsafe
+            ? { ...described, kind: classifyName(entry.name), unsafe: true }
+            : { ...described, kind: classifyName(entry.name) },
+        );
       }
     }
   };

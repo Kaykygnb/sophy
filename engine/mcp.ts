@@ -3,16 +3,27 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { EngineError } from './errors.ts';
 import { listNotes, openLibrary, readText } from './library.ts';
-import { callTool, tools, type Tool } from './tools.ts';
+import { callTool, toolMutates, tools, type Tool } from './tools.ts';
 
 /**
  * Servidor MCP do motor. Expõe o mesmo registro de tools.
  * A biblioteca e a origem `mcp` vêm do processo, não do cliente.
  */
-export function createMcpServer(libraryPath: string) {
+export function createMcpServer(libraryPath: string, options: { readonly?: boolean } = {}) {
   const library = openLibrary(libraryPath).root;
   const server = new McpServer({ name: 'sophy', version: '0.1.0' });
   for (const tool of tools) {
+    if (options.readonly && toolMutates(tool.name)) {
+      server.registerTool(
+        tool.name,
+        { description: tool.description, inputSchema: publicSchema(tool) },
+        async () => ({
+          isError: true,
+          content: [{ type: 'text' as const, text: 'O MCP está em modo somente leitura.' }],
+        }),
+      );
+      continue;
+    }
     server.registerTool(
       tool.name,
       {
@@ -62,8 +73,8 @@ export function createMcpServer(libraryPath: string) {
   return server;
 }
 
-export async function serveMcp(libraryPath: string) {
-  const server = createMcpServer(libraryPath);
+export async function serveMcp(libraryPath: string, options: { readonly?: boolean } = {}) {
+  const server = createMcpServer(libraryPath, options);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   await new Promise<void>((resolve) => {

@@ -1,9 +1,10 @@
-import { indexedNotes, outgoingLinks } from './links.ts';
+import { readOutgoing, syncLinks } from './links.ts';
 import type { Library } from './library.ts';
 
 export function queryGraph(library: Library, filter: { workspace?: string; tag?: string } = {}) {
   const tag = filter.tag?.trim().toLocaleLowerCase();
-  const notes = indexedNotes(library).filter((note) => {
+  const cache = syncLinks(library);
+  const notes = [...cache.values()].filter((note) => {
     if (filter.workspace && note.workspace !== filter.workspace) return false;
     if (tag && !note.tags.some((item) => item.toLocaleLowerCase() === tag)) return false;
     return true;
@@ -11,7 +12,7 @@ export function queryGraph(library: Library, filter: { workspace?: string; tag?:
   const visible = new Set(notes.map((note) => note.path));
   const edges = [];
   for (const note of notes) {
-    for (const link of outgoingLinks(library, note.path)) {
+    for (const link of readOutgoing(library, cache, note.path)) {
       if (
         link.status !== 'resolved' ||
         !link.path ||

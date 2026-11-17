@@ -18,12 +18,21 @@ export function agentTools() {
     }));
 }
 
+export function agentConfirmation(name: string, args: Record<string, unknown>) {
+  if (name === 'history.undo') return 'Desfazer a última ação da biblioteca?';
+  if (name === 'note.write') return `Sobrescrever a nota ${String(args.path || '')}?`;
+  if (name === 'entry.move' && typeof args.from === 'string' && !args.from.includes('/'))
+    return `Mover ou renomear a estante ${args.from}?`;
+  return '';
+}
+
 export async function runAgentTurn(options: {
   libraryPath: string;
   message: string;
   key: string;
   endpoint?: string;
   fetchImpl?: FetchLike;
+  confirm?: (message: string) => Promise<boolean> | boolean;
 }) {
   const key = options.key.trim();
   if (!key) throw new EngineError('invalid-note', 'Guarde a chave no cofre do sistema.');
@@ -62,6 +71,14 @@ export async function runAgentTurn(options: {
     delete args.key;
     delete args.apiKey;
     delete args.token;
+    const question = agentConfirmation(name, args);
+    if (question) {
+      const allowed = options.confirm ? await options.confirm(question) : false;
+      if (!allowed) {
+        results.push({ name, skipped: true, reason: question });
+        continue;
+      }
+    }
     results.push({
       name,
       value: callTool(name, { ...args, libraryPath: options.libraryPath, origin: 'agent' }),

@@ -32,6 +32,9 @@ const state = {
   namingShelf: false,
   renaming: null,
   selectTitle: false,
+  openSeq: 0,
+  dirty: false,
+  warnedUnsafe: false,
 };
 
 const slash = Cmd.createSlashSession();
@@ -364,8 +367,8 @@ async function nextStep() {
     }
     try {
       const libraryName = (state.libraryNameInput || 'Biblioteca').trim();
-      if (state.folderMode === 'criar' && (!libraryName || libraryName === '.' || libraryName === '..' || /[\\/]/.test(libraryName))) {
-        toast('Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
+      if (state.folderMode === 'criar' && (!libraryName || libraryName === '.' || libraryName === '..' || /[\\/]/.test(libraryName) || reservedName(libraryName))) {
+        toast(reservedName(libraryName) ? 'Esse nome é reservado pelo Windows.' : 'Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
         return;
       }
       const target =
@@ -432,7 +435,7 @@ function openDrawer(opener) {
 function closeDrawer() {
   $('#lateral')?.classList.remove('is-aberta');
   $('#sofi-gaveta')?.classList.remove('is-aberta');
-  $('#conexoes')?.classList.remove('is-gaveta');
+  $('#conexoes')?.classList.remove('is-gaveta', 'is-aberta');
   if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.remove();
   const opener = state.drawerOpener || $('#abrir-lateral');
@@ -582,7 +585,9 @@ function paintTree() {
             state.renaming?.kind === 'note' && state.renaming.path === note.path
               ? `<input class="arvore__renomear" data-rename="note" value="${escapeHtml(baseName(note.path))}" aria-label="Nome da nota" />`
               : `<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span>`;
-          return `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}">
+          const unsafe = note.unsafe ? ' is-invalido' : '';
+          const unsafeTitle = note.unsafe ? ' title="Nome inválido no Windows"' : '';
+          return `<li role="treeitem"><button type="button" class="arvore__linha${unsafe}" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}"${unsafeTitle}>
             ${icon('nota')}${label}</button></li>`;
         })
         .join('');
@@ -598,7 +603,8 @@ function paintTree() {
         state.renaming?.kind === 'shelf' && state.renaming.name === workspace.name
           ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
-      return `<li role="treeitem"><button type="button" class="arvore__linha" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}>
+      const shelfUnsafe = workspace.unsafe ? ' title="Nome inválido no Windows"' : '';
+      return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}${shelfUnsafe}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
@@ -618,6 +624,11 @@ function paintTree() {
   const name = host.parentElement?.querySelector('.biblioteca-seletor__nome');
   if (name) name.textContent = state.libraryName || 'Biblioteca';
   host.innerHTML = `<ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
+  const unsafeCount = state.notes.filter((note) => note.unsafe).length + state.workspaces.filter((workspace) => workspace.unsafe).length;
+  if (unsafeCount && !state.warnedUnsafe) {
+    state.warnedUnsafe = true;
+    toast(`${unsafeCount} item(ns) com nome inválido no Windows continuam na árvore, marcados para renomear.`, 'erro');
+  }
   host.querySelectorAll('[data-open]').forEach((button) => {
     button.draggable = true;
     button.ondragstart = (event) => event.dataTransfer.setData('text/plain', button.dataset.open);
@@ -695,13 +706,21 @@ function paintTree() {
         const from = state.renaming.name;
         state.renaming = null;
         if (name !== from) {
+          await flushNote();
           await tool('entry.move', { from, to: name });
-          state.tabs = state.tabs.map((tab) => (tab === from || tab.startsWith(`${from}/`) ? `${name}${tab.slice(from.length)}` : tab));
-          if (state.active?.startsWith(`${from}/`) || state.active === from) state.active = `${name}${state.active.slice(from.length)}`;
+          const remap = (tab) => (tab === from || tab.startsWith(`${from}/`) ? `${name}${tab.slice(from.length)}` : tab);
+          state.tabs = state.tabs.map(remap);
+          if (state.active?.startsWith(`${from}/`) || state.active === from)
+            state.active = `${name}${state.active.slice(from.length)}`;
+          if (state.canvasPath?.startsWith(`${from}/`) || state.canvasPath === from)
+            state.canvasPath = `${name}${state.canvasPath.slice(from.length)}`;
         }
         state.selectedShelf = name;
         await refreshLibrary();
+        paintTabs();
         paintTree();
+        if (state.active) await openNote(state.active, { force: true });
+        else paintLinks();
       },
       () => {
         state.renaming = null;
@@ -758,7 +777,8 @@ function paintTabs() {
   });
 }
 
-function closeTab(file) {
+async function closeTab(file) {
+  if (state.active === file) await flushNote();
   state.tabs = state.tabs.filter((tab) => tab !== file);
   if (state.active !== file && state.canvasPath !== file) {
     paintTabs();
@@ -766,6 +786,7 @@ function closeTab(file) {
   }
   state.active = null;
   state.doc = null;
+  state.dirty = false;
   state.canvasPath = null;
   state.view = 'home';
   state.nav = 'inicio';
@@ -787,7 +808,10 @@ function openConnections() {
   const panel = $('#conexoes');
   if (!panel) return;
   if (window.innerWidth > 1024) return;
+  state.sofiOpen = false;
+  paintLinks();
   panel.classList.add('is-gaveta');
+  requestAnimationFrame(() => panel.classList.add('is-aberta'));
   ensureVeil();
   state.drawerOpener = $('#abrir-conexoes');
 }
@@ -2229,6 +2253,10 @@ function showWiki(el, found) {
   });
 }
 
+function reservedName(name) {
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name);
+}
+
 function foldText(value) {
   return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 }
@@ -2362,6 +2390,7 @@ async function followLink(target) {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
+  state.dirty = true;
   const status = $('#st-estado');
   if (status) status.textContent = 'Alterações locais';
   saveTimer = setTimeout(saveNow, 500);
@@ -2373,6 +2402,7 @@ async function saveNow() {
   const revision = state.revision;
   const body = Doc.serializeBlocks(state.doc.blocks);
   clearTimeout(saveTimer);
+  saveTimer = 0;
   try {
     const result = await tool('note.write', {
       path,
@@ -2388,6 +2418,7 @@ async function saveNow() {
     }
     state.revision = result.note.revision;
     state.conflict = false;
+    if (!saveTimer) state.dirty = false;
     const status = $('#st-estado');
     if (status) status.textContent = 'Salvo';
     state.notes = await tool('note.list', {});
@@ -2497,13 +2528,25 @@ async function redoCanvas() {
 }
 
 async function openNote(file, options = {}) {
+  const token = ++state.openSeq;
   const same = state.active === file;
-  const unsaved = !!saveTimer;
+  const unsaved = !!saveTimer || state.dirty;
+  if (window.__sophySlowOpen) {
+    const wait = window.__sophySlowOpen;
+    window.__sophySlowOpen = 0;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    if (token !== state.openSeq) return;
+  }
   if (state.active && state.doc && !state.conflict && (!same || unsaved)) await saveNow();
+  if (token !== state.openSeq) return;
   if (same && unsaved && !options.force && !state.conflict) return;
+  if (state.dirty && !options.force) return;
   clearTimeout(saveTimer);
   state.conflict = false;
   const note = await tool('note.read', { path: file });
+  if (token !== state.openSeq) return;
+  if (state.dirty && !options.force) return;
+  state.dirty = false;
   state.active = note.path;
   state.treeFocus = 'note';
   state.view = 'note';
@@ -2519,6 +2562,7 @@ async function openNote(file, options = {}) {
     if (!state.tabs.includes(note.path)) state.tabs.push(note.path);
   }
   await loadLinks();
+  if (token !== state.openSeq) return;
   paintTabs();
   paintTree();
   paintCenter();
@@ -3252,7 +3296,7 @@ function paintReview(center) {
 
 async function showVersions() {
   state.view = 'versions';
-  state.versionRows = await tool('version.list', {});
+  state.versionRows = await tool('version.list', { path: state.active || '' });
   paintCenter();
 }
 
@@ -3435,7 +3479,12 @@ function importObsidian() {
           paint();
           await refreshLibrary();
           paintTree();
-          toast(`${result.copied} arquivo(s) copiados. A origem não foi alterada.`);
+          const skipped = Array.isArray(result.skipped) ? result.skipped.length : 0;
+          toast(
+            skipped
+              ? `${result.copied} arquivo(s) copiados. ${skipped} ficaram de fora: ${result.skipped.slice(0, 3).join('; ')}`
+              : `${result.copied} arquivo(s) copiados. A origem não foi alterada.`,
+          );
         } catch (error) {
           step = 1;
           paint();
@@ -3521,8 +3570,8 @@ async function chooseLibrary(create) {
   if (!chosen?.ok || !chosen.value) return;
   if (create) {
     const name = (state.libraryNameInput || 'Biblioteca').trim();
-    if (!name || name === '.' || name === '..' || /[\\/]/.test(name)) {
-      toast('Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
+    if (!name || name === '.' || name === '..' || /[\\/]/.test(name) || reservedName(name)) {
+      toast(reservedName(name) ? 'Esse nome é reservado pelo Windows.' : 'Escolha um nome de pasta simples, sem pontos nem barras.', 'erro');
       return;
     }
     const created = await sophy.createLibrary(`${chosen.value.replace(/[/\\]$/, '')}/${name}`);
@@ -3681,6 +3730,8 @@ function openTreeMenu(event, kind, target) {
         });
         if (!ok) return;
       }
+      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(`${target}/`)))
+        await flushNote();
       await tool('entry.trash', { path: target });
       const prefix = kind === 'shelf' ? `${target}/` : target;
       state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));

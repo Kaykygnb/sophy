@@ -31,6 +31,12 @@ export function uiIsOpen() {
 
 /** Pasta em que a janela publica que está aberta. O MCP de outro processo entrega por aqui. */
 export function uiDirectory() {
+  if (process.env.SOPHY_UI_DIR) return process.env.SOPHY_UI_DIR;
+  const testing =
+    process.env.NODE_TEST_CONTEXT !== undefined ||
+    process.execArgv.some((arg) => arg.includes('test')) ||
+    process.argv.some((arg) => arg.includes('--test'));
+  if (testing) return path.join(os.tmpdir(), `sophy-ui-test-${process.pid}`);
   const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'user';
   return path.join(os.tmpdir(), `sophy-ui-${uid}`);
 }

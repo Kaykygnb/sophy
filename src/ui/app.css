@@ -1152,6 +1152,11 @@ button.arvore__linha[aria-selected='true'] {
     bottom: 0;
     width: min(280px, 100%);
     overflow: auto;
+    transform: translateX(105%);
+    transition: transform 200ms ease-out;
+  }
+  .conexoes.is-gaveta.is-aberta {
+    transform: none;
   }
   #abrir-conexoes { display: inline-flex; }
   .lateral.is-fechada {
@@ -1166,7 +1171,9 @@ button.arvore__linha[aria-selected='true'] {
   .sofi img {
     animation: none;
   }
-  .lateral {
+  .lateral,
+  .conexoes.is-gaveta {
     transition: none;
   }
 }
+.arvore__linha.is-invalido .arvore__nome { text-decoration: underline dotted; }

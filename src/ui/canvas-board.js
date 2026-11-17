@@ -68,7 +68,7 @@
     ]
       .map(
         ([id, label, key]) =>
-          `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ' ' + key : ''}">${options.icon(id === 'text' ? 'nota-adesiva' : id === 'group' ? 'agrupar' : id === 'connect' ? 'link' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : id === 'align' ? 'divisor' : 'mais')}<span class="sr-only">${label}</span></button>`,
+          `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ' ' + key : ''}">${options.icon(id === 'text' ? 'nota-adesiva' : id === 'group' ? 'agrupar' : id === 'connect' ? 'link' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : id === 'align' ? 'divisor' : 'selecionar')}<span class="sr-only">${label}</span></button>`,
       )
       .join('');
     const covers = document.createElement('div');
@@ -213,6 +213,12 @@
       });
       world.querySelectorAll('[data-text]').forEach((editor) => {
         editor.addEventListener('pointerdown', (event) => event.stopPropagation());
+        editor.addEventListener('focus', () => {
+          const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
+          if (!node || editor.dataset.editing === '1') return;
+          editor.dataset.editing = '1';
+          editor.textContent = node.text || '';
+        });
         editor.addEventListener('input', () => offerWiki(editor));
         editor.addEventListener('blur', () => commitText(editor));
       });
@@ -322,8 +328,16 @@
     const commitText = (editor) => {
       const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
       if (!node) return;
-      node.text = readEditable(editor);
+      const text = editor.dataset.editing === '1' ? editor.textContent || '' : readEditable(editor);
+      if (!text.trim()) {
+        state.document.nodes = state.document.nodes.filter((item) => item.id !== node.id);
+        commit();
+        paint();
+        return;
+      }
+      node.text = text;
       commit();
+      paint();
     };
 
     const commit = () => options.onChange(structuredClone(state.document));
@@ -342,6 +356,7 @@
       if (type === 'group') node.label = 'Grupo';
       state.document.nodes.push(node);
       state.selected = new Set([id]);
+      if (type === 'text') state.tool = 'select';
       paint();
       commit();
       if (type === 'text') {

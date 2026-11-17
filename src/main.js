@@ -8,7 +8,11 @@ app.setName('Sophy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Sophy'));
 
 const testData = process.argv.find((arg) => arg.startsWith('--test-user-data='));
-if (testData) app.setPath('userData', testData.slice('--test-user-data='.length));
+if (testData) {
+  const userData = testData.slice('--test-user-data='.length);
+  app.setPath('userData', userData);
+  process.env.SOPHY_UI_DIR = path.join(userData, 'presenca');
+}
 const presetLibrary = process.argv.find((arg) => arg.startsWith('--biblioteca='));
 const presetTheme = process.argv.find((arg) => arg.startsWith('--theme='));
 
@@ -140,7 +144,15 @@ function setupIpc() {
       const root = path.resolve(sessionPath) + path.sep;
       if (full.startsWith(root)) {
         try {
+          const library = engine.openLibrary(sessionPath);
+          const before = engine.capture(library);
           await shell.trashItem(full);
+          engine.pushHistory(library, {
+            origin: 'ui',
+            tool: 'entry.trash',
+            summary: `Lixeira ${body.path}`,
+            changes: engine.diff(before, engine.capture(library)),
+          });
           return { path: body.path, trashed: true, trashPath: '' };
         } catch {
           /* a engine copia e apaga quando a lixeira do sistema recusa */
@@ -173,11 +185,22 @@ function setupIpc() {
     if (!fs.existsSync(agentKeyFile())) throw new Error('Guarde a chave no cofre antes de pedir.');
     if (!safeStorage.isEncryptionAvailable()) throw new Error('O cofre do sistema não está disponível.');
     const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
+    const owner = BrowserWindow.getFocusedWindow() || [...windows][0];
     const turn = await engine.runAgentTurn({
       libraryPath: sessionPath,
       message: message.trim(),
       key,
       fetchImpl: fetch,
+      confirm: async (question) => {
+        const chosen = await dialog.showMessageBox(owner, {
+          type: 'question',
+          buttons: ['Cancelar', 'Confirmar'],
+          defaultId: 0,
+          cancelId: 0,
+          message: question,
+        });
+        return chosen.response === 1;
+      },
     });
     return { text: turn.text };
   });
@@ -195,6 +218,8 @@ function setupIpc() {
     if (typeof folder !== 'string' || !folder.trim())
       throw new Error('Escolha o local da biblioteca.');
     const target = path.resolve(folder);
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(path.basename(target)))
+      throw new Error('Esse nome é reservado pelo Windows.');
     fs.mkdirSync(target, { recursive: true });
     fs.mkdirSync(path.join(target, '.sophy'), { recursive: true });
     const opened = gate('library.open', { path: target });

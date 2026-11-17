@@ -113,37 +113,49 @@ export function importVault(library: Library, source: string, shelf: string) {
     throw new EngineError('invalid-path', 'A importação não escreve na pasta de origem.');
   const before = sourceStamp(sourceReal);
   let copied = 0;
+  const skipped: string[] = [];
   const walk = (directory: string, relative: string) => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
       const child = path.join(directory, entry.name);
       const next = relative ? `${relative}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) walk(child, next);
-      else if (/\.(md|canvas|png|jpe?g|gif|webp|pdf)$/i.test(entry.name)) {
-        const safe = next.replace(/[<>:"|?*]/g, '-');
-        let relativeFile = `${shelf}/${safe}`;
-        try {
-          ensureParents(library, relativeFile);
-        } catch {
-          continue;
-        }
+      if (entry.isDirectory()) {
+        walk(child, next);
+        continue;
+      }
+      if (!/\.(md|canvas|png|jpe?g|gif|webp|pdf)$/i.test(entry.name)) continue;
+      const safe = next.replace(/[<>:"|?*]/g, '-');
+      try {
+        safe.split('/').forEach((part, index) => validateSegment(part, index === 0 ? 'workspace' : 'entry'));
+      } catch (error) {
+        skipped.push(`${next}: ${error instanceof Error ? error.message : 'nome inválido'}`);
+        continue;
+      }
+      let relativeFile = `${shelf}/${safe}`;
+      try {
+        ensureParents(library, relativeFile);
         let destination = resolveInside(library.root, relativeFile, { allowMissing: true });
-        if (fs.existsSync(destination)) {
-          const extension = path.extname(safe);
-          const stem = safe.slice(0, safe.length - extension.length);
-          relativeFile = `${shelf}/${stem} (importado)${extension}`;
+        const extension = path.extname(safe);
+        const stem = safe.slice(0, safe.length - extension.length);
+        let suffix = 0;
+        while (fs.existsSync(destination)) {
+          suffix += 1;
+          const label = suffix === 1 ? ' (importado)' : ` (importado ${suffix})`;
+          relativeFile = `${shelf}/${stem}${label}${extension}`;
           ensureParents(library, relativeFile);
           destination = resolveInside(library.root, relativeFile, { allowMissing: true });
         }
         fs.copyFileSync(child, destination, fs.constants.COPYFILE_EXCL);
         copied += 1;
+      } catch (error) {
+        skipped.push(`${next}: ${error instanceof Error ? error.message : 'não copiado'}`);
       }
     }
   };
   walk(sourceReal, '');
   if (sourceStamp(sourceReal) !== before)
     throw new EngineError('invalid-path', 'A importação alterou a pasta de origem.');
-  return { copied, shelf };
+  return { copied, shelf, skipped };
 }
 
 function ensureParents(library: Library, relativeFile: string) {

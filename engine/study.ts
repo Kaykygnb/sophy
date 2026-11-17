@@ -223,7 +223,7 @@ function dirSize(directory: string) {
   return total;
 }
 
-export function listVersions(library: Library) {
+export function listVersions(library: Library, focus?: string) {
   const directory = path.join(library.root, '.sophy', 'versoes');
   if (!fs.existsSync(directory)) return [];
   return fs
@@ -237,12 +237,15 @@ export function listVersions(library: Library) {
       } catch {
         /* ponto sem rótulo */
       }
-      let preview = '';
       const notes = collectNotes(full);
-      if (notes[0]) {
-        const text = fs.readFileSync(notes[0].full, 'utf8').replace(/^---[\s\S]*?---\n?/, '');
-        const line = text.split('\n').find((item) => item.trim());
-        preview = (line || '').replace(/^#{1,6}\s*/, '').slice(0, 80);
+      const chosen =
+        (focus && notes.find((note) => note.relative === focus)) ||
+        (focus && notes.find((note) => note.relative.endsWith(`/${focus}`))) ||
+        notes[0];
+      let preview = '';
+      if (chosen) {
+        const text = fs.readFileSync(chosen.full, 'utf8').replace(/^---[\s\S]*?---\n?/, '');
+        preview = text.replace(/\s+/g, ' ').trim().slice(0, 240);
       }
       return { id: entry.name, label, bytes: dirSize(full), preview };
     });
@@ -336,21 +339,39 @@ export function lightPaperHtml(title: string, body: string) {
   return pageHtml(title, body, 'light');
 }
 
+function siteInline(text: string) {
+  return escape(text)
+    .replace(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (_match, target, label) => label || String(target).split('/').pop())
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
 function pageHtml(title: string, body: string, theme: 'light' | 'dark') {
   const source = body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
   const blocks = source
     .split(/\n{2,}/)
     .map((block) => {
-      const line = block.trim();
-      if (!line) return '';
-      const html = escape(line)
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
-      if (line.startsWith('# ')) return `<h2>${html.slice(2)}</h2>`;
-      const task = line.match(/^[-*] \[([ xX])\] (.*)$/);
-      if (task) return `<p>${task[1].toLowerCase() === 'x' ? '☑' : '☐'} ${escape(task[2])}</p>`;
-      if (/^[-*] /.test(line)) return `<ul><li>${escape(line.slice(2))}</li></ul>`;
-      return `<p>${html}</p>`;
+      const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+      if (!lines.length) return '';
+      if (lines.every((line) => /^[-*] \[[ xX]\] /.test(line)))
+        return `<ul>${lines
+          .map((line) => {
+            const task = line.match(/^[-*] \[([ xX])\] (.*)$/);
+            return `<li>${task?.[1].toLowerCase() === 'x' ? '☑' : '☐'} ${siteInline(task?.[2] || '')}</li>`;
+          })
+          .join('')}</ul>`;
+      if (lines.every((line) => /^[-*] /.test(line)))
+        return `<ul>${lines.map((line) => `<li>${siteInline(line.slice(2))}</li>`).join('')}</ul>`;
+      return lines
+        .map((line) => {
+          const heading = line.match(/^(#{1,6}) (.*)$/);
+          if (heading) {
+            const level = Math.min(6, heading[1].length + 1);
+            return `<h${level}>${siteInline(heading[2])}</h${level}>`;
+          }
+          return `<p>${siteInline(line)}</p>`;
+        })
+        .join('');
     })
     .join('');
   return `<!doctype html><html data-theme="${theme}"><head><meta charset="utf-8"><title>${escape(title)}</title>${siteStyle()}</head><body><article><h1>${escape(title)}</h1>${blocks}</article></body></html>\n`;

@@ -79,19 +79,25 @@ export function syncLinks(library: Library) {
 }
 
 export function outgoingLinks(library: Library, relative: string): OutgoingLink[] {
-  const cache = syncLinks(library);
+  return readOutgoing(library, syncLinks(library), relative);
+}
+
+export function readOutgoing(
+  library: Library,
+  cache: Map<string, CachedNote>,
+  relative: string,
+): OutgoingLink[] {
   const note = cache.get(relative);
   if (!note) throw new EngineError('not-found', 'Nota não encontrada.');
-  return decorate(note, cache, library, sharedIndex(library, cache));
+  return decorate(note, cache, library);
 }
 
 export function backlinks(library: Library, relative: string) {
   const cache = syncLinks(library);
   if (!cache.has(relative)) throw new EngineError('not-found', 'Nota não encontrada.');
   const found = [];
-  const index = sharedIndex(library, cache);
   for (const note of cache.values()) {
-    for (const link of decorate(note, cache, library, index)) {
+    for (const link of decorate(note, cache, library)) {
       if (link.status === 'resolved' && link.path === relative)
         found.push({
           from: note.path,
@@ -109,9 +115,8 @@ export function backlinks(library: Library, relative: string) {
 export function brokenLinks(library: Library) {
   const cache = syncLinks(library);
   const found = [];
-  const index = sharedIndex(library, cache);
   for (const note of cache.values()) {
-    for (const link of decorate(note, cache, library, index)) {
+    for (const link of decorate(note, cache, library)) {
       if (link.status === 'resolved') continue;
       found.push({
         from: note.path,
@@ -216,27 +221,45 @@ function loadNote(
   };
 }
 
-const sharedIndexes = new Map<string, { stamp: string; index: ReturnType<typeof indexPaths>; paths: string[] }>();
+const sharedIndexes = new Map<
+  string,
+  {
+    stamp: string;
+    index: ReturnType<typeof indexPaths>;
+    paths: string[];
+    files: string[];
+    outgoing: Map<string, OutgoingLink[]>;
+  }
+>();
 
-function sharedIndex(library: Library, cache: Map<string, CachedNote>) {
+function sharedBundle(library: Library, cache: Map<string, CachedNote>) {
   const stamp = [...cache.values()].map((note) => `${note.path}:${note.mtime}:${note.size}`).join('|');
   const current = sharedIndexes.get(library.root);
-  if (current && current.stamp === stamp) return current.index;
+  if (current && current.stamp === stamp) return current;
   const paths = [...cache.keys()];
-  const index = indexPaths(paths);
-  sharedIndexes.set(library.root, { stamp, index, paths });
-  return index;
+  const bundle = {
+    stamp,
+    index: indexPaths(paths),
+    paths,
+    files: listFiles(library).map((file) => file.path),
+    outgoing: new Map<string, OutgoingLink[]>(),
+  };
+  sharedIndexes.set(library.root, bundle);
+  return bundle;
 }
 
 function decorate(
   note: CachedNote,
   cache: Map<string, CachedNote>,
   library: Library,
-  index = sharedIndex(library, cache),
 ): OutgoingLink[] {
-  const paths = sharedIndexes.get(library.root)?.paths ?? [...cache.keys()];
-  const files = listFiles(library).map((file) => file.path);
-  return note.scanned.map((link) => {
+  const bundle = sharedBundle(library, cache);
+  const cached = bundle.outgoing.get(note.path);
+  if (cached) return cached;
+  const paths = bundle.paths;
+  const files = bundle.files;
+  const index = bundle.index;
+  const resolvedLinks = note.scanned.map((link) => {
     const fileLike =
       link.format === 'embed' && /\.[^/]+$/.test(link.note) && !/\.md$/i.test(link.note);
     const resolved = fileLike
@@ -265,6 +288,8 @@ function decorate(
       candidates: resolved.candidates,
     };
   });
+  bundle.outgoing.set(note.path, resolvedLinks);
+  return resolvedLinks;
 }
 
 function tagsOf(frontmatter: Record<string, unknown> | null) {
