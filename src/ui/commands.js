@@ -201,15 +201,40 @@
   }
 
   const SHELF_ICONS = {
-    estudos: 'capelo',
-    diário: 'nota-diaria',
-    diario: 'nota-diaria',
-    leituras: 'livro',
-    trabalho: 'maleta',
-    pesquisa: 'lampada',
-    projeto: 'livro',
-    'projeto livro': 'livro',
+    estudos: 'graduation-cap',
+    diário: 'calendar-dot',
+    diario: 'calendar-dot',
+    leituras: 'book',
+    trabalho: 'briefcase',
+    pesquisa: 'lightbulb',
+    projeto: 'book',
+    'projeto livro': 'book',
   };
+
+  const SHELF_ALIAS = {
+    'caixa-entrada': 'tray',
+    capelo: 'graduation-cap',
+    livro: 'book',
+    lampada: 'lightbulb',
+    maleta: 'briefcase',
+    leitura: 'book-open-text',
+    coracao: 'heart',
+    estante: 'rows',
+    pasta: 'folder',
+    grafo: 'graph',
+    faisca: 'sparkle',
+    conversa: 'chat-teardrop-text',
+    favorito: 'star',
+    globo: 'globe',
+    musica: 'music-notes',
+    planta: 'plant',
+    pincel: 'paint-brush',
+    'nota-diaria': 'calendar-dot',
+  };
+
+  function shelfGlyph(name) {
+    return SHELF_ALIAS[name] || name;
+  }
 
   function kitTaskStatus(status) {
     if (status === '/') return 'andamento';
@@ -400,26 +425,26 @@
   }
 
   function shelfMark(name) {
-    if (name === 'Entrada') return { icon: 'caixa-entrada', color: null };
+    if (name === 'Entrada') return { icon: 'tray', color: null };
     const icons = [
-      'capelo',
-      'livro',
-      'lampada',
-      'maleta',
-      'leitura',
-      'coracao',
-      'estante',
-      'pasta',
-      'grafo',
-      'faisca',
+      'graduation-cap',
+      'book',
+      'lightbulb',
+      'briefcase',
+      'book-open-text',
+      'heart',
+      'rows',
+      'folder',
+      'graph',
+      'sparkle',
       'tag',
-      'calendario',
-      'conversa',
-      'favorito',
-      'globo',
-      'musica',
-      'planta',
-      'pincel',
+      'calendar',
+      'chat-teardrop-text',
+      'star',
+      'globe',
+      'music-notes',
+      'plant',
+      'paint-brush',
     ];
     let hash = 0;
     for (const char of name) hash = (hash * 33 + char.codePointAt(0)) >>> 0;
@@ -578,6 +603,7 @@
     saveNote,
     applyUiCommand,
     shelfMark,
+    shelfGlyph,
     kitTaskStatus,
     taskBlockClass,
     COMMANDS,

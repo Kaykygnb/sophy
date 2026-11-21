@@ -87,12 +87,14 @@ test('a capa resolve a coleção, a cor, o arquivo e a migração', () => {
 });
 
 test('a estante conhecida tem ícone fixo e a nota fica no nível 2', () => {
-  assert.equal(commands.shelfMark('Estudos').icon, 'capelo');
-  assert.equal(commands.shelfMark('Diário').icon, 'nota-diaria');
-  assert.equal(commands.shelfMark('Leituras').icon, 'livro');
-  assert.equal(commands.shelfMark('Trabalho').icon, 'maleta');
-  assert.equal(commands.shelfMark('Pesquisa').icon, 'lampada');
-  assert.equal(commands.shelfMark('Entrada').icon, 'caixa-entrada');
+  assert.equal(commands.shelfMark('Estudos').icon, 'graduation-cap');
+  assert.equal(commands.shelfMark('Diário').icon, 'calendar-dot');
+  assert.equal(commands.shelfMark('Leituras').icon, 'book');
+  assert.equal(commands.shelfMark('Trabalho').icon, 'briefcase');
+  assert.equal(commands.shelfMark('Pesquisa').icon, 'lightbulb');
+  assert.equal(commands.shelfMark('Entrada').icon, 'tray');
+  assert.equal(commands.shelfGlyph('capelo'), 'graduation-cap');
+  assert.equal(commands.shelfGlyph('caixa-entrada'), 'tray');
   assert.equal(commands.shelfMark('Entrada').color, null);
   assert.equal(commands.noteIndent('Estudos/Nota.md'), 2);
   assert.equal(commands.noteIndent('Estudos/Sub/Nota.md'), 3);
