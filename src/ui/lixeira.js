@@ -9,10 +9,10 @@
   else root.SophyLixeira = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const KIND_ICON = {
-    note: 'nota',
-    canvas: 'canvas',
-    attachment: 'anexo',
-    folder: 'pasta',
+    note: 'note',
+    canvas: 'squares-four',
+    attachment: 'paperclip',
+    folder: 'folder',
   };
 
   const KIND_LABEL = {
@@ -170,7 +170,7 @@
   }
 
   function kindIcon(kind) {
-    return KIND_ICON[kind] || 'pagina';
+    return KIND_ICON[kind] || 'file';
   }
 
   function kindLabel(kind) {

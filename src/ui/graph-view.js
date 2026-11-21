@@ -1,6 +1,5 @@
 /**
- * Vista do grafo. Os nomes em GRAPH_ICON são os símbolos do sprite atual;
- * quando o Phosphor entrar, troca-se só este mapa (sliders, globe, funnel…).
+ * Vista do grafo. GRAPH_ICON usa os nomes Phosphor do sprite.
  *
  * As forças não cabem no IPC de configurações: `sophy:settings` ignora chaves
  * fora da lista fixa. O perfil fica em localStorage, no mesmo userData da janela.
@@ -13,15 +12,15 @@
   const model = typeof SophyGraphModel !== 'undefined' ? SophyGraphModel : require('./graph-model');
 
   const GRAPH_ICON = {
-    zoomIn: 'zoom-mais',
-    zoomOut: 'zoom-menos',
-    fit: 'ajustar',
-    global: 'globo',
-    local: 'grafo',
-    filters: 'filtro',
-    forces: 'ajuste',
-    canvas: 'canvas',
-    attachment: 'anexo',
+    zoomIn: 'magnifying-glass-plus',
+    zoomOut: 'magnifying-glass-minus',
+    fit: 'arrows-in-simple',
+    global: 'globe',
+    local: 'graph',
+    filters: 'funnel',
+    forces: 'sliders',
+    canvas: 'squares-four',
+    attachment: 'paperclip',
   };
   const PREF_KEY = 'sophy.ui.graph';
   const DRAG_PX = 5;
@@ -116,7 +115,7 @@
         </label>
         <span class="grafo__quadros" id="grafo-quadros">Antes 0 · Agora 0 · Depois 0</span>
         <button type="button" class="btn btn--secundario" id="grafo-filtros" aria-expanded="false">${glyph(icon, 'filters')}Filtros</button>
-        <button type="button" class="btn btn--secundario" id="grafo-forcas-botao" aria-expanded="true" aria-pressed="true">Forças</button>
+        <button type="button" class="btn btn--secundario" id="grafo-forcas-botao" aria-expanded="true" aria-pressed="true">${glyph(icon, 'forces')}Forças</button>
       </div>
       <div class="grafo__corpo">
         <div class="grafo__palco" id="grafo-palco">
@@ -124,7 +123,7 @@
           <div class="grafo__legenda"></div>
           <div class="grafo__estado" id="grafo-estado" role="status">Carregando o grafo…</div>
           <div class="grafo__painel grafo__painel--filtros" id="grafo-painel-filtros" hidden>
-            <header class="grafo__painel-topo"><h2>Filtros</h2><button type="button" class="btn btn--icone" id="grafo-fechar-filtros" aria-label="Fechar filtros">${icon('fechar')}</button></header>
+            <header class="grafo__painel-topo"><h2>Filtros</h2><button type="button" class="btn btn--icone" id="grafo-fechar-filtros" aria-label="Fechar filtros">${icon('x')}</button></header>
             <p class="grafo__painel-nota">Escondem estantes, a tag e as notas órfãs. Canvas e anexos ficam de fora até você pedir.</p>
             <fieldset class="grafo__estantes"><legend>Estantes</legend><div id="grafo-estantes"></div></fieldset>
             <label class="grafo__campo">Tag <input id="grafo-tag" type="search" value="${escapeHtml(filters.tag)}" placeholder="estudo" aria-label="Tag" /></label>

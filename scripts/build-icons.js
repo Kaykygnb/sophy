@@ -140,6 +140,11 @@ function collectUsedNames(source, legacy) {
   if (shelfIcons) {
     for (const match of shelfIcons[1].matchAll(/:\s*'([a-z0-9-]+)'/g)) remember(match[1], true);
   }
+  for (const block of source.matchAll(/const (?:GRAPH_ICON|KIND_ICON) = \{([\s\S]*?)\n  \};/g)) {
+    for (const match of block[1].matchAll(/:\s*'([a-z0-9-]+)'/g)) remember(match[1], true);
+  }
+  const kindFallback = source.match(/KIND_ICON\[kind\] \|\| '([a-z0-9-]+)'/);
+  if (kindFallback) remember(kindFallback[1], true);
   const shelfMark = source.match(/function shelfMark\(name\) \{([\s\S]*?)\n  \}/);
   if (shelfMark) {
     const list = shelfMark[1].match(/const icons = \[([\s\S]*?)\];/);

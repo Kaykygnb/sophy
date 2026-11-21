@@ -567,7 +567,7 @@ function paintShell() {
             )
             .join('')}
           <div class="nav__sep" role="separator"></div>
-          <button type="button" class="nav__item" data-nav="lixeira" aria-label="${escapeHtml(trashNavLabel(state.trashItems.length))}">${icon('lixeira')}<span>Lixeira</span><span class="nav__conta" id="lixeira-conta">${state.trashItems.length}</span></button>
+          <button type="button" class="nav__item" data-nav="lixeira" aria-label="${escapeHtml(trashNavLabel(state.trashItems.length))}">${icon('trash')}<span>Lixeira</span><span class="nav__conta" id="lixeira-conta">${state.trashItems.length}</span></button>
         </nav>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
@@ -4710,11 +4710,11 @@ function paintTrash(center) {
     .join('');
   let body = '';
   if (state.trashStatus === 'loading' && !items.length) {
-    body = `<div class="lixeira__estado" role="status">${icon('lixeira', 'icon--48')}<p>Carregando a lixeira…</p></div>`;
+    body = `<div class="lixeira__estado" role="status">${icon('trash', 'icon--48')}<p>Carregando a lixeira…</p></div>`;
   } else if (state.trashStatus === 'error') {
-    body = `<div class="lixeira__estado" role="alert">${icon('erro', 'icon--48')}<h2>Não foi possível ler a lixeira</h2><p>${escapeHtml(state.trashError || 'Tente de novo.')}</p><button type="button" class="btn btn--secundario" id="lixeira-tentar" aria-label="Tentar de novo">Tentar de novo</button></div>`;
+    body = `<div class="lixeira__estado" role="alert">${icon('warning-circle', 'icon--48')}<h2>Não foi possível ler a lixeira</h2><p>${escapeHtml(state.trashError || 'Tente de novo.')}</p><button type="button" class="btn btn--secundario" id="lixeira-tentar" aria-label="Tentar de novo">Tentar de novo</button></div>`;
   } else if (!items.length) {
-    body = `<div class="lixeira__vazio">${icon('lixeira', 'icon--48')}<h2>A lixeira está vazia</h2><p>Notas, canvas, anexos e pastas excluídos aparecem aqui. Dá para restaurar ou apagar de vez.</p></div>`;
+    body = `<div class="lixeira__vazio">${icon('trash', 'icon--48')}<h2>A lixeira está vazia</h2><p>Notas, canvas, anexos e pastas excluídos aparecem aqui. Dá para restaurar ou apagar de vez.</p></div>`;
   } else if (!visible.length) {
     body = `<div class="lixeira__vazio"><h2>Nenhum item com esse filtro</h2><p>Tente outro termo ou mostre todos os tipos.</p><button type="button" class="btn btn--fantasma" id="lixeira-limpar">Limpar filtro</button></div>`;
   } else {
@@ -4730,7 +4730,7 @@ function paintTrash(center) {
         ? 'Não foi possível ler a lixeira.'
         : `${Trash.countLabel(items.length)} na lixeira da biblioteca`;
   const canEmpty = state.trashStatus === 'ready' && items.length > 0;
-  center.innerHTML = `<section class="lixeira" aria-labelledby="lixeira-titulo"><header class="lixeira__topo"><div><h2 id="lixeira-titulo">Lixeira</h2><p>${escapeHtml(summary)}</p></div><button type="button" class="btn btn--perigo" id="lixeira-esvaziar" aria-label="Esvaziar lixeira" ${canEmpty ? '' : 'disabled'}>Esvaziar lixeira</button></header><div class="lixeira__ferramentas"><label class="input input--busca">${icon('busca')}<input id="lixeira-busca" type="search" placeholder="Buscar na lixeira" aria-label="Buscar na lixeira" value="${escapeHtml(state.trashQuery)}" /></label><div class="lixeira__filtros" role="group" aria-label="Filtrar por tipo">${filters}</div></div>${body}</section>`;
+  center.innerHTML = `<section class="lixeira" aria-labelledby="lixeira-titulo"><header class="lixeira__topo"><div><h2 id="lixeira-titulo">Lixeira</h2><p>${escapeHtml(summary)}</p></div><button type="button" class="btn btn--perigo" id="lixeira-esvaziar" aria-label="Esvaziar lixeira" ${canEmpty ? '' : 'disabled'}>Esvaziar lixeira</button></header><div class="lixeira__ferramentas"><label class="input input--busca">${icon('magnifying-glass')}<input id="lixeira-busca" type="search" placeholder="Buscar na lixeira" aria-label="Buscar na lixeira" value="${escapeHtml(state.trashQuery)}" /></label><div class="lixeira__filtros" role="group" aria-label="Filtrar por tipo">${filters}</div></div>${body}</section>`;
   const search = $('#lixeira-busca');
   if (search) {
     search.oninput = () => {
@@ -5442,12 +5442,12 @@ function openTreeMenu(event, kind, target) {
           ['nota', 'Nova nota aqui', ''],
           ['cor', 'Cor e ícone…', ''],
           ['renomear', 'Renomear', ''],
-          ['lixo', 'Mover para a lixeira', 'lixeira'],
+          ['lixo', 'Mover para a lixeira', 'trash'],
           ['apagar', 'Excluir permanentemente…', 'apagar'],
         ]
       : [
           ['renomear', 'Renomear', ''],
-          ['lixo', 'Mover para a lixeira', 'lixeira'],
+          ['lixo', 'Mover para a lixeira', 'trash'],
           ['apagar', 'Excluir permanentemente…', 'apagar'],
         ];
   menu.innerHTML = items

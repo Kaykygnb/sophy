@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const model = require('../src/ui/graph-model');
+const view = require('../src/ui/graph-view');
 
 function note(path, extra) {
   return {
@@ -189,3 +190,17 @@ function distanceAfter(edge) {
   for (let step = 0; step < 500; step += 1) model.stepForces(sim.bodies, sim.edges, sim.forces, 1);
   return Math.hypot(sim.bodies[0].x - sim.bodies[1].x, sim.bodies[0].y - sim.bodies[1].y);
 }
+
+test('os controles do grafo pedem os glifos Phosphor', () => {
+  assert.deepEqual(view.GRAPH_ICON, {
+    zoomIn: 'magnifying-glass-plus',
+    zoomOut: 'magnifying-glass-minus',
+    fit: 'arrows-in-simple',
+    global: 'globe',
+    local: 'graph',
+    filters: 'funnel',
+    forces: 'sliders',
+    canvas: 'squares-four',
+    attachment: 'paperclip',
+  });
+});

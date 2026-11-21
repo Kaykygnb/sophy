@@ -146,17 +146,6 @@
       "fill_id": "i-briefcase-fill"
     },
     {
-      "nome": "busca",
-      "rotulo": "Buscar",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-busca",
-      "fill_id": null
-    },
-    {
       "nome": "calendar",
       "rotulo": "Calendário",
       "categoria": "navegacao",
@@ -413,26 +402,16 @@
       "fill_id": "i-dots-three-fill"
     },
     {
-      "nome": "erro",
-      "rotulo": "Erro",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "file",
+      "rotulo": "Arquivo",
+      "categoria": "notas",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-erro",
-      "fill_id": null
-    },
-    {
-      "nome": "fechar",
-      "rotulo": "Fechar",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-fechar",
-      "fill_id": null
+      "sprite_id": "i-file",
+      "fill_id": "i-file-fill"
     },
     {
       "nome": "file-dashed",
@@ -686,17 +665,6 @@
       "fill_id": "i-list-numbers-fill"
     },
     {
-      "nome": "lixeira",
-      "rotulo": "Mover para a lixeira",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-lixeira",
-      "fill_id": null
-    },
-    {
       "nome": "lock",
       "rotulo": "Cadeado",
       "categoria": "notas",
@@ -812,6 +780,18 @@
       "fill_id": "i-paint-brush-fill"
     },
     {
+      "nome": "paperclip",
+      "rotulo": "Anexo",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-paperclip",
+      "fill_id": "i-paperclip-fill"
+    },
+    {
       "nome": "plant",
       "rotulo": "Planta",
       "categoria": "estante",
@@ -892,6 +872,18 @@
       ],
       "sprite_id": "i-sidebar-simple",
       "fill_id": "i-sidebar-simple-fill"
+    },
+    {
+      "nome": "sliders",
+      "rotulo": "Forças",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sliders",
+      "fill_id": "i-sliders-fill"
     },
     {
       "nome": "sparkle",

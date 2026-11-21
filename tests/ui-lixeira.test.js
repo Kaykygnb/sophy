@@ -115,11 +115,11 @@ test('o filtro aceita tipo, acento e caminho', () => {
 });
 
 test('ícone, rótulo e contador da lixeira', () => {
-  assert.equal(Trash.kindIcon('note'), 'nota');
-  assert.equal(Trash.kindIcon('canvas'), 'canvas');
-  assert.equal(Trash.kindIcon('attachment'), 'anexo');
-  assert.equal(Trash.kindIcon('folder'), 'pasta');
-  assert.equal(Trash.kindIcon('outro'), 'pagina');
+  assert.equal(Trash.kindIcon('note'), 'note');
+  assert.equal(Trash.kindIcon('canvas'), 'squares-four');
+  assert.equal(Trash.kindIcon('attachment'), 'paperclip');
+  assert.equal(Trash.kindIcon('folder'), 'folder');
+  assert.equal(Trash.kindIcon('outro'), 'file');
   assert.equal(Trash.kindLabel('folder'), 'Pasta');
   assert.equal(Trash.countLabel(0), '0 itens');
   assert.equal(Trash.countLabel(1), '1 item');
