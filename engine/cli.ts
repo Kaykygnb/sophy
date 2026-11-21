@@ -199,8 +199,10 @@ function initLibrary(parsed: Parsed, io: Io) {
 }
 
 function runShortcut(parsed: Parsed, io: Io) {
-  if (Object.keys(parsed.flags).length)
-    throw new CliError('Este atalho não usa essas opções. Use sophy help.', 1);
+  const extra = Object.keys(parsed.flags).filter(
+    (key) => !(parsed.command === 'grafo' && (key === 'center' || key === 'depth')),
+  );
+  if (extra.length) throw new CliError('Este atalho não usa essas opções. Use sophy help.', 1);
   if (parsed.texto !== undefined && parsed.command !== 'nova')
     throw new CliError('--texto só vale para sophy nova.', 1);
   if (parsed.jsonInput) throw new CliError('Este atalho não recebe JSON de entrada.', 1);
@@ -286,9 +288,23 @@ function runShortcut(parsed: Parsed, io: Io) {
         'lixeira',
       );
     }
-    case 'grafo':
+    case 'grafo': {
       requireEmpty(parsed);
-      return emit(callTool('graph.query', { libraryPath: library }), parsed, io, 'grafo');
+      const input: { libraryPath: string; center?: string; depth?: number } = {
+        libraryPath: library,
+      };
+      const center = parsed.flags.center;
+      const depth = parsed.flags.depth;
+      if (center === true) throw new CliError('Informe o caminho de --center.', 1);
+      if (typeof center === 'string') input.center = center;
+      if (depth === true) throw new CliError('--depth espera um número.', 1);
+      if (typeof depth === 'string') {
+        const number = Number(depth);
+        if (!Number.isFinite(number)) throw new CliError('--depth espera um número.', 1);
+        input.depth = number;
+      }
+      return emit(callTool('graph.query', input), parsed, io, 'grafo');
+    }
     case 'historico':
       requireEmpty(parsed);
       return emit(callTool('history.list', { libraryPath: library }), parsed, io, 'historico');
@@ -424,7 +440,7 @@ Uso:
   sophy backlinks <nota>
   sophy mover <origem> <destino>
   sophy lixeira <caminho>
-  sophy grafo
+  sophy grafo [--center <nota>] [--depth <1-3>]
   sophy historico
   sophy desfazer
   sophy tools

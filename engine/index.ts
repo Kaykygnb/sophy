@@ -14,6 +14,7 @@ export {
   createDirectory,
   listNotes,
   listFiles,
+  listEntries,
   classifyName,
   isImageName,
   importAttachmentFromPath,
