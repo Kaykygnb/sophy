@@ -80,7 +80,7 @@ test('editar o cartão do canvas guarda o markdown e Selecionar usa a seta', asy
   const root = library();
   const { app, page } = await launch(root);
   await page.locator('#arvore [data-canvas="Estudos/Mapa.canvas"]').click();
-  await expect(page.locator('[data-tool="select"] use')).toHaveAttribute('href', '#i-selecionar');
+  await expect(page.locator('[data-tool="select"] use.icon__regular')).toHaveAttribute('href', '#i-cursor');
   await page.locator('.cv-texto').click();
   await page.keyboard.press('End');
   await page.keyboard.type(' mais');

@@ -163,7 +163,7 @@ function toast(message, kind = 'ok', action = null) {
   const el = document.createElement('div');
   el.className = `toast ${kind === 'erro' ? 'toast--erro' : 'toast--ok'}`;
   el.setAttribute('role', kind === 'erro' ? 'alert' : 'status');
-  el.innerHTML = `${icon(kind === 'erro' ? 'erro' : 'salvo', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
+  el.innerHTML = `${icon(kind === 'erro' ? 'warning-circle' : 'check-circle', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
   if (action?.label && typeof action.onClick === 'function') {
     const button = document.createElement('button');
     button.type = 'button';
@@ -251,15 +251,15 @@ function paintOnboarding() {
       <h1>Olá, eu sou a Sofi.</h1>
       <p class="onboarding__lead">O Sophy guarda suas notas como arquivos Markdown numa pasta sua.<br />Eu ajudo a organizar, encontrar e ligar ideias.</p>
       <div class="onboarding__cartoes onboarding__cartoes--tres">
-        <div class="opcao">${icon('pasta')}<div><strong>Arquivos seus, no seu disco</strong><p>Pastas e .md comuns, abra em qualquer editor.</p></div></div>
+        <div class="opcao">${icon('folder')}<div><strong>Arquivos seus, no seu disco</strong><p>Pastas e .md comuns, abra em qualquer editor.</p></div></div>
         <div class="opcao">${icon('link')}<div><strong>Notas ligadas com [[ ]]</strong><p>Links, backlinks, grafo e canvas.</p></div></div>
-        <div class="opcao">${icon('agente')}<div><strong>Agente opcional</strong><p>Só funciona se você conectar uma chave.</p></div></div>
+        <div class="opcao">${icon('sparkle')}<div><strong>Agente opcional</strong><p>Só funciona se você conectar uma chave.</p></div></div>
       </div>`,
     2: `<img alt="" src="ui/assets/ilustracoes/biblioteca-vazia-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Onde ficam as suas notas?</h1>
       <div class="onboarding__cartoes">
-        <button type="button" class="opcao ${state.folderMode === 'criar' ? 'is-escolhida' : ''}" data-mode="criar">${icon('pasta-nova')}<div><strong>Criar nova biblioteca</strong><p>Uma pasta nova, com o marcador .sophy.</p></div></button>
-        <button type="button" class="opcao ${state.folderMode === 'abrir' ? 'is-escolhida' : ''}" data-mode="abrir">${icon('pasta-aberta')}<div><strong>Abrir pasta existente</strong><p>Uma biblioteca que você já tem, inclusive vinda do Obsidian.</p></div></button>
+        <button type="button" class="opcao ${state.folderMode === 'criar' ? 'is-escolhida' : ''}" data-mode="criar">${icon('folder-plus')}<div><strong>Criar nova biblioteca</strong><p>Uma pasta nova, com o marcador .sophy.</p></div></button>
+        <button type="button" class="opcao ${state.folderMode === 'abrir' ? 'is-escolhida' : ''}" data-mode="abrir">${icon('folder-open')}<div><strong>Abrir pasta existente</strong><p>Uma biblioteca que você já tem, inclusive vinda do Obsidian.</p></div></button>
       </div>
       ${
         state.folderMode === 'criar'
@@ -267,20 +267,20 @@ function paintOnboarding() {
           : ''
       }
       <label class="campo">Local<input id="lib-folder" readonly value="${escapeHtml(state.folder)}" placeholder="Nenhuma pasta escolhida" /></label>
-      <button type="button" class="btn btn--secundario" id="escolher-pasta" style="margin-top:12px">${icon('pasta')} Escolher pasta</button>
-      <p class="nota-privacidade">${icon('cadeado')} A pasta fica no seu computador. O Sophy não envia as notas.</p>`,
+      <button type="button" class="btn btn--secundario" id="escolher-pasta" style="margin-top:12px">${icon('folder')} Escolher pasta</button>
+      <p class="nota-privacidade">${icon('lock')} A pasta fica no seu computador. O Sophy não envia as notas.</p>`,
     3: `<h1>Escolha a aparência</h1>
       <p class="onboarding__lead">O tema vale na hora. Dá para mudar depois.</p>
       <p id="rot-tema">Tema</p>
       <div class="segmentado" role="radiogroup" aria-labelledby="rot-tema">
         ${[
-          ['light', 'Claro'],
-          ['dark', 'Escuro'],
-          ['system', 'Sistema'],
+          ['light', 'Claro', 'sun'],
+          ['dark', 'Escuro', 'moon'],
+          ['system', 'Sistema', 'desktop'],
         ]
           .map(
-            ([value, label]) =>
-              `<label class="segmentado__opcao"><input type="radio" name="tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''} /><span>${label}</span></label>`,
+            ([value, label, glyph]) =>
+              `<label class="segmentado__opcao"><input type="radio" name="tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''} /><span>${icon(glyph)} ${label}</span></label>`,
           )
           .join('')}
       </div>
@@ -296,7 +296,7 @@ function paintOnboarding() {
       </div>`,
     4: `<img alt="" src="ui/assets/ilustracoes/agente-desconectado-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Quer ligar um agente agora?</h1>
-      <p class="nota-privacidade">${icon('cadeado')} A chave fica no cofre do sistema. Nada é gravado na biblioteca.</p>
+      <p class="nota-privacidade">${icon('lock')} A chave fica no cofre do sistema. Nada é gravado na biblioteca.</p>
       <label class="campo">Provedor
         <select id="provedor"><option>OpenAI</option><option>Anthropic</option><option>Outro</option></select>
       </label>
@@ -1478,7 +1478,7 @@ function paintSettings(center) {
   center.innerHTML = `<div class="config"><h2>Configurações</h2>
     <section><h3>Aparência</h3>
       <div class="segmentado" role="radiogroup" aria-label="Tema">
-        ${['light', 'dark', 'system'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''}><span>${value === 'light' ? 'Claro' : value === 'dark' ? 'Escuro' : 'Sistema'}</span></label>`).join('')}
+        ${[['light', 'Claro', 'sun'], ['dark', 'Escuro', 'moon'], ['system', 'Sistema', 'desktop']].map(([value, label, glyph]) => `<label class="segmentado__opcao"><input type="radio" name="cfg-tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''}><span>${icon(glyph)} ${label}</span></label>`).join('')}
       </div>
       <div class="segmentado" role="radiogroup" aria-label="Fonte">
         ${['inter', 'literata'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-fonte" value="${value}" ${(state.settings.readingFont || 'inter') === value ? 'checked' : ''}><span>${value === 'inter' ? 'Inter' : 'Literata'}</span></label>`).join('')}
@@ -1488,7 +1488,7 @@ function paintSettings(center) {
     <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><label class="alternar"><input type="checkbox" id="cfg-sistema" ${state.settings.accentSystem ? 'checked' : ''}><span>Seguir a cor do sistema</span></label><p class="nota-privacidade">Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.</p></section>
     <section><h3>Busca por significado</h3><label class="alternar"><input type="checkbox" id="cfg-busca" ${state.settings.semantic ? 'checked' : ''}><span>${state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'}</span></label><p class="nota-privacidade">Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.</p></section>
     <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa ${weekStartsOn() === 0 ? 'no domingo' : 'na segunda'}.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div><button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button></section>
-    <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
+    <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">${icon('clock-counter-clockwise')} Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
   </div>`;
   center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
     input.onchange = async () => {
@@ -1745,7 +1745,7 @@ function paintCanvasGallery(center) {
   const empty = count
     ? ''
     : `<div class="canvas-grade__vazio"><strong>Nenhum canvas ainda</strong><p>Crie um quadro para ligar notas, formas e ideias.</p></div>`;
-  center.innerHTML = `<div class="canvas-grade"><header class="canvas-grade__topo"><div><h2>Canvas</h2><p>${count ? `${count} quadro${count === 1 ? '' : 's'} · capas, formas e wikilinks` : 'Quadros livres para ligar ideias, notas e formas.'}</p></div><button type="button" class="btn btn--primario" id="atalho-novo-canvas">${icon('canvas')} Novo canvas</button></header>${empty}${cards}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas-card">${icon('canvas')}<strong>Novo canvas</strong><span>Começar um quadro em branco</span></button></div>`;
+  center.innerHTML = `<div class="canvas-grade"><header class="canvas-grade__topo"><div><h2>Canvas</h2><p>${count ? `${count} quadro${count === 1 ? '' : 's'} · capas, formas e wikilinks` : 'Quadros livres para ligar ideias, notas e formas.'}</p></div><button type="button" class="btn btn--primario" id="atalho-novo-canvas">${icon('squares-four')} Novo canvas</button></header>${empty}${cards}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas-card">${icon('plus')}<strong>Novo canvas</strong><span>Começar um quadro em branco</span></button></div>`;
   center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
     button.onclick = () => openCanvas(button.dataset.abrirCanvas);
   });
@@ -1874,7 +1874,7 @@ function paintCenterBody(center) {
     const boards = state.canvases.filter((file) => file.workspace === state.selectedShelf);
     center.innerHTML = notes.length || boards.length
       ? `<div class="vazio-ensina"><h2>${escapeHtml(state.selectedShelf)}</h2><p>${notes.length} notas · ${boards.length} canvas</p></div>`
-      : `<div class="vazio-estante vazio-ensina"><h2>${escapeHtml(state.selectedShelf)} está vazia</h2><p>Crie a primeira nota desta estante, ou um canvas, pelo botão Novo.</p><button type="button" class="btn btn--primario" id="estante-nova-nota">${icon('nota-nova')} Nova nota aqui</button></div>`;
+      : `<div class="vazio-estante vazio-ensina"><h2>${escapeHtml(state.selectedShelf)} está vazia</h2><p>Crie a primeira nota desta estante, ou um canvas, pelo botão Novo.</p><button type="button" class="btn btn--primario" id="estante-nova-nota">${icon('note-pencil')} Nova nota aqui</button></div>`;
     const create = $('#estante-nova-nota');
     if (create) create.onclick = () => createNote();
     return;
@@ -3843,7 +3843,9 @@ function paintLinks() {
     return;
   }
   const head =
-    '<div class="conexoes__topo"><h3>Conexões</h3><button type="button" class="btn btn--icone" id="fechar-conexoes" aria-label="Ocultar conexões">×</button></div>';
+    '<div class="conexoes__topo"><h3>Conexões</h3><button type="button" class="btn btn--icone" id="fechar-conexoes" aria-label="Ocultar conexões">' +
+    icon('x') +
+    '</button></div>';
   if (!state.active) {
     host.innerHTML = `${head}<p class="nota-privacidade">Abra uma nota para ver os links.</p>`;
     $('#fechar-conexoes').onclick = () => closeConnections();
@@ -3879,7 +3881,7 @@ function paintLinks() {
     .join('');
   const mentionBlock = `<h3 class="conexoes__titulo">Menções sem link</h3><div class="mencoes">${mentions || '<p class="nota-privacidade">Nenhuma menção solta.</p>'}</div>`;
   host.innerHTML = `${head}<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}${mentionBlock}
-    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
+    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('arrow-counter-clockwise')} Desfazer</button>`;
   $('#fechar-conexoes').onclick = () => closeConnections();
   host.querySelectorAll('[data-go]').forEach((button) => {
     button.onclick = () => {
@@ -4122,7 +4124,7 @@ function paintTasks(center) {
     })
     .join('');
   const hasFilter = Object.values(filter).some(Boolean);
-  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} em andamento · ${taskCounts.feita} concluídas</p></div><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
+  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} em andamento · ${taskCounts.feita} concluídas</p></div><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${[['lista', 'Lista', 'list'], ['quadro', 'Quadro', 'kanban']].map(([mode, label, glyph]) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}" aria-pressed="${state.taskMode === mode}">${icon(glyph)} ${label}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
   center.querySelectorAll('[data-filtro]').forEach((button) => {
     button.onclick = () => {
       state.taskFilter[button.dataset.filtro] = button.dataset.valor;
@@ -4208,7 +4210,7 @@ function paintCalendar(center) {
   const body = mode === 'agenda'
     ? `<div class="calendario__miolo"><ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}</div>`
     : `<div class="calendario__miolo"><div><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>${dayPanel}</div>`;
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo calendario__topo"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo calendario__topo"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">${icon('caret-left')}</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">${icon('caret-right')}</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes" aria-pressed="${mode === 'mes'}">${icon('calendar')} Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana" aria-pressed="${mode === 'semana'}">${icon('rows')} Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda" aria-pressed="${mode === 'agenda'}">${icon('list')} Agenda</button></div></header>${body}</div>`;
   $('#cal-hoje').onclick = () => {
     state.calendarCursor = isoToday();
     state.dayFocus = isoToday();
@@ -4373,7 +4375,7 @@ function dailyStrip(notePath) {
 function paintSofi(host) {
   host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
-  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
+  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">${icon('sparkle')} Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">${icon('x')} Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
   $('#agente-guardar').onclick = async () => {
     const response = await sophy.agentKeySet($('#agente-chave').value);
     $('#agente-chave').value = '';
@@ -5386,6 +5388,16 @@ function openShelfStyle(name) {
     ['heart', 'Coração'],
     ['rows', 'Estante'],
     ['folder', 'Pasta'],
+    ['graph', 'Grafo'],
+    ['sparkle', 'Faísca'],
+    ['tag', 'Tag'],
+    ['calendar', 'Calendário'],
+    ['chat-teardrop-text', 'Conversa'],
+    ['star', 'Favorito'],
+    ['globe', 'Globo'],
+    ['music-notes', 'Música'],
+    ['plant', 'Planta'],
+    ['paint-brush', 'Pincel'],
   ];
   const pop = document.createElement('div');
   pop.className = 'menu menu-flutuante';
@@ -5393,7 +5405,7 @@ function openShelfStyle(name) {
   pop.setAttribute('aria-label', 'Cor e ícone');
   pop.innerHTML = `<p>Cor e ícone de ${escapeHtml(name)}</p>
     <div class="acentos">${[1, 2, 3, 4, 5, 6, 7, 8].map((color) => `<button type="button" class="acento ${current.color === color ? 'is-escolhida' : ''}" data-cor="${color}" aria-label="${shelfColorName(color)}" style="--amostra: var(--shelf-${color})"></button>`).join('')}</div>
-    <div class="inicio__cartoes">${icons.map(([iconName, label]) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}">${icon(iconName)} ${label}</button>`).join('')}</div>`;
+    <div class="estante-icones">${icons.map(([iconName, label]) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}" aria-pressed="${current.icon === iconName}">${icon(iconName)} ${label}</button>`).join('')}</div>`;
   document.body.append(pop);
   pop.style.position = 'fixed';
   pop.style.left = '280px';
@@ -5675,14 +5687,14 @@ function showFormatBar(range) {
 function openCommands() {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  const commands = Cmd.COMMANDS.map((item) => [item.rotulo, item.atalho, () => runCommand(item.id)]).concat([
-    ['Alternar tema', '', () => toggleTheme()],
-    ['Nova biblioteca', '', () => chooseLibrary(true)],
-    ['Abrir biblioteca', '', () => chooseLibrary(false)],
-    ['Remover biblioteca da lista', '', () => forgetLibrary()],
+  const commands = Cmd.COMMANDS.map((item) => [item.rotulo, item.atalho, () => runCommand(item.id), item.icone]).concat([
+    ['Alternar tema', '', () => toggleTheme(), themeName() === 'dark' ? 'sun' : 'moon'],
+    ['Nova biblioteca', '', () => chooseLibrary(true), 'folder-plus'],
+    ['Abrir biblioteca', '', () => chooseLibrary(false), 'folder-open'],
+    ['Remover biblioteca da lista', '', () => forgetLibrary(), 'trash'],
   ]);
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Comandos">
-    <div class="paleta__busca">${icon('busca')}<input id="comando-q" placeholder="Comandos" aria-label="Comandos" /></div>
+    <div class="paleta__busca">${icon('magnifying-glass')}<input id="comando-q" placeholder="Comandos" aria-label="Comandos" /></div>
     <div class="paleta__lista" id="comando-lista"></div>
     <div class="menu__rodape"><span><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">P</span></span><span><span class="kbd">esc</span> fechar</span></div>
   </div>`;
@@ -5692,8 +5704,8 @@ function openCommands() {
     $('#comando-lista').innerHTML = commands
       .filter(([label]) => !needle || label.toLocaleLowerCase().includes(needle))
       .map(
-        ([label, shortcut]) =>
-          `<button type="button" class="menu__item" data-cmd="${escapeHtml(label)}"><span>${escapeHtml(label)}</span>${shortcut ? `<span class="menu__atalho">${escapeHtml(shortcut)}</span>` : ''}</button>`,
+        ([label, shortcut, , glyph]) =>
+          `<button type="button" class="menu__item" data-cmd="${escapeHtml(label)}">${glyph ? icon(glyph) : ''}<span>${escapeHtml(label)}</span>${shortcut ? `<span class="menu__atalho">${escapeHtml(shortcut)}</span>` : ''}</button>`,
       )
       .join('');
     $('#comando-lista')
@@ -5855,7 +5867,7 @@ function openPalette() {
   const overlay = $('#overlay');
   overlay.hidden = false;
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Busca">
-    <div class="paleta__busca">${icon('busca')}<input id="paleta-q" placeholder="Buscar ou comando…" aria-label="Buscar" /><span class="kbd">esc</span></div>
+    <div class="paleta__busca">${icon('magnifying-glass')}<input id="paleta-q" placeholder="Buscar ou comando…" aria-label="Buscar" /><span class="kbd">esc</span></div>
     <div class="paleta__lista" id="paleta-lista"></div>
     <div class="menu__rodape"><span><span class="kbd">↵</span> abrir</span><span><span class="kbd">esc</span> fechar</span></div>
   </div>`;
@@ -5903,7 +5915,7 @@ function openPalette() {
     const list = $('#paleta-lista');
     const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
       .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
-      .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
+      .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id), icon: item.icone }));
     const noteHits = hits.filter((hit) => hit.kind !== 'canvas');
     const canvasHits = hits.filter((hit) => hit.kind === 'canvas');
     const row = (hit) => {
@@ -5915,7 +5927,7 @@ function openPalette() {
       const dot = shelf?.color
         ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
         : '';
-      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
+      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'squares-four' : 'note')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
     };
     list.innerHTML =
       (noteHits.length ? '<div class="menu__grupo">Notas</div>' : '') +
@@ -5927,7 +5939,7 @@ function openPalette() {
       commands
         .map(
           (item) =>
-            `<button type="button" class="menu__item" data-cmd="${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>`,
+            `<button type="button" class="menu__item" data-cmd="${escapeHtml(item.label)}">${item.icon ? icon(item.icon) : ''}<span>${escapeHtml(item.label)}</span></button>`,
         )
         .join('') +
       (hits.length === 0 && query.length >= 2

@@ -113,7 +113,9 @@ function collectUsedNames(source, legacy) {
     const exact = arg.match(/^'([a-z0-9-]+)'$/);
     if (exact) remember(exact[1], true);
     else {
-      for (const match of arg.matchAll(/'([a-z0-9-]+)'/g)) remember(match[1], false);
+      for (const match of arg.matchAll(/'([a-z0-9-]+)'/g)) {
+        if (catalogByName.has(match[1])) remember(match[1], true);
+      }
     }
     const around = source.slice(Math.max(0, at - 1600), at);
     if (
@@ -121,7 +123,10 @@ function collectUsedNames(source, legacy) {
       source.slice(at, at + 11) === 'icon(glyph)'
     ) {
       for (const match of around.matchAll(/\['[a-z0-9-]+',\s*'([a-z0-9-]+)',\s*'[^']*'\]/g)) {
-        remember(match[1], true);
+        if (knownIconName(match[1], legacy)) remember(match[1], true);
+      }
+      for (const match of around.matchAll(/\['[a-z0-9-]+',\s*'[^']+',\s*'([a-z0-9-]+)'\]/g)) {
+        if (knownIconName(match[1], legacy)) remember(match[1], true);
       }
       for (const match of around.matchAll(/\['[^']+',\s*'([a-z0-9-]+)',\s*'[^']*',\s*'[^']*'\]/g)) {
         remember(match[1], true);

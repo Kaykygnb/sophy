@@ -81,17 +81,22 @@
     const zoomBar = area.querySelector('.canvas-zoom');
     const mini = area.querySelector('.canvas-mini');
 
-    const shapeIcons = {
-      rectangle: '<rect x="4" y="4" width="16" height="16" rx="2"/>',
-      ellipse: '<circle cx="12" cy="12" r="8"/>',
-      diamond: '<path d="M12 2 22 12 12 22 2 12Z"/>',
-    };
     const toolIcon = (id) =>
-      shapeIcons[id]
-        ? `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${shapeIcons[id]}</svg>`
-        : options.icon(
-            id === 'connect' ? 'conector' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : 'selecionar',
-          );
+      options.icon(
+        id === 'rectangle'
+          ? 'rectangle'
+          : id === 'ellipse'
+            ? 'circle'
+            : id === 'diamond'
+              ? 'diamond'
+              : id === 'connect'
+                ? 'flow-arrow'
+                : id === 'undo'
+                  ? 'arrow-counter-clockwise'
+                  : id === 'redo'
+                    ? 'arrow-clockwise'
+                    : 'cursor',
+      );
     const toolBtn = ([id, label, key]) =>
       `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ` (${key})` : ''}">${toolIcon(id)}</button>`;
     tools.innerHTML = [
@@ -110,7 +115,7 @@
       `<button type="button" class="cv-cor${id ? '' : ' cv-cor--limpo'}" data-${kind}="${id}" aria-label="${kind === 'fill' ? 'Fundo' : 'Borda'} ${id || 'padrão'}" title="${kind === 'fill' ? 'Fundo' : 'Borda'} ${id || 'padrão'}"${id ? ` style="--amostra:var(--shelf-${id})"` : ''}></button>`;
     colors.innerHTML = `<span class="cv-cores__rotulo">Fundo</span>${['', ...PALETTE].map((id) => swatch('fill', id)).join('')}<span class="cv-sep" aria-hidden="true"></span><span class="cv-cores__rotulo">Borda</span>${['', ...PALETTE].map((id) => swatch('border', id)).join('')}`;
 
-    zoomBar.innerHTML = `<button type="button" class="btn btn--icone" data-zoom="out" aria-label="Afastar">−</button><span class="canvas-zoom__valor">100%</span><button type="button" class="btn btn--icone" data-zoom="in" aria-label="Aproximar">+</button><button type="button" class="btn btn--secundario" data-zoom="fit">Ajustar</button>`;
+    zoomBar.innerHTML = `<button type="button" class="btn btn--icone" data-zoom="out" aria-label="Afastar">${options.icon('magnifying-glass-minus')}</button><span class="canvas-zoom__valor">100%</span><button type="button" class="btn btn--icone" data-zoom="in" aria-label="Aproximar">${options.icon('magnifying-glass-plus')}</button><button type="button" class="btn btn--icone" data-zoom="fit" aria-label="Ajustar">${options.icon('arrows-in-simple')}</button>`;
 
     const applyCamera = () => {
       const camera = state.camera;
@@ -243,7 +248,7 @@
             const shelf = options.shelf(preview.path || node.file);
             const tint = shelf?.color ? `;--estante-cor: var(--shelf-${shelf.color})` : '';
             return `<article class="cv-cartao" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}${tint}">
-              <div class="cv-cartao__titulo">${options.icon('nota')}<span>${escape(preview.title || node.file)}</span><button type="button" class="btn btn--icone" data-open="${escape(preview.path || node.file)}" aria-label="Abrir nota">${options.icon('externo')}</button></div>
+              <div class="cv-cartao__titulo">${options.icon('note')}<span>${escape(preview.title || node.file)}</span><button type="button" class="btn btn--icone" data-open="${escape(preview.path || node.file)}" aria-label="Abrir nota">${options.icon('arrow-square-out')}</button></div>
               <div class="cv-cartao__texto">${preview.html || escape(preview.body || '')}</div>
               <div class="cv-cartao__caminho">${escape(preview.path || node.file || '')}</div>
               ${ports()}
@@ -256,7 +261,7 @@
               </article>`;
             }
             return `<article class="cv-cartao cv-cartao--texto" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}">
-              <div class="cv-cartao__titulo">${options.icon('externo')}<span>${escape(node.label || node.url || 'Link')}</span></div>
+              <div class="cv-cartao__titulo">${options.icon('arrow-square-out')}<span>${escape(node.label || node.url || 'Link')}</span></div>
               <p class="cv-cartao__caminho">${escape(node.url || '')}</p>${ports()}
             </article>`;
           }
