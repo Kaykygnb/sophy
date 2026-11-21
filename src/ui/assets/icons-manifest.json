@@ -62,6 +62,18 @@
       "fill_id": null
     },
     {
+      "nome": "arrow-square-out",
+      "rotulo": "Abrir fora",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-arrow-square-out",
+      "fill_id": "i-arrow-square-out-fill"
+    },
+    {
       "nome": "arrows-in",
       "rotulo": "Modo foco",
       "categoria": "navegacao",
@@ -74,17 +86,6 @@
       "fill_id": "i-arrows-in-fill"
     },
     {
-      "nome": "biblioteca",
-      "rotulo": "Biblioteca",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-biblioteca",
-      "fill_id": null
-    },
-    {
       "nome": "bloco-codigo",
       "rotulo": "Bloco de código",
       "categoria": "legado",
@@ -94,6 +95,54 @@
       ],
       "sprite_id": "i-bloco-codigo",
       "fill_id": null
+    },
+    {
+      "nome": "book",
+      "rotulo": "Livro",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-book",
+      "fill_id": "i-book-fill"
+    },
+    {
+      "nome": "book-open-text",
+      "rotulo": "Leitura",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-book-open-text",
+      "fill_id": "i-book-open-text-fill"
+    },
+    {
+      "nome": "books",
+      "rotulo": "Biblioteca",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-books",
+      "fill_id": "i-books-fill"
+    },
+    {
+      "nome": "briefcase",
+      "rotulo": "Maleta",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-briefcase",
+      "fill_id": "i-briefcase-fill"
     },
     {
       "nome": "busca",
@@ -129,6 +178,30 @@
       "fill_id": null
     },
     {
+      "nome": "calendar",
+      "rotulo": "Calendário",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-calendar",
+      "fill_id": "i-calendar-fill"
+    },
+    {
+      "nome": "calendar-dot",
+      "rotulo": "Hoje",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-calendar-dot",
+      "fill_id": "i-calendar-dot-fill"
+    },
+    {
       "nome": "calendario",
       "rotulo": "Calendário",
       "categoria": "legado",
@@ -151,26 +224,50 @@
       "fill_id": null
     },
     {
-      "nome": "capelo",
-      "rotulo": "Estudos",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "caret-down",
+      "rotulo": "Abrir lista",
+      "categoria": "navegacao",
+      "origem": "phosphor",
       "peso": [
         "regular"
       ],
-      "sprite_id": "i-capelo",
+      "sprite_id": "i-caret-down",
       "fill_id": null
     },
     {
-      "nome": "chevron-direita",
-      "rotulo": "Expandir / próximo",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "caret-right",
+      "rotulo": "Expandir",
+      "categoria": "navegacao",
+      "origem": "phosphor",
       "peso": [
         "regular"
       ],
-      "sprite_id": "i-chevron-direita",
+      "sprite_id": "i-caret-right",
       "fill_id": null
+    },
+    {
+      "nome": "chat-teardrop-text",
+      "rotulo": "Conversa",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-chat-teardrop-text",
+      "fill_id": "i-chat-teardrop-text-fill"
+    },
+    {
+      "nome": "check-square",
+      "rotulo": "Tarefa",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-check-square",
+      "fill_id": "i-check-square-fill"
     },
     {
       "nome": "citacao",
@@ -217,25 +314,14 @@
       "fill_id": null
     },
     {
-      "nome": "conversa",
-      "rotulo": "Conversa",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "corners-out",
+      "rotulo": "Maximizar",
+      "categoria": "janela",
+      "origem": "phosphor",
       "peso": [
         "regular"
       ],
-      "sprite_id": "i-conversa",
-      "fill_id": null
-    },
-    {
-      "nome": "coracao",
-      "rotulo": "Pessoal",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-coracao",
+      "sprite_id": "i-corners-out",
       "fill_id": null
     },
     {
@@ -272,6 +358,18 @@
       "fill_id": null
     },
     {
+      "nome": "dots-three",
+      "rotulo": "Mais opções",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-dots-three",
+      "fill_id": "i-dots-three-fill"
+    },
+    {
       "nome": "erro",
       "rotulo": "Erro",
       "categoria": "legado",
@@ -280,17 +378,6 @@
         "regular"
       ],
       "sprite_id": "i-erro",
-      "fill_id": null
-    },
-    {
-      "nome": "estante",
-      "rotulo": "Estante",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-estante",
       "fill_id": null
     },
     {
@@ -316,17 +403,6 @@
       "fill_id": null
     },
     {
-      "nome": "favorito",
-      "rotulo": "Favorito",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-favorito",
-      "fill_id": null
-    },
-    {
       "nome": "fechar",
       "rotulo": "Fechar",
       "categoria": "legado",
@@ -338,15 +414,64 @@
       "fill_id": null
     },
     {
-      "nome": "foco-no",
-      "rotulo": "Focar nesta nota",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "file-dashed",
+      "rotulo": "Modelo",
+      "categoria": "notas",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-foco-no",
-      "fill_id": null
+      "sprite_id": "i-file-dashed",
+      "fill_id": "i-file-dashed-fill"
+    },
+    {
+      "nome": "folder",
+      "rotulo": "Pasta",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-folder",
+      "fill_id": "i-folder-fill"
+    },
+    {
+      "nome": "folder-open",
+      "rotulo": "Pasta aberta",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-folder-open",
+      "fill_id": "i-folder-open-fill"
+    },
+    {
+      "nome": "folder-plus",
+      "rotulo": "Nova pasta",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-folder-plus",
+      "fill_id": "i-folder-plus-fill"
+    },
+    {
+      "nome": "funnel",
+      "rotulo": "Filtro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-funnel",
+      "fill_id": "i-funnel-fill"
     },
     {
       "nome": "gear",
@@ -361,15 +486,28 @@
       "fill_id": "i-gear-fill"
     },
     {
-      "nome": "globo",
+      "nome": "globe",
       "rotulo": "Globo",
-      "categoria": "legado",
-      "origem": "legado",
+      "categoria": "estante",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-globo",
-      "fill_id": null
+      "sprite_id": "i-globe",
+      "fill_id": "i-globe-fill"
+    },
+    {
+      "nome": "graduation-cap",
+      "rotulo": "Capelo",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-graduation-cap",
+      "fill_id": "i-graduation-cap-fill"
     },
     {
       "nome": "grafo",
@@ -383,6 +521,30 @@
       "fill_id": null
     },
     {
+      "nome": "graph",
+      "rotulo": "Grafo",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-graph",
+      "fill_id": "i-graph-fill"
+    },
+    {
+      "nome": "heart",
+      "rotulo": "Coração",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-heart",
+      "fill_id": "i-heart-fill"
+    },
+    {
       "nome": "historico",
       "rotulo": "Histórico",
       "categoria": "legado",
@@ -394,6 +556,18 @@
       "fill_id": null
     },
     {
+      "nome": "house",
+      "rotulo": "Início",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-house",
+      "fill_id": "i-house-fill"
+    },
+    {
       "nome": "imagem",
       "rotulo": "Imagem",
       "categoria": "legado",
@@ -402,17 +576,6 @@
         "regular"
       ],
       "sprite_id": "i-imagem",
-      "fill_id": null
-    },
-    {
-      "nome": "inicio",
-      "rotulo": "Início",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-inicio",
       "fill_id": null
     },
     {
@@ -427,39 +590,6 @@
       "fill_id": null
     },
     {
-      "nome": "janela-maximizar",
-      "rotulo": "Maximizar",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-janela-maximizar",
-      "fill_id": null
-    },
-    {
-      "nome": "janela-minimizar",
-      "rotulo": "Minimizar",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-janela-minimizar",
-      "fill_id": null
-    },
-    {
-      "nome": "lampada",
-      "rotulo": "Ideia",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-lampada",
-      "fill_id": null
-    },
-    {
       "nome": "leitura",
       "rotulo": "Leitura",
       "categoria": "legado",
@@ -469,6 +599,18 @@
       ],
       "sprite_id": "i-leitura",
       "fill_id": null
+    },
+    {
+      "nome": "lightbulb",
+      "rotulo": "Lâmpada",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-lightbulb",
+      "fill_id": "i-lightbulb-fill"
     },
     {
       "nome": "link",
@@ -515,17 +657,6 @@
       "fill_id": null
     },
     {
-      "nome": "livro",
-      "rotulo": "Livro",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-livro",
-      "fill_id": null
-    },
-    {
       "nome": "lixeira",
       "rotulo": "Mover para a lixeira",
       "categoria": "legado",
@@ -534,6 +665,17 @@
         "regular"
       ],
       "sprite_id": "i-lixeira",
+      "fill_id": null
+    },
+    {
+      "nome": "magnifying-glass",
+      "rotulo": "Busca",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-magnifying-glass",
       "fill_id": null
     },
     {
@@ -548,17 +690,6 @@
       "fill_id": null
     },
     {
-      "nome": "maleta",
-      "rotulo": "Trabalho",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-maleta",
-      "fill_id": null
-    },
-    {
       "nome": "marca-texto",
       "rotulo": "Marca-texto",
       "categoria": "legado",
@@ -567,6 +698,17 @@
         "regular"
       ],
       "sprite_id": "i-marca-texto",
+      "fill_id": null
+    },
+    {
+      "nome": "minus",
+      "rotulo": "Minimizar",
+      "categoria": "janela",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-minus",
       "fill_id": null
     },
     {
@@ -581,26 +723,28 @@
       "fill_id": null
     },
     {
-      "nome": "mostrar-pasta",
-      "rotulo": "Mostrar no Explorer",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "moon",
+      "rotulo": "Tema escuro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-mostrar-pasta",
-      "fill_id": null
+      "sprite_id": "i-moon",
+      "fill_id": "i-moon-fill"
     },
     {
-      "nome": "musica",
+      "nome": "music-notes",
       "rotulo": "Música",
-      "categoria": "legado",
-      "origem": "legado",
+      "categoria": "estante",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-musica",
-      "fill_id": null
+      "sprite_id": "i-music-notes",
+      "fill_id": "i-music-notes-fill"
     },
     {
       "nome": "negrito",
@@ -647,37 +791,40 @@
       "fill_id": null
     },
     {
-      "nome": "novo",
-      "rotulo": "Novo (menu)",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "note",
+      "rotulo": "Nota",
+      "categoria": "notas",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-novo",
-      "fill_id": null
+      "sprite_id": "i-note",
+      "fill_id": "i-note-fill"
     },
     {
-      "nome": "painel-direito",
-      "rotulo": "Painel direito",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "note-pencil",
+      "rotulo": "Nova nota",
+      "categoria": "notas",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-painel-direito",
-      "fill_id": null
+      "sprite_id": "i-note-pencil",
+      "fill_id": "i-note-pencil-fill"
     },
     {
-      "nome": "painel-lateral",
-      "rotulo": "Barra lateral",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "paint-brush",
+      "rotulo": "Pincel",
+      "categoria": "estante",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-painel-lateral",
-      "fill_id": null
+      "sprite_id": "i-paint-brush",
+      "fill_id": "i-paint-brush-fill"
     },
     {
       "nome": "pasta",
@@ -713,25 +860,26 @@
       "fill_id": null
     },
     {
-      "nome": "pincel",
-      "rotulo": "Pincel",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "plant",
+      "rotulo": "Planta",
+      "categoria": "estante",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
-      "sprite_id": "i-pincel",
-      "fill_id": null
+      "sprite_id": "i-plant",
+      "fill_id": "i-plant-fill"
     },
     {
-      "nome": "planta",
-      "rotulo": "Planta",
-      "categoria": "legado",
-      "origem": "legado",
+      "nome": "plus",
+      "rotulo": "Novo",
+      "categoria": "navegacao",
+      "origem": "phosphor",
       "peso": [
         "regular"
       ],
-      "sprite_id": "i-planta",
+      "sprite_id": "i-plus",
       "fill_id": null
     },
     {
@@ -790,6 +938,18 @@
       "fill_id": null
     },
     {
+      "nome": "rows",
+      "rotulo": "Linhas",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-rows",
+      "fill_id": "i-rows-fill"
+    },
+    {
       "nome": "salvo",
       "rotulo": "Salvo",
       "categoria": "legado",
@@ -810,6 +970,66 @@
       ],
       "sprite_id": "i-selecionar",
       "fill_id": null
+    },
+    {
+      "nome": "sidebar-simple",
+      "rotulo": "Lateral",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sidebar-simple",
+      "fill_id": "i-sidebar-simple-fill"
+    },
+    {
+      "nome": "sparkle",
+      "rotulo": "Sofi",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sparkle",
+      "fill_id": "i-sparkle-fill"
+    },
+    {
+      "nome": "squares-four",
+      "rotulo": "Canvas",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-squares-four",
+      "fill_id": "i-squares-four-fill"
+    },
+    {
+      "nome": "star",
+      "rotulo": "Favorito",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-star",
+      "fill_id": "i-star-fill"
+    },
+    {
+      "nome": "sun",
+      "rotulo": "Tema claro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sun",
+      "fill_id": "i-sun-fill"
     },
     {
       "nome": "tabela",
@@ -836,13 +1056,14 @@
     {
       "nome": "tag",
       "rotulo": "Tag",
-      "categoria": "legado",
-      "origem": "legado",
+      "categoria": "estante",
+      "origem": "phosphor",
       "peso": [
-        "regular"
+        "regular",
+        "fill"
       ],
       "sprite_id": "i-tag",
-      "fill_id": null
+      "fill_id": "i-tag-fill"
     },
     {
       "nome": "tarefa",
@@ -856,28 +1077,6 @@
       "fill_id": null
     },
     {
-      "nome": "tema-claro",
-      "rotulo": "Tema claro",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-tema-claro",
-      "fill_id": null
-    },
-    {
-      "nome": "tema-escuro",
-      "rotulo": "Tema escuro",
-      "categoria": "legado",
-      "origem": "legado",
-      "peso": [
-        "regular"
-      ],
-      "sprite_id": "i-tema-escuro",
-      "fill_id": null
-    },
-    {
       "nome": "titulo",
       "rotulo": "Título",
       "categoria": "legado",
@@ -886,6 +1085,41 @@
         "regular"
       ],
       "sprite_id": "i-titulo",
+      "fill_id": null
+    },
+    {
+      "nome": "trash",
+      "rotulo": "Lixeira",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-trash",
+      "fill_id": "i-trash-fill"
+    },
+    {
+      "nome": "tray",
+      "rotulo": "Entrada",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-tray",
+      "fill_id": "i-tray-fill"
+    },
+    {
+      "nome": "x",
+      "rotulo": "Fechar",
+      "categoria": "janela",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-x",
       "fill_id": null
     }
   ]

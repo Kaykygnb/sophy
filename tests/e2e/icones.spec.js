@@ -74,6 +74,16 @@ test('o estado ativo mostra o Fill e esconde o Regular', async () => {
     regular: getComputedStyle(svg.querySelector('.icon__regular')).opacity,
     fill: getComputedStyle(svg.querySelector('.icon__fill')).opacity,
   }));
+  const nav = page.locator('[data-nav="inicio"]');
+  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await expect(nav.locator('use.icon__fill')).toHaveAttribute('href', '#i-house-fill');
+  await expect(nav.locator('use.icon__regular')).toHaveAttribute('href', '#i-house');
+  const navOpacity = await nav.locator('.icon').evaluate((svg) => ({
+    regular: getComputedStyle(svg.querySelector('.icon__regular')).opacity,
+    fill: getComputedStyle(svg.querySelector('.icon__fill')).opacity,
+  }));
+  expect(Number(navOpacity.fill)).toBeGreaterThan(0.9);
+  expect(Number(navOpacity.regular)).toBeLessThan(0.1);
   expect(Number(active.fill)).toBeGreaterThan(0.9);
   expect(Number(active.regular)).toBeLessThan(0.1);
   expect(Number(idle.regular)).toBeGreaterThan(0.9);

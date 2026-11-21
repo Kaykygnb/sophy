@@ -99,7 +99,10 @@ test('aba fecha com o botão e o canvas não marca Hoje', async () => {
   await page.locator('#arvore [data-canvas="Estudos/Mapa.canvas"]').click();
   await expect(page.locator('.canvas-area')).toBeVisible();
   await expect(page.locator('[data-nav="hoje"]')).not.toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('[data-tab="Estudos/Mapa.canvas"] use')).toHaveAttribute('href', '#i-canvas');
+  await expect(page.locator('[data-tab="Estudos/Mapa.canvas"] use.icon__regular')).toHaveAttribute(
+    'href',
+    '#i-squares-four',
+  );
   const direction = await page.locator('.canvas-ferramentas').evaluate((el) => getComputedStyle(el).flexDirection);
   expect(direction).toBe('row');
   const top = await page.locator('.canvas-ferramentas').evaluate((el) => getComputedStyle(el).top);

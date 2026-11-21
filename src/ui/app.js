@@ -85,9 +85,9 @@ function icon(name, extra = '') {
 }
 function windowButtons() {
   return `<div class="janela-botoes">
-    <button type="button" class="btn btn--icone" data-window="minimize" aria-label="Minimizar">${icon('janela-minimizar')}</button>
-    <button type="button" class="btn btn--icone" data-window="maximize" aria-label="Maximizar">${icon('janela-maximizar')}</button>
-    <button type="button" class="btn btn--icone janela-fechar" data-window="close" aria-label="Fechar">${icon('fechar')}</button>
+    <button type="button" class="btn btn--icone" data-window="minimize" aria-label="Minimizar">${icon('minus')}</button>
+    <button type="button" class="btn btn--icone" data-window="maximize" aria-label="Maximizar">${icon('corners-out')}</button>
+    <button type="button" class="btn btn--icone janela-fechar" data-window="close" aria-label="Fechar">${icon('x')}</button>
   </div>`;
 }
 function bindWindow(root) {
@@ -492,6 +492,7 @@ function openDrawer(opener) {
   lateral.classList.remove('is-fechada');
   lateral.classList.add('is-aberta');
   ensureVeil();
+  syncChromeIcons();
 }
 
 function closeDrawer() {
@@ -502,6 +503,7 @@ function closeDrawer() {
   if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.remove();
   syncConnectionsPanel();
+  syncChromeIcons();
   const opener = state.drawerOpener || $('#abrir-lateral');
   opener?.focus();
 }
@@ -517,6 +519,7 @@ function toggleSidebar(opener) {
   lateral.classList.remove('is-aberta');
   $('#gaveta-veu')?.remove();
   lateral.classList.toggle('is-fechada');
+  syncChromeIcons();
 }
 
 function paintShell() {
@@ -528,34 +531,35 @@ function paintShell() {
       <div class="titulo__marca"><img alt="Sophy" src="ui/assets/logo/logo-horizontal-${logo}.svg" /></div>
       <div class="titulo__abas" role="tablist" id="abas"></div>
       <div class="titulo__acoes">
-        <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
-        <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
-        <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
-        <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('painel-direito')}</button>
-        <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral" aria-pressed="true">${icon('sidebar-simple')}</button>
+        <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('magnifying-glass')}</button>
+        <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo" aria-pressed="false">${icon('graph')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('sidebar-simple', 'icon--espelhado')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-sofi" title="Sofi (Ctrl+J)" aria-label="Sofi (Ctrl+J)" aria-pressed="false">${icon('sparkle')}</button>
+        <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'sun' : 'moon')}</button>
         ${windowButtons()}
       </div>
     </header>
     <div class="miolo">
       <aside class="lateral" id="lateral">
         <div class="lateral__topo">
-          <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">
-            ${icon('biblioteca')}<span class="biblioteca-seletor__nome">${escapeHtml(state.libraryName || 'Biblioteca')}</span>${icon('alternar')}
+          <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-expanded="false" aria-label="Bibliotecas">
+            ${icon('books')}<span class="biblioteca-seletor__nome">${escapeHtml(state.libraryName || 'Biblioteca')}</span>${icon('caret-down')}
           </button>
-          <button type="button" class="btn btn--icone" id="recolher" aria-label="Recolher">${icon('painel-lateral')}</button>
+          <button type="button" class="btn btn--icone" id="recolher" aria-label="Recolher" aria-pressed="true">${icon('sidebar-simple')}</button>
         </div>
         <div class="lateral__acoes">
-          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('novo')} Novo</button>
-          <button type="button" class="btn btn--icone" id="filtrar" aria-label="Filtrar">${icon('busca')}</button>
+          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('plus')} Novo</button>
+          <button type="button" class="btn btn--icone" id="filtrar" aria-label="Filtrar" aria-pressed="false">${icon('funnel')}</button>
         </div>
         <nav class="lateral__nav" aria-label="Seções">
           ${[
-            ['inicio', 'inicio', 'Início'],
-            ['hoje', 'nota-diaria', 'Hoje'],
-            ['tarefas', 'lista-tarefas', 'Tarefas'],
-            ['calendario', 'calendario', 'Calendário'],
-            ['grafo', 'grafo', 'Grafo'],
-            ['canvas', 'canvas', 'Canvas'],
+            ['inicio', 'house', 'Início'],
+            ['hoje', 'calendar-dot', 'Hoje'],
+            ['tarefas', 'check-square', 'Tarefas'],
+            ['calendario', 'calendar', 'Calendário'],
+            ['grafo', 'graph', 'Grafo'],
+            ['canvas', 'squares-four', 'Canvas'],
           ]
             .map(
               ([id, glyph, label]) =>
@@ -580,6 +584,7 @@ function paintShell() {
   $('#busca').onclick = () => openPalette();
   $('#ver-grafo').onclick = () => showGraph();
   $('#abrir-conexoes').onclick = () => toggleConnections();
+  $('#abrir-sofi').onclick = () => runCommand('sofi');
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
@@ -590,6 +595,7 @@ function paintShell() {
     const box = shell.querySelector('.lateral__busca');
     box.hidden = !box.hidden;
     if (!box.hidden) $('#filtro-arvore').focus();
+    syncChromeIcons();
   };
   shell.querySelectorAll('[data-nav]').forEach((button) => {
     button.onclick = () => runCommand(button.dataset.nav === 'inicio' ? 'inicio' : button.dataset.nav);
@@ -634,7 +640,7 @@ function markFor(name) {
   const base = Cmd.shelfMark(name);
   const saved = state.shelfStyles?.[name];
   if (!saved || name === 'Entrada') return base;
-  return { icon: saved.icon || base.icon, color: saved.color || base.color };
+  return { icon: Cmd.shelfGlyph(saved.icon || base.icon), color: saved.color || base.color };
 }
 
 function treeNotes(workspace) {
@@ -663,7 +669,7 @@ function paintTree() {
           const unsafe = note.unsafe ? ' is-invalido' : '';
           const unsafeTitle = note.unsafe ? ' title="Nome inválido no Windows"' : '';
           return `<li role="treeitem"><button type="button" class="arvore__linha${unsafe}" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}"${unsafeTitle}>
-            ${icon('nota')}${label}</button></li>`;
+            ${icon('note')}${label}</button></li>`;
         })
         .join('');
       const boards = state.canvases
@@ -671,7 +677,7 @@ function paintTree() {
         .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
         .map(
           (file) =>
-            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
+            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('squares-four')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
         )
         .join('');
       const shelfLabel =
@@ -680,7 +686,7 @@ function paintTree() {
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
       const shelfUnsafe = workspace.unsafe ? ' title="Nome inválido no Windows"' : '';
       return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}${shelfUnsafe}>
-          ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
+          ${icon('caret-right', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
     .join('');
@@ -690,16 +696,16 @@ function paintTree() {
       (
         note,
       ) => `<li><button type="button" class="arvore__linha" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}">
-        ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
+        ${icon('note')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
     )
     .join('');
   const looseBoards = state.canvases
     .filter((file) => file.workspace === null)
     .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
-    .map((file) => `<li role="treeitem"><button type="button" class="arvore__linha" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`)
+    .map((file) => `<li role="treeitem"><button type="button" class="arvore__linha" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('squares-four')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`)
     .join('');
   const draft = state.namingShelf
-    ? `<li role="treeitem"><div class="arvore__linha">${icon('estante')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
+    ? `<li role="treeitem"><div class="arvore__linha">${icon('rows')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
     : '';
   const name = host.parentElement?.querySelector('.biblioteca-seletor__nome');
   if (name) name.textContent = state.libraryName || 'Biblioteca';
@@ -858,7 +864,7 @@ function paintTabs() {
   host.innerHTML = state.tabs
     .map((file) => {
       const canvas = file.toLowerCase().endsWith('.canvas');
-      return `<span class="aba-wrap"><button type="button" class="aba" role="tab" aria-selected="${file === state.active || file === state.canvasPath}" data-tab="${escapeHtml(file)}">${icon(canvas ? 'canvas' : 'nota')}<span>${escapeHtml(baseName(file))}</span></button><button type="button" class="aba-fechar" data-fechar-aba="${escapeHtml(file)}" aria-label="Fechar ${escapeHtml(baseName(file))}">×</button></span>`;
+      return `<span class="aba-wrap"><button type="button" class="aba" role="tab" aria-selected="${file === state.active || file === state.canvasPath}" data-tab="${escapeHtml(file)}">${icon(canvas ? 'squares-four' : 'note')}<span>${escapeHtml(baseName(file))}</span></button><button type="button" class="aba-fechar" data-fechar-aba="${escapeHtml(file)}" aria-label="Fechar ${escapeHtml(baseName(file))}">${icon('x')}</button></span>`;
     })
     .join('');
   host.querySelectorAll('[data-tab]').forEach((button) => {
@@ -900,8 +906,16 @@ function setFocusMode(on) {
   state.focusMode = !!on;
   document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
   document.querySelectorAll('[data-focus-toggle]').forEach((button) => {
-    button.textContent = state.focusMode ? 'Sair do foco' : 'Modo foco';
     button.setAttribute('aria-pressed', String(state.focusMode));
+    if (button.id !== 'modo-foco') {
+      button.textContent = state.focusMode ? 'Sair do foco' : 'Modo foco';
+      return;
+    }
+    button.classList.toggle('btn--primario', state.focusMode);
+    button.classList.toggle('nota-foco-sair', state.focusMode);
+    button.classList.toggle('btn--icone', !state.focusMode);
+    button.innerHTML = state.focusMode ? `${icon('arrows-in')} Sair do foco` : icon('arrows-in');
+    button.setAttribute('aria-label', state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco');
   });
 }
 
@@ -1775,11 +1789,36 @@ async function loadCanvasGallery() {
   if (state.view === 'canvases') paintCenter();
 }
 
+function sidebarOpen() {
+  const lateral = $('#lateral');
+  if (!lateral) return false;
+  if (drawerNarrow()) return lateral.classList.contains('is-aberta');
+  return !lateral.classList.contains('is-fechada');
+}
+
+function syncChromeIcons() {
+  const open = sidebarOpen();
+  for (const id of ['abrir-lateral', 'recolher']) {
+    const button = document.getElementById(id);
+    if (button) button.setAttribute('aria-pressed', open ? 'true' : 'false');
+  }
+  const graph = $('#ver-grafo');
+  if (graph) {
+    graph.setAttribute('aria-pressed', state.view === 'graph' || state.nav === 'grafo' ? 'true' : 'false');
+  }
+  const sofi = $('#abrir-sofi');
+  if (sofi) sofi.setAttribute('aria-pressed', state.sofiOpen ? 'true' : 'false');
+  const filter = $('#filtrar');
+  const box = document.querySelector('.lateral__busca');
+  if (filter && box) filter.setAttribute('aria-pressed', box.hidden ? 'false' : 'true');
+}
+
 function syncNav() {
   document.querySelectorAll('[data-nav]').forEach((button) => {
     if (button.dataset.nav === state.nav) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  syncChromeIcons();
 }
 
 function paintCenterBody(center) {
@@ -1930,7 +1969,7 @@ function paintCenterBody(center) {
   const strip = dailyStrip(state.active);
   const layout = noteLayout();
   const layoutClasses = [`nota--font-${layout.font}`, layout.small ? 'nota--small' : '', layout.wide ? 'nota--wide' : ''].filter(Boolean).join(' ');
-  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" aria-haspopup="true">•••</button></div>`;
+  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${icon('arrows-in')}${state.focusMode ? ' Sair do foco' : ''}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" aria-haspopup="true" aria-expanded="false">${icon('dots-three')}</button></div>`;
   center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
@@ -3125,8 +3164,8 @@ function openMenu(anchor, className, html, onPick) {
 }
 
 function closeMenus() {
-  document.querySelectorAll('#nota-mais[aria-expanded="true"]').forEach((button) => {
-    button.removeAttribute('aria-expanded');
+  document.querySelectorAll('#nota-mais[aria-expanded], #seletor-biblioteca[aria-expanded]').forEach((button) => {
+    button.setAttribute('aria-expanded', 'false');
   });
   document.querySelectorAll('.menu-flutuante, .seletor-capa').forEach((menu) => {
     if (menu.getAttribute('aria-label') !== 'Conflito') menu.remove();
@@ -3894,10 +3933,10 @@ function openNewMenu(anchor) {
   menu.className = 'menu menu-flutuante';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = [
-    ['nota', 'nota-nova', 'Nova nota'],
-    ['estante', 'pasta-nova', 'Nova estante'],
-    ['novo-canvas', 'canvas', 'Novo canvas'],
-    ['modelo', 'modelo', 'A partir de modelo'],
+    ['nota', 'note-pencil', 'Nova nota'],
+    ['estante', 'folder-plus', 'Nova estante'],
+    ['novo-canvas', 'squares-four', 'Novo canvas'],
+    ['modelo', 'file-dashed', 'A partir de modelo'],
   ]
     .map(
       ([id, glyph, label]) =>
@@ -4354,6 +4393,7 @@ function paintSofi(host) {
     $('#sofi-gaveta')?.classList.remove('is-aberta');
     if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
     paintLinks();
+    syncChromeIcons();
   };
 }
 
@@ -4370,6 +4410,7 @@ function openAgent() {
     state.sofiOpen = true;
     paintSofi(panel);
     panel.classList.add('is-aberta');
+    syncChromeIcons();
     ensureVeil();
     state.drawerOpener = $('#abrir-lateral');
     return;
@@ -4379,6 +4420,7 @@ function openAgent() {
   state.connectionsOpen = true;
   paintSofi($('#conexoes'));
   syncConnectionsPanel();
+  syncChromeIcons();
 }
 
 function openCapture() {
@@ -5186,6 +5228,7 @@ function insertBlockBelow(index) {
 
 function openLibraryMenu(anchor) {
   closeMenus();
+  anchor?.setAttribute('aria-expanded', 'true');
   const recents = [...new Set([state.libraryPath, ...(state.settings.libraries || [])])].filter(Boolean);
   const menu = document.createElement('div');
   menu.className = 'menu menu-flutuante';
@@ -5194,14 +5237,14 @@ function openLibraryMenu(anchor) {
     recents
       .map((folder) => {
         const name = folder.split(/[/\\]/).pop();
-        return `<button type="button" class="menu__item" role="menuitem" data-lib="${escapeHtml(folder)}" ${folder === state.libraryPath ? 'aria-selected="true"' : ''}>${icon('biblioteca')}<span>${escapeHtml(name)}</span></button>`;
+        return `<button type="button" class="menu__item" role="menuitem" data-lib="${escapeHtml(folder)}" ${folder === state.libraryPath ? 'aria-selected="true"' : ''}>${icon('books')}<span>${escapeHtml(name)}</span></button>`;
       })
       .join('') +
     `<div class="menu__sep"></div>
-    <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
-    <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
-    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>
-    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('mostrar-pasta')} ${/linux/i.test(navigator.userAgent) ? 'Mostrar na pasta' : 'Mostrar no Explorer'}</button>`;
+    <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('folder-plus')} Nova biblioteca…</button>
+    <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('folder-open')} Abrir pasta…</button>
+    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('trash')} Remover da lista</button>
+    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('arrow-square-out')} ${/linux/i.test(navigator.userAgent) ? 'Mostrar na pasta' : 'Mostrar no Explorer'}</button>`;
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
@@ -5332,14 +5375,14 @@ async function applyLibrary(root, libraries) {
 function openShelfStyle(name) {
   const current = markFor(name);
   const icons = [
-    ['capelo', 'Capelo'],
-    ['livro', 'Livro'],
-    ['lampada', 'Lâmpada'],
-    ['maleta', 'Maleta'],
-    ['leitura', 'Leitura'],
-    ['coracao', 'Coração'],
-    ['estante', 'Estante'],
-    ['pasta', 'Pasta'],
+    ['graduation-cap', 'Capelo'],
+    ['book', 'Livro'],
+    ['lightbulb', 'Lâmpada'],
+    ['briefcase', 'Maleta'],
+    ['book-open-text', 'Leitura'],
+    ['heart', 'Coração'],
+    ['rows', 'Estante'],
+    ['folder', 'Pasta'],
   ];
   const pop = document.createElement('div');
   pop.className = 'menu menu-flutuante';
@@ -5911,7 +5954,7 @@ async function toggleTheme() {
   applyTheme(next);
   await sophy.saveSettings({ theme: next });
   const button = $('#tema');
-  if (button) button.innerHTML = icon(next === 'dark' ? 'tema-claro' : 'tema-escuro');
+  if (button) button.innerHTML = icon(next === 'dark' ? 'sun' : 'moon');
   paintStatus();
 }
 
@@ -5934,7 +5977,7 @@ async function applyCommand(command) {
     }
     if (command.agent !== undefined) {
       if (command.agent) openAgent();
-      else { state.sofiOpen = false; $('#sofi-gaveta')?.classList.remove('is-aberta'); paintLinks(); }
+      else { state.sofiOpen = false; $('#sofi-gaveta')?.classList.remove('is-aberta'); paintLinks(); syncChromeIcons(); }
     }
     if (command.focus !== undefined) setFocusMode(command.focus);
     return;
