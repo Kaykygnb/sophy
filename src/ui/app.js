@@ -76,7 +76,12 @@ const Writing = SophyWriting.create({
 });
 
 function icon(name, extra = '') {
-  return `<svg class="icon ${extra}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+  const data = window.SophyIconsData || { fill: [] };
+  const id = String(name || '').replace(/[^a-z0-9-]/g, '');
+  const hasFill = Array.isArray(data.fill) && data.fill.includes(id);
+  const classes = ['icon', extra].filter(Boolean).join(' ');
+  const fill = hasFill ? `<use class="icon__fill" href="#i-${id}-fill"></use>` : '';
+  return `<svg class="${classes}" aria-hidden="true"><use class="icon__regular" href="#i-${id}"></use>${fill}</svg>`;
 }
 function windowButtons() {
   return `<div class="janela-botoes">
