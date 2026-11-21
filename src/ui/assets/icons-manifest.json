@@ -1,4079 +1,1067 @@
 {
-  "nome": "Sophy · ícones, identidade e animações",
-  "versao": "1.2.0-fase6",
-  "data": "2026-11-17",
+  "nome": "Sophy · ícones da janela",
+  "pacote": "@phosphor-icons/core",
+  "licenca": "MIT",
+  "versaoPacote": "2.1.1",
+  "geradoPor": "scripts/build-icons.js",
   "regras": {
-    "icones": {
-      "viewBox": "0 0 24 24",
-      "grade": 24,
-      "traco": 2,
-      "pontas": "round",
-      "juncoes": "round",
-      "margem_segura": "2 px (área viva 20×20)",
-      "cor": "somente currentColor (nenhuma cor fixa no arquivo)",
-      "tamanhos_recomendados": [
-        16,
-        20,
-        24
-      ],
-      "tamanho_padrao_ui": 20,
-      "opacidade": "prioridade-media e prioridade-baixa usam opacity=\"0.35\" nas barras inativas (continua sendo currentColor)"
-    },
-    "animacoes": {
-      "formato_final": "Lottie JSON (lottie-web, renderer svg)",
-      "gif": "só prévia, não usar no app",
-      "reduced_motion": "Com prefers-reduced-motion: reduce, não carregue o Lottie: mostre o quadro parado (campo \"parado\"). Ícones usam o SVG currentColor do conjunto (campo \"parado.icone\").",
-      "easing_padrao": "cubic-bezier(.2,.8,.2,1)",
-      "temas": "cada animação tem uma versão claro e uma escuro (cores fixas do tema no Lottie)",
-      "icones_preferido": "Fase 5: para os 10 ícones, use o SVG animado com CSS (campo css_svg, em ../fase5/animacoes-css/). Ele usa só currentColor, segue o tema sozinho e já traz a versão parada para prefers-reduced-motion. O Lottie fica como alternativa. A Sofi continua em Lottie."
-    }
+    "repouso": "Phosphor Regular",
+    "ativo": "Phosphor Fill quando o controle está ativo (aria-current, aria-selected, aria-pressed, aria-expanded ou is-escolhida)",
+    "corRepouso": "--ink-2",
+    "corHover": "--ink",
+    "corAtivo": "--accent",
+    "corEstante": "--estante-cor",
+    "transicao": "180ms cubic-bezier(.2, .8, .2, 1)",
+    "reducedMotion": "a duração vai a 0 com prefers-reduced-motion e com a classe motion-reduce",
+    "cor": "currentColor"
   },
-  "identidade": {
-    "logo": {
-      "logo-horizontal-claro": "identidade/svg/logo-horizontal-claro.svg",
-      "logo-horizontal-escuro": "identidade/svg/logo-horizontal-escuro.svg",
-      "logotipo-claro": "identidade/svg/logotipo-claro.svg",
-      "logotipo-escuro": "identidade/svg/logotipo-escuro.svg"
-    },
-    "icone_app": {
-      "windows_ico": "identidade/app/windows/sophy.ico",
-      "macos_icns": "identidade/app/macos/Sophy.icns",
-      "macos_iconset": "identidade/app/macos/Sophy.iconset",
-      "linux_png_512": "identidade/app/linux/sophy.png",
-      "linux_hicolor": "identidade/app/linux/hicolor",
-      "favicon_ico": "identidade/app/favicon/favicon.ico",
-      "favicon_svg": "identidade/app/favicon/favicon.svg",
-      "apple_touch": "identidade/app/favicon/apple-touch-icon.png",
-      "mestre_svg": "identidade/svg/icone-app.svg",
-      "mestre_vectorcraft": "identidade/vectorcraft/icone-app.vectorcraft",
-      "electron_builder": {
-        "win.icon": "identidade/app/windows/sophy.ico",
-        "mac.icon": "identidade/app/macos/Sophy.icns",
-        "linux.icon": "identidade/app/linux/hicolor"
-      }
-    },
-    "uma_cor": {
-      "nota": "Fase 4. Caminhos relativos a fase3/. Positivo #000000 para fundo claro, negativo #FFFFFF para fundo escuro; mini até 32 px.",
-      "olhar-mono-positivo": "../fase4/identidade-monocromatica/svg/olhar-mono-positivo.svg",
-      "olhar-mono-negativo": "../fase4/identidade-monocromatica/svg/olhar-mono-negativo.svg",
-      "olhar-mono-mini-positivo": "../fase4/identidade-monocromatica/svg/olhar-mono-mini-positivo.svg",
-      "olhar-mono-mini-negativo": "../fase4/identidade-monocromatica/svg/olhar-mono-mini-negativo.svg",
-      "logo-horizontal-mono-positivo": "../fase4/identidade-monocromatica/svg/logo-horizontal-mono-positivo.svg",
-      "logo-horizontal-mono-negativo": "../fase4/identidade-monocromatica/svg/logo-horizontal-mono-negativo.svg"
-    }
-  },
-  "sprite": "icones/sprite.svg",
+  "apelidos": {},
   "icones": [
     {
-      "nome": "inicio",
-      "rotulo": "Início",
-      "categoria": "navegacao",
-      "svg": "icones/svg/inicio.svg",
-      "sprite_id": "i-inicio",
-      "vectorcraft": "icones/vectorcraft/inicio.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/inicio.png",
-          "20": "icones/png/claro/20/inicio.png",
-          "24": "icones/png/claro/24/inicio.png",
-          "48": "icones/png/claro/48/inicio.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/inicio.png",
-          "20": "icones/png/escuro/20/inicio.png",
-          "24": "icones/png/escuro/24/inicio.png",
-          "48": "icones/png/escuro/48/inicio.png"
-        }
-      }
+      "nome": "apagar",
+      "rotulo": "Excluir de vez",
+      "categoria": "legado",
+      "origem": "legado",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-apagar",
+      "fill_id": null
     },
     {
-      "nome": "voltar",
-      "rotulo": "Voltar",
-      "categoria": "navegacao",
-      "svg": "icones/svg/voltar.svg",
-      "sprite_id": "i-voltar",
-      "vectorcraft": "icones/vectorcraft/voltar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/voltar.png",
-          "20": "icones/png/claro/20/voltar.png",
-          "24": "icones/png/claro/24/voltar.png",
-          "48": "icones/png/claro/48/voltar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/voltar.png",
-          "20": "icones/png/escuro/20/voltar.png",
-          "24": "icones/png/escuro/24/voltar.png",
-          "48": "icones/png/escuro/48/voltar.png"
-        }
-      }
+      "nome": "arrow-clockwise",
+      "rotulo": "Refazer",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-arrow-clockwise",
+      "fill_id": null
     },
     {
-      "nome": "avancar",
-      "rotulo": "Avançar",
-      "categoria": "navegacao",
-      "svg": "icones/svg/avancar.svg",
-      "sprite_id": "i-avancar",
-      "vectorcraft": "icones/vectorcraft/avancar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/avancar.png",
-          "20": "icones/png/claro/20/avancar.png",
-          "24": "icones/png/claro/24/avancar.png",
-          "48": "icones/png/claro/48/avancar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/avancar.png",
-          "20": "icones/png/escuro/20/avancar.png",
-          "24": "icones/png/escuro/24/avancar.png",
-          "48": "icones/png/escuro/48/avancar.png"
-        }
-      }
+      "nome": "arrow-counter-clockwise",
+      "rotulo": "Desfazer",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-arrow-counter-clockwise",
+      "fill_id": null
     },
     {
-      "nome": "seta-cima",
-      "rotulo": "Seta para cima",
-      "categoria": "navegacao",
-      "svg": "icones/svg/seta-cima.svg",
-      "sprite_id": "i-seta-cima",
-      "vectorcraft": "icones/vectorcraft/seta-cima.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/seta-cima.png",
-          "20": "icones/png/claro/20/seta-cima.png",
-          "24": "icones/png/claro/24/seta-cima.png",
-          "48": "icones/png/claro/48/seta-cima.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/seta-cima.png",
-          "20": "icones/png/escuro/20/seta-cima.png",
-          "24": "icones/png/escuro/24/seta-cima.png",
-          "48": "icones/png/escuro/48/seta-cima.png"
-        }
-      }
+      "nome": "arrow-square-out",
+      "rotulo": "Abrir fora",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-arrow-square-out",
+      "fill_id": "i-arrow-square-out-fill"
     },
     {
-      "nome": "seta-baixo",
-      "rotulo": "Seta para baixo",
-      "categoria": "navegacao",
-      "svg": "icones/svg/seta-baixo.svg",
-      "sprite_id": "i-seta-baixo",
-      "vectorcraft": "icones/vectorcraft/seta-baixo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/seta-baixo.png",
-          "20": "icones/png/claro/20/seta-baixo.png",
-          "24": "icones/png/claro/24/seta-baixo.png",
-          "48": "icones/png/claro/48/seta-baixo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/seta-baixo.png",
-          "20": "icones/png/escuro/20/seta-baixo.png",
-          "24": "icones/png/escuro/24/seta-baixo.png",
-          "48": "icones/png/escuro/48/seta-baixo.png"
-        }
-      }
+      "nome": "arrows-horizontal",
+      "rotulo": "Largura",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-arrows-horizontal",
+      "fill_id": "i-arrows-horizontal-fill"
     },
     {
-      "nome": "chevron-direita",
-      "rotulo": "Expandir / próximo",
+      "nome": "arrows-in",
+      "rotulo": "Modo foco",
       "categoria": "navegacao",
-      "svg": "icones/svg/chevron-direita.svg",
-      "sprite_id": "i-chevron-direita",
-      "vectorcraft": "icones/vectorcraft/chevron-direita.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/chevron-direita.png",
-          "20": "icones/png/claro/20/chevron-direita.png",
-          "24": "icones/png/claro/24/chevron-direita.png",
-          "48": "icones/png/claro/48/chevron-direita.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/chevron-direita.png",
-          "20": "icones/png/escuro/20/chevron-direita.png",
-          "24": "icones/png/escuro/24/chevron-direita.png",
-          "48": "icones/png/escuro/48/chevron-direita.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-arrows-in",
+      "fill_id": "i-arrows-in-fill"
     },
     {
-      "nome": "chevron-esquerda",
+      "nome": "arrows-in-simple",
+      "rotulo": "Ajustar",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-arrows-in-simple",
+      "fill_id": null
+    },
+    {
+      "nome": "book",
+      "rotulo": "Livro",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-book",
+      "fill_id": "i-book-fill"
+    },
+    {
+      "nome": "book-open-text",
+      "rotulo": "Leitura",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-book-open-text",
+      "fill_id": "i-book-open-text-fill"
+    },
+    {
+      "nome": "books",
+      "rotulo": "Biblioteca",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-books",
+      "fill_id": "i-books-fill"
+    },
+    {
+      "nome": "briefcase",
+      "rotulo": "Maleta",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-briefcase",
+      "fill_id": "i-briefcase-fill"
+    },
+    {
+      "nome": "calendar",
+      "rotulo": "Calendário",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-calendar",
+      "fill_id": "i-calendar-fill"
+    },
+    {
+      "nome": "calendar-dot",
+      "rotulo": "Hoje",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-calendar-dot",
+      "fill_id": "i-calendar-dot-fill"
+    },
+    {
+      "nome": "cards",
+      "rotulo": "Flashcards",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-cards",
+      "fill_id": "i-cards-fill"
+    },
+    {
+      "nome": "caret-down",
+      "rotulo": "Abrir lista",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-caret-down",
+      "fill_id": null
+    },
+    {
+      "nome": "caret-left",
       "rotulo": "Anterior",
       "categoria": "navegacao",
-      "svg": "icones/svg/chevron-esquerda.svg",
-      "sprite_id": "i-chevron-esquerda",
-      "vectorcraft": "icones/vectorcraft/chevron-esquerda.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/chevron-esquerda.png",
-          "20": "icones/png/claro/20/chevron-esquerda.png",
-          "24": "icones/png/claro/24/chevron-esquerda.png",
-          "48": "icones/png/claro/48/chevron-esquerda.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/chevron-esquerda.png",
-          "20": "icones/png/escuro/20/chevron-esquerda.png",
-          "24": "icones/png/escuro/24/chevron-esquerda.png",
-          "48": "icones/png/escuro/48/chevron-esquerda.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-caret-left",
+      "fill_id": null
     },
     {
-      "nome": "chevron-baixo",
-      "rotulo": "Recolher / abrir lista",
+      "nome": "caret-right",
+      "rotulo": "Expandir",
       "categoria": "navegacao",
-      "svg": "icones/svg/chevron-baixo.svg",
-      "sprite_id": "i-chevron-baixo",
-      "vectorcraft": "icones/vectorcraft/chevron-baixo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/chevron-baixo.png",
-          "20": "icones/png/claro/20/chevron-baixo.png",
-          "24": "icones/png/claro/24/chevron-baixo.png",
-          "48": "icones/png/claro/48/chevron-baixo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/chevron-baixo.png",
-          "20": "icones/png/escuro/20/chevron-baixo.png",
-          "24": "icones/png/escuro/24/chevron-baixo.png",
-          "48": "icones/png/escuro/48/chevron-baixo.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-caret-right",
+      "fill_id": null
     },
     {
-      "nome": "chevron-cima",
-      "rotulo": "Subir",
+      "nome": "chat-centered-text",
+      "rotulo": "Destaque",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-chat-centered-text",
+      "fill_id": null
+    },
+    {
+      "nome": "chat-teardrop-text",
+      "rotulo": "Conversa",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-chat-teardrop-text",
+      "fill_id": "i-chat-teardrop-text-fill"
+    },
+    {
+      "nome": "check",
+      "rotulo": "Marca",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-check",
+      "fill_id": null
+    },
+    {
+      "nome": "check-circle",
+      "rotulo": "Salvo",
+      "categoria": "feedback",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-check-circle",
+      "fill_id": null
+    },
+    {
+      "nome": "check-square",
+      "rotulo": "Tarefa",
       "categoria": "navegacao",
-      "svg": "icones/svg/chevron-cima.svg",
-      "sprite_id": "i-chevron-cima",
-      "vectorcraft": "icones/vectorcraft/chevron-cima.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/chevron-cima.png",
-          "20": "icones/png/claro/20/chevron-cima.png",
-          "24": "icones/png/claro/24/chevron-cima.png",
-          "48": "icones/png/claro/48/chevron-cima.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/chevron-cima.png",
-          "20": "icones/png/escuro/20/chevron-cima.png",
-          "24": "icones/png/escuro/24/chevron-cima.png",
-          "48": "icones/png/escuro/48/chevron-cima.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-check-square",
+      "fill_id": "i-check-square-fill"
     },
     {
-      "nome": "mais",
-      "rotulo": "Adicionar",
+      "nome": "circle",
+      "rotulo": "Elipse",
+      "categoria": "canvas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-circle",
+      "fill_id": "i-circle-fill"
+    },
+    {
+      "nome": "clock-counter-clockwise",
+      "rotulo": "Versões",
       "categoria": "navegacao",
-      "svg": "icones/svg/mais.svg",
-      "sprite_id": "i-mais",
-      "vectorcraft": "icones/vectorcraft/mais.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/mais.png",
-          "20": "icones/png/claro/20/mais.png",
-          "24": "icones/png/claro/24/mais.png",
-          "48": "icones/png/claro/48/mais.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/mais.png",
-          "20": "icones/png/escuro/20/mais.png",
-          "24": "icones/png/escuro/24/mais.png",
-          "48": "icones/png/escuro/48/mais.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-clock-counter-clockwise",
+      "fill_id": "i-clock-counter-clockwise-fill"
     },
     {
-      "nome": "menos",
-      "rotulo": "Remover",
+      "nome": "code",
+      "rotulo": "Código",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-code",
+      "fill_id": "i-code-fill"
+    },
+    {
+      "nome": "code-block",
+      "rotulo": "Bloco de código",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-code-block",
+      "fill_id": "i-code-block-fill"
+    },
+    {
+      "nome": "command",
+      "rotulo": "Comandos",
       "categoria": "navegacao",
-      "svg": "icones/svg/menos.svg",
-      "sprite_id": "i-menos",
-      "vectorcraft": "icones/vectorcraft/menos.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/menos.png",
-          "20": "icones/png/claro/20/menos.png",
-          "24": "icones/png/claro/24/menos.png",
-          "48": "icones/png/claro/48/menos.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/menos.png",
-          "20": "icones/png/escuro/20/menos.png",
-          "24": "icones/png/escuro/24/menos.png",
-          "48": "icones/png/escuro/48/menos.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-command",
+      "fill_id": "i-command-fill"
     },
     {
-      "nome": "fechar",
-      "rotulo": "Fechar",
-      "categoria": "navegacao",
-      "svg": "icones/svg/fechar.svg",
-      "sprite_id": "i-fechar",
-      "vectorcraft": "icones/vectorcraft/fechar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/fechar.png",
-          "20": "icones/png/claro/20/fechar.png",
-          "24": "icones/png/claro/24/fechar.png",
-          "48": "icones/png/claro/48/fechar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/fechar.png",
-          "20": "icones/png/escuro/20/fechar.png",
-          "24": "icones/png/escuro/24/fechar.png",
-          "48": "icones/png/escuro/48/fechar.png"
-        }
-      }
-    },
-    {
-      "nome": "mais-opcoes",
-      "rotulo": "Mais opções",
-      "categoria": "navegacao",
-      "svg": "icones/svg/mais-opcoes.svg",
-      "sprite_id": "i-mais-opcoes",
-      "vectorcraft": "icones/vectorcraft/mais-opcoes.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/mais-opcoes.png",
-          "20": "icones/png/claro/20/mais-opcoes.png",
-          "24": "icones/png/claro/24/mais-opcoes.png",
-          "48": "icones/png/claro/48/mais-opcoes.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/mais-opcoes.png",
-          "20": "icones/png/escuro/20/mais-opcoes.png",
-          "24": "icones/png/escuro/24/mais-opcoes.png",
-          "48": "icones/png/escuro/48/mais-opcoes.png"
-        }
-      }
-    },
-    {
-      "nome": "arrastar",
-      "rotulo": "Arrastar",
-      "categoria": "navegacao",
-      "svg": "icones/svg/arrastar.svg",
-      "sprite_id": "i-arrastar",
-      "vectorcraft": "icones/vectorcraft/arrastar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/arrastar.png",
-          "20": "icones/png/claro/20/arrastar.png",
-          "24": "icones/png/claro/24/arrastar.png",
-          "48": "icones/png/claro/48/arrastar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/arrastar.png",
-          "20": "icones/png/escuro/20/arrastar.png",
-          "24": "icones/png/escuro/24/arrastar.png",
-          "48": "icones/png/escuro/48/arrastar.png"
-        }
-      }
-    },
-    {
-      "nome": "painel-lateral",
-      "rotulo": "Barra lateral",
-      "categoria": "navegacao",
-      "svg": "icones/svg/painel-lateral.svg",
-      "sprite_id": "i-painel-lateral",
-      "vectorcraft": "icones/vectorcraft/painel-lateral.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/painel-lateral.png",
-          "20": "icones/png/claro/20/painel-lateral.png",
-          "24": "icones/png/claro/24/painel-lateral.png",
-          "48": "icones/png/claro/48/painel-lateral.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/painel-lateral.png",
-          "20": "icones/png/escuro/20/painel-lateral.png",
-          "24": "icones/png/escuro/24/painel-lateral.png",
-          "48": "icones/png/escuro/48/painel-lateral.png"
-        }
-      }
-    },
-    {
-      "nome": "painel-direito",
-      "rotulo": "Painel direito",
-      "categoria": "navegacao",
-      "svg": "icones/svg/painel-direito.svg",
-      "sprite_id": "i-painel-direito",
-      "vectorcraft": "icones/vectorcraft/painel-direito.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/painel-direito.png",
-          "20": "icones/png/claro/20/painel-direito.png",
-          "24": "icones/png/claro/24/painel-direito.png",
-          "48": "icones/png/claro/48/painel-direito.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/painel-direito.png",
-          "20": "icones/png/escuro/20/painel-direito.png",
-          "24": "icones/png/escuro/24/painel-direito.png",
-          "48": "icones/png/escuro/48/painel-direito.png"
-        }
-      }
-    },
-    {
-      "nome": "dividir",
-      "rotulo": "Dividir editor",
-      "categoria": "navegacao",
-      "svg": "icones/svg/dividir.svg",
-      "sprite_id": "i-dividir",
-      "vectorcraft": "icones/vectorcraft/dividir.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/dividir.png",
-          "20": "icones/png/claro/20/dividir.png",
-          "24": "icones/png/claro/24/dividir.png",
-          "48": "icones/png/claro/48/dividir.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/dividir.png",
-          "20": "icones/png/escuro/20/dividir.png",
-          "24": "icones/png/escuro/24/dividir.png",
-          "48": "icones/png/escuro/48/dividir.png"
-        }
-      }
-    },
-    {
-      "nome": "externo",
-      "rotulo": "Abrir fora",
-      "categoria": "navegacao",
-      "svg": "icones/svg/externo.svg",
-      "sprite_id": "i-externo",
-      "vectorcraft": "icones/vectorcraft/externo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/externo.png",
-          "20": "icones/png/claro/20/externo.png",
-          "24": "icones/png/claro/24/externo.png",
-          "48": "icones/png/claro/48/externo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/externo.png",
-          "20": "icones/png/escuro/20/externo.png",
-          "24": "icones/png/escuro/24/externo.png",
-          "48": "icones/png/escuro/48/externo.png"
-        }
-      }
-    },
-    {
-      "nome": "janela-minimizar",
-      "rotulo": "Minimizar",
-      "categoria": "janela",
-      "svg": "icones/svg/janela-minimizar.svg",
-      "sprite_id": "i-janela-minimizar",
-      "vectorcraft": "icones/vectorcraft/janela-minimizar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/janela-minimizar.png",
-          "20": "icones/png/claro/20/janela-minimizar.png",
-          "24": "icones/png/claro/24/janela-minimizar.png",
-          "48": "icones/png/claro/48/janela-minimizar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/janela-minimizar.png",
-          "20": "icones/png/escuro/20/janela-minimizar.png",
-          "24": "icones/png/escuro/24/janela-minimizar.png",
-          "48": "icones/png/escuro/48/janela-minimizar.png"
-        }
-      }
-    },
-    {
-      "nome": "janela-maximizar",
+      "nome": "corners-out",
       "rotulo": "Maximizar",
       "categoria": "janela",
-      "svg": "icones/svg/janela-maximizar.svg",
-      "sprite_id": "i-janela-maximizar",
-      "vectorcraft": "icones/vectorcraft/janela-maximizar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/janela-maximizar.png",
-          "20": "icones/png/claro/20/janela-maximizar.png",
-          "24": "icones/png/claro/24/janela-maximizar.png",
-          "48": "icones/png/claro/48/janela-maximizar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/janela-maximizar.png",
-          "20": "icones/png/escuro/20/janela-maximizar.png",
-          "24": "icones/png/escuro/24/janela-maximizar.png",
-          "48": "icones/png/escuro/48/janela-maximizar.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-corners-out",
+      "fill_id": null
     },
     {
-      "nome": "janela-restaurar",
-      "rotulo": "Restaurar",
-      "categoria": "janela",
-      "svg": "icones/svg/janela-restaurar.svg",
-      "sprite_id": "i-janela-restaurar",
-      "vectorcraft": "icones/vectorcraft/janela-restaurar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/janela-restaurar.png",
-          "20": "icones/png/claro/20/janela-restaurar.png",
-          "24": "icones/png/claro/24/janela-restaurar.png",
-          "48": "icones/png/claro/48/janela-restaurar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/janela-restaurar.png",
-          "20": "icones/png/escuro/20/janela-restaurar.png",
-          "24": "icones/png/escuro/24/janela-restaurar.png",
-          "48": "icones/png/escuro/48/janela-restaurar.png"
-        }
-      }
+      "nome": "cursor",
+      "rotulo": "Selecionar",
+      "categoria": "canvas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-cursor",
+      "fill_id": "i-cursor-fill"
     },
     {
-      "nome": "biblioteca",
-      "rotulo": "Biblioteca",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/biblioteca.svg",
-      "sprite_id": "i-biblioteca",
-      "vectorcraft": "icones/vectorcraft/biblioteca.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/biblioteca.png",
-          "20": "icones/png/claro/20/biblioteca.png",
-          "24": "icones/png/claro/24/biblioteca.png",
-          "48": "icones/png/claro/48/biblioteca.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/biblioteca.png",
-          "20": "icones/png/escuro/20/biblioteca.png",
-          "24": "icones/png/escuro/24/biblioteca.png",
-          "48": "icones/png/escuro/48/biblioteca.png"
-        }
-      }
+      "nome": "desktop",
+      "rotulo": "Sistema",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-desktop",
+      "fill_id": "i-desktop-fill"
     },
     {
-      "nome": "estante",
-      "rotulo": "Estante",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/estante.svg",
-      "sprite_id": "i-estante",
-      "vectorcraft": "icones/vectorcraft/estante.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/estante.png",
-          "20": "icones/png/claro/20/estante.png",
-          "24": "icones/png/claro/24/estante.png",
-          "48": "icones/png/claro/48/estante.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/estante.png",
-          "20": "icones/png/escuro/20/estante.png",
-          "24": "icones/png/escuro/24/estante.png",
-          "48": "icones/png/escuro/48/estante.png"
-        }
-      }
+      "nome": "diamond",
+      "rotulo": "Losango",
+      "categoria": "canvas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-diamond",
+      "fill_id": "i-diamond-fill"
     },
     {
-      "nome": "pasta",
+      "nome": "dots-six-vertical",
+      "rotulo": "Arrastar",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-dots-six-vertical",
+      "fill_id": null
+    },
+    {
+      "nome": "dots-three",
+      "rotulo": "Mais opções",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-dots-three",
+      "fill_id": "i-dots-three-fill"
+    },
+    {
+      "nome": "file",
+      "rotulo": "Arquivo",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-file",
+      "fill_id": "i-file-fill"
+    },
+    {
+      "nome": "file-dashed",
+      "rotulo": "Modelo",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-file-dashed",
+      "fill_id": "i-file-dashed-fill"
+    },
+    {
+      "nome": "flag",
+      "rotulo": "Prioridade",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-flag",
+      "fill_id": null
+    },
+    {
+      "nome": "flow-arrow",
+      "rotulo": "Conector",
+      "categoria": "canvas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-flow-arrow",
+      "fill_id": "i-flow-arrow-fill"
+    },
+    {
+      "nome": "folder",
       "rotulo": "Pasta",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/pasta.svg",
-      "sprite_id": "i-pasta",
-      "vectorcraft": "icones/vectorcraft/pasta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/pasta.png",
-          "20": "icones/png/claro/20/pasta.png",
-          "24": "icones/png/claro/24/pasta.png",
-          "48": "icones/png/claro/48/pasta.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/pasta.png",
-          "20": "icones/png/escuro/20/pasta.png",
-          "24": "icones/png/escuro/24/pasta.png",
-          "48": "icones/png/escuro/48/pasta.png"
-        }
-      }
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-folder",
+      "fill_id": "i-folder-fill"
     },
     {
-      "nome": "pasta-aberta",
+      "nome": "folder-open",
       "rotulo": "Pasta aberta",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/pasta-aberta.svg",
-      "sprite_id": "i-pasta-aberta",
-      "vectorcraft": "icones/vectorcraft/pasta-aberta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/pasta-aberta.png",
-          "20": "icones/png/claro/20/pasta-aberta.png",
-          "24": "icones/png/claro/24/pasta-aberta.png",
-          "48": "icones/png/claro/48/pasta-aberta.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/pasta-aberta.png",
-          "20": "icones/png/escuro/20/pasta-aberta.png",
-          "24": "icones/png/escuro/24/pasta-aberta.png",
-          "48": "icones/png/escuro/48/pasta-aberta.png"
-        }
-      }
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-folder-open",
+      "fill_id": "i-folder-open-fill"
     },
     {
-      "nome": "nota",
-      "rotulo": "Nota",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/nota.svg",
-      "sprite_id": "i-nota",
-      "vectorcraft": "icones/vectorcraft/nota.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/nota.png",
-          "20": "icones/png/claro/20/nota.png",
-          "24": "icones/png/claro/24/nota.png",
-          "48": "icones/png/claro/48/nota.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/nota.png",
-          "20": "icones/png/escuro/20/nota.png",
-          "24": "icones/png/escuro/24/nota.png",
-          "48": "icones/png/escuro/48/nota.png"
-        }
-      }
+      "nome": "folder-plus",
+      "rotulo": "Nova pasta",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-folder-plus",
+      "fill_id": "i-folder-plus-fill"
     },
     {
-      "nome": "nota-nova",
-      "rotulo": "Nova nota",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/nota-nova.svg",
-      "sprite_id": "i-nota-nova",
-      "vectorcraft": "icones/vectorcraft/nota-nova.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/nota-nova.png",
-          "20": "icones/png/claro/20/nota-nova.png",
-          "24": "icones/png/claro/24/nota-nova.png",
-          "48": "icones/png/claro/48/nota-nova.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/nota-nova.png",
-          "20": "icones/png/escuro/20/nota-nova.png",
-          "24": "icones/png/escuro/24/nota-nova.png",
-          "48": "icones/png/escuro/48/nota-nova.png"
-        }
-      }
+      "nome": "funnel",
+      "rotulo": "Filtro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-funnel",
+      "fill_id": "i-funnel-fill"
     },
     {
-      "nome": "nota-diaria",
-      "rotulo": "Nota diária",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/nota-diaria.svg",
-      "sprite_id": "i-nota-diaria",
-      "vectorcraft": "icones/vectorcraft/nota-diaria.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/nota-diaria.png",
-          "20": "icones/png/claro/20/nota-diaria.png",
-          "24": "icones/png/claro/24/nota-diaria.png",
-          "48": "icones/png/claro/48/nota-diaria.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/nota-diaria.png",
-          "20": "icones/png/escuro/20/nota-diaria.png",
-          "24": "icones/png/escuro/24/nota-diaria.png",
-          "48": "icones/png/escuro/48/nota-diaria.png"
-        }
-      }
+      "nome": "gear",
+      "rotulo": "Configurações",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-gear",
+      "fill_id": "i-gear-fill"
     },
     {
-      "nome": "pagina",
-      "rotulo": "Página / documento",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/pagina.svg",
-      "sprite_id": "i-pagina",
-      "vectorcraft": "icones/vectorcraft/pagina.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/pagina.png",
-          "20": "icones/png/claro/20/pagina.png",
-          "24": "icones/png/claro/24/pagina.png",
-          "48": "icones/png/claro/48/pagina.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/pagina.png",
-          "20": "icones/png/escuro/20/pagina.png",
-          "24": "icones/png/escuro/24/pagina.png",
-          "48": "icones/png/escuro/48/pagina.png"
-        }
-      }
+      "nome": "globe",
+      "rotulo": "Globo",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-globe",
+      "fill_id": "i-globe-fill"
     },
     {
-      "nome": "anexo",
-      "rotulo": "Anexo",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/anexo.svg",
-      "sprite_id": "i-anexo",
-      "vectorcraft": "icones/vectorcraft/anexo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/anexo.png",
-          "20": "icones/png/claro/20/anexo.png",
-          "24": "icones/png/claro/24/anexo.png",
-          "48": "icones/png/claro/48/anexo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/anexo.png",
-          "20": "icones/png/escuro/20/anexo.png",
-          "24": "icones/png/escuro/24/anexo.png",
-          "48": "icones/png/escuro/48/anexo.png"
-        }
-      }
+      "nome": "graduation-cap",
+      "rotulo": "Capelo",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-graduation-cap",
+      "fill_id": "i-graduation-cap-fill"
     },
     {
-      "nome": "imagem",
+      "nome": "graph",
+      "rotulo": "Grafo",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-graph",
+      "fill_id": "i-graph-fill"
+    },
+    {
+      "nome": "heart",
+      "rotulo": "Coração",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-heart",
+      "fill_id": "i-heart-fill"
+    },
+    {
+      "nome": "highlighter-circle",
+      "rotulo": "Destacar",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-highlighter-circle",
+      "fill_id": "i-highlighter-circle-fill"
+    },
+    {
+      "nome": "house",
+      "rotulo": "Início",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-house",
+      "fill_id": "i-house-fill"
+    },
+    {
+      "nome": "image",
       "rotulo": "Imagem",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/imagem.svg",
-      "sprite_id": "i-imagem",
-      "vectorcraft": "icones/vectorcraft/imagem.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/imagem.png",
-          "20": "icones/png/claro/20/imagem.png",
-          "24": "icones/png/claro/24/imagem.png",
-          "48": "icones/png/claro/48/imagem.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/imagem.png",
-          "20": "icones/png/escuro/20/imagem.png",
-          "24": "icones/png/escuro/24/imagem.png",
-          "48": "icones/png/escuro/48/imagem.png"
-        }
-      }
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-image",
+      "fill_id": "i-image-fill"
     },
     {
-      "nome": "duplicar",
-      "rotulo": "Duplicar",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/duplicar.svg",
-      "sprite_id": "i-duplicar",
-      "vectorcraft": "icones/vectorcraft/duplicar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/duplicar.png",
-          "20": "icones/png/claro/20/duplicar.png",
-          "24": "icones/png/claro/24/duplicar.png",
-          "48": "icones/png/claro/48/duplicar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/duplicar.png",
-          "20": "icones/png/escuro/20/duplicar.png",
-          "24": "icones/png/escuro/24/duplicar.png",
-          "48": "icones/png/escuro/48/duplicar.png"
-        }
-      }
+      "nome": "kanban",
+      "rotulo": "Quadro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-kanban",
+      "fill_id": "i-kanban-fill"
     },
     {
-      "nome": "mover",
-      "rotulo": "Mover para…",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/mover.svg",
-      "sprite_id": "i-mover",
-      "vectorcraft": "icones/vectorcraft/mover.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/mover.png",
-          "20": "icones/png/claro/20/mover.png",
-          "24": "icones/png/claro/24/mover.png",
-          "48": "icones/png/claro/48/mover.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/mover.png",
-          "20": "icones/png/escuro/20/mover.png",
-          "24": "icones/png/escuro/24/mover.png",
-          "48": "icones/png/escuro/48/mover.png"
-        }
-      }
+      "nome": "lightbulb",
+      "rotulo": "Lâmpada",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-lightbulb",
+      "fill_id": "i-lightbulb-fill"
     },
     {
-      "nome": "renomear",
-      "rotulo": "Renomear",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/renomear.svg",
-      "sprite_id": "i-renomear",
-      "vectorcraft": "icones/vectorcraft/renomear.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/renomear.png",
-          "20": "icones/png/claro/20/renomear.png",
-          "24": "icones/png/claro/24/renomear.png",
-          "48": "icones/png/claro/48/renomear.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/renomear.png",
-          "20": "icones/png/escuro/20/renomear.png",
-          "24": "icones/png/escuro/24/renomear.png",
-          "48": "icones/png/escuro/48/renomear.png"
-        }
-      }
+      "nome": "link",
+      "rotulo": "Link",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-link",
+      "fill_id": "i-link-fill"
     },
     {
-      "nome": "editar",
-      "rotulo": "Editar",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/editar.svg",
-      "sprite_id": "i-editar",
-      "vectorcraft": "icones/vectorcraft/editar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/editar.png",
-          "20": "icones/png/claro/20/editar.png",
-          "24": "icones/png/claro/24/editar.png",
-          "48": "icones/png/claro/48/editar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/editar.png",
-          "20": "icones/png/escuro/20/editar.png",
-          "24": "icones/png/escuro/24/editar.png",
-          "48": "icones/png/escuro/48/editar.png"
-        }
-      }
+      "nome": "list",
+      "rotulo": "Lista",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-list",
+      "fill_id": "i-list-fill"
     },
     {
-      "nome": "lixeira",
-      "rotulo": "Mover para a lixeira",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/lixeira.svg",
-      "sprite_id": "i-lixeira",
-      "vectorcraft": "icones/vectorcraft/lixeira.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/lixeira.png",
-          "20": "icones/png/claro/20/lixeira.png",
-          "24": "icones/png/claro/24/lixeira.png",
-          "48": "icones/png/claro/48/lixeira.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/lixeira.png",
-          "20": "icones/png/escuro/20/lixeira.png",
-          "24": "icones/png/escuro/24/lixeira.png",
-          "48": "icones/png/escuro/48/lixeira.png"
-        }
-      }
+      "nome": "list-bullets",
+      "rotulo": "Lista com marcadores",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-list-bullets",
+      "fill_id": "i-list-bullets-fill"
     },
     {
-      "nome": "arquivar",
-      "rotulo": "Arquivar",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/arquivar.svg",
-      "sprite_id": "i-arquivar",
-      "vectorcraft": "icones/vectorcraft/arquivar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/arquivar.png",
-          "20": "icones/png/claro/20/arquivar.png",
-          "24": "icones/png/claro/24/arquivar.png",
-          "48": "icones/png/claro/48/arquivar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/arquivar.png",
-          "20": "icones/png/escuro/20/arquivar.png",
-          "24": "icones/png/escuro/24/arquivar.png",
-          "48": "icones/png/escuro/48/arquivar.png"
-        }
-      }
+      "nome": "list-numbers",
+      "rotulo": "Lista numerada",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-list-numbers",
+      "fill_id": "i-list-numbers-fill"
+    },
+    {
+      "nome": "lock",
+      "rotulo": "Cadeado",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-lock",
+      "fill_id": null
+    },
+    {
+      "nome": "magnifying-glass",
+      "rotulo": "Busca",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-magnifying-glass",
+      "fill_id": null
+    },
+    {
+      "nome": "magnifying-glass-minus",
+      "rotulo": "Afastar",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-magnifying-glass-minus",
+      "fill_id": null
+    },
+    {
+      "nome": "magnifying-glass-plus",
+      "rotulo": "Aproximar",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-magnifying-glass-plus",
+      "fill_id": null
+    },
+    {
+      "nome": "minus",
+      "rotulo": "Minimizar",
+      "categoria": "janela",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-minus",
+      "fill_id": null
+    },
+    {
+      "nome": "moon",
+      "rotulo": "Tema escuro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-moon",
+      "fill_id": "i-moon-fill"
+    },
+    {
+      "nome": "music-notes",
+      "rotulo": "Música",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-music-notes",
+      "fill_id": "i-music-notes-fill"
+    },
+    {
+      "nome": "note",
+      "rotulo": "Nota",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-note",
+      "fill_id": "i-note-fill"
+    },
+    {
+      "nome": "note-pencil",
+      "rotulo": "Nova nota",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-note-pencil",
+      "fill_id": "i-note-pencil-fill"
+    },
+    {
+      "nome": "paint-brush",
+      "rotulo": "Pincel",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-paint-brush",
+      "fill_id": "i-paint-brush-fill"
+    },
+    {
+      "nome": "paperclip",
+      "rotulo": "Anexo",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-paperclip",
+      "fill_id": "i-paperclip-fill"
+    },
+    {
+      "nome": "plant",
+      "rotulo": "Planta",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-plant",
+      "fill_id": "i-plant-fill"
+    },
+    {
+      "nome": "plus",
+      "rotulo": "Novo",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-plus",
+      "fill_id": null
+    },
+    {
+      "nome": "quotes",
+      "rotulo": "Citação",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-quotes",
+      "fill_id": "i-quotes-fill"
+    },
+    {
+      "nome": "rectangle",
+      "rotulo": "Retângulo",
+      "categoria": "canvas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-rectangle",
+      "fill_id": "i-rectangle-fill"
+    },
+    {
+      "nome": "restaurar",
+      "rotulo": "Restaurar",
+      "categoria": "legado",
+      "origem": "legado",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-restaurar",
+      "fill_id": null
+    },
+    {
+      "nome": "rows",
+      "rotulo": "Linhas",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-rows",
+      "fill_id": "i-rows-fill"
+    },
+    {
+      "nome": "sidebar-simple",
+      "rotulo": "Lateral",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sidebar-simple",
+      "fill_id": "i-sidebar-simple-fill"
+    },
+    {
+      "nome": "sliders",
+      "rotulo": "Forças",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sliders",
+      "fill_id": "i-sliders-fill"
+    },
+    {
+      "nome": "sparkle",
+      "rotulo": "Sofi",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sparkle",
+      "fill_id": "i-sparkle-fill"
+    },
+    {
+      "nome": "squares-four",
+      "rotulo": "Canvas",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-squares-four",
+      "fill_id": "i-squares-four-fill"
+    },
+    {
+      "nome": "star",
+      "rotulo": "Favorito",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-star",
+      "fill_id": "i-star-fill"
+    },
+    {
+      "nome": "sun",
+      "rotulo": "Tema claro",
+      "categoria": "navegacao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-sun",
+      "fill_id": "i-sun-fill"
+    },
+    {
+      "nome": "table",
+      "rotulo": "Tabela",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-table",
+      "fill_id": "i-table-fill"
     },
     {
       "nome": "tag",
       "rotulo": "Tag",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/tag.svg",
+      "categoria": "estante",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
       "sprite_id": "i-tag",
-      "vectorcraft": "icones/vectorcraft/tag.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tag.png",
-          "20": "icones/png/claro/20/tag.png",
-          "24": "icones/png/claro/24/tag.png",
-          "48": "icones/png/claro/48/tag.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tag.png",
-          "20": "icones/png/escuro/20/tag.png",
-          "24": "icones/png/escuro/24/tag.png",
-          "48": "icones/png/escuro/48/tag.png"
-        }
-      }
+      "fill_id": "i-tag-fill"
     },
     {
-      "nome": "hash",
-      "rotulo": "Tag (#)",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/hash.svg",
-      "sprite_id": "i-hash",
-      "vectorcraft": "icones/vectorcraft/hash.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/hash.png",
-          "20": "icones/png/claro/20/hash.png",
-          "24": "icones/png/claro/24/hash.png",
-          "48": "icones/png/claro/48/hash.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/hash.png",
-          "20": "icones/png/escuro/20/hash.png",
-          "24": "icones/png/escuro/24/hash.png",
-          "48": "icones/png/escuro/48/hash.png"
-        }
-      }
-    },
-    {
-      "nome": "titulo",
-      "rotulo": "Título",
-      "categoria": "editor",
-      "svg": "icones/svg/titulo.svg",
-      "sprite_id": "i-titulo",
-      "vectorcraft": "icones/vectorcraft/titulo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/titulo.png",
-          "20": "icones/png/claro/20/titulo.png",
-          "24": "icones/png/claro/24/titulo.png",
-          "48": "icones/png/claro/48/titulo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/titulo.png",
-          "20": "icones/png/escuro/20/titulo.png",
-          "24": "icones/png/escuro/24/titulo.png",
-          "48": "icones/png/escuro/48/titulo.png"
-        }
-      }
-    },
-    {
-      "nome": "texto",
+      "nome": "text-aa",
       "rotulo": "Texto",
-      "categoria": "editor",
-      "svg": "icones/svg/texto.svg",
-      "sprite_id": "i-texto",
-      "vectorcraft": "icones/vectorcraft/texto.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/texto.png",
-          "20": "icones/png/claro/20/texto.png",
-          "24": "icones/png/claro/24/texto.png",
-          "48": "icones/png/claro/48/texto.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/texto.png",
-          "20": "icones/png/escuro/20/texto.png",
-          "24": "icones/png/escuro/24/texto.png",
-          "48": "icones/png/escuro/48/texto.png"
-        }
-      }
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-text-aa",
+      "fill_id": "i-text-aa-fill"
     },
     {
-      "nome": "negrito",
+      "nome": "text-b",
       "rotulo": "Negrito",
-      "categoria": "editor",
-      "svg": "icones/svg/negrito.svg",
-      "sprite_id": "i-negrito",
-      "vectorcraft": "icones/vectorcraft/negrito.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/negrito.png",
-          "20": "icones/png/claro/20/negrito.png",
-          "24": "icones/png/claro/24/negrito.png",
-          "48": "icones/png/claro/48/negrito.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/negrito.png",
-          "20": "icones/png/escuro/20/negrito.png",
-          "24": "icones/png/escuro/24/negrito.png",
-          "48": "icones/png/escuro/48/negrito.png"
-        }
-      }
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-text-b",
+      "fill_id": "i-text-b-fill"
     },
     {
-      "nome": "italico",
+      "nome": "text-h",
+      "rotulo": "Título",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-text-h",
+      "fill_id": "i-text-h-fill"
+    },
+    {
+      "nome": "text-italic",
       "rotulo": "Itálico",
-      "categoria": "editor",
-      "svg": "icones/svg/italico.svg",
-      "sprite_id": "i-italico",
-      "vectorcraft": "icones/vectorcraft/italico.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/italico.png",
-          "20": "icones/png/claro/20/italico.png",
-          "24": "icones/png/claro/24/italico.png",
-          "48": "icones/png/claro/48/italico.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/italico.png",
-          "20": "icones/png/escuro/20/italico.png",
-          "24": "icones/png/escuro/24/italico.png",
-          "48": "icones/png/escuro/48/italico.png"
-        }
-      }
-    },
-    {
-      "nome": "tachado",
-      "rotulo": "Tachado",
-      "categoria": "editor",
-      "svg": "icones/svg/tachado.svg",
-      "sprite_id": "i-tachado",
-      "vectorcraft": "icones/vectorcraft/tachado.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tachado.png",
-          "20": "icones/png/claro/20/tachado.png",
-          "24": "icones/png/claro/24/tachado.png",
-          "48": "icones/png/claro/48/tachado.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tachado.png",
-          "20": "icones/png/escuro/20/tachado.png",
-          "24": "icones/png/escuro/24/tachado.png",
-          "48": "icones/png/escuro/48/tachado.png"
-        }
-      }
-    },
-    {
-      "nome": "codigo",
-      "rotulo": "Código",
-      "categoria": "editor",
-      "svg": "icones/svg/codigo.svg",
-      "sprite_id": "i-codigo",
-      "vectorcraft": "icones/vectorcraft/codigo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/codigo.png",
-          "20": "icones/png/claro/20/codigo.png",
-          "24": "icones/png/claro/24/codigo.png",
-          "48": "icones/png/claro/48/codigo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/codigo.png",
-          "20": "icones/png/escuro/20/codigo.png",
-          "24": "icones/png/escuro/24/codigo.png",
-          "48": "icones/png/escuro/48/codigo.png"
-        }
-      }
-    },
-    {
-      "nome": "bloco-codigo",
-      "rotulo": "Bloco de código",
-      "categoria": "editor",
-      "svg": "icones/svg/bloco-codigo.svg",
-      "sprite_id": "i-bloco-codigo",
-      "vectorcraft": "icones/vectorcraft/bloco-codigo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/bloco-codigo.png",
-          "20": "icones/png/claro/20/bloco-codigo.png",
-          "24": "icones/png/claro/24/bloco-codigo.png",
-          "48": "icones/png/claro/48/bloco-codigo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/bloco-codigo.png",
-          "20": "icones/png/escuro/20/bloco-codigo.png",
-          "24": "icones/png/escuro/24/bloco-codigo.png",
-          "48": "icones/png/escuro/48/bloco-codigo.png"
-        }
-      }
-    },
-    {
-      "nome": "citacao",
-      "rotulo": "Citação",
-      "categoria": "editor",
-      "svg": "icones/svg/citacao.svg",
-      "sprite_id": "i-citacao",
-      "vectorcraft": "icones/vectorcraft/citacao.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/citacao.png",
-          "20": "icones/png/claro/20/citacao.png",
-          "24": "icones/png/claro/24/citacao.png",
-          "48": "icones/png/claro/48/citacao.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/citacao.png",
-          "20": "icones/png/escuro/20/citacao.png",
-          "24": "icones/png/escuro/24/citacao.png",
-          "48": "icones/png/escuro/48/citacao.png"
-        }
-      }
-    },
-    {
-      "nome": "lista",
-      "rotulo": "Lista",
-      "categoria": "editor",
-      "svg": "icones/svg/lista.svg",
-      "sprite_id": "i-lista",
-      "vectorcraft": "icones/vectorcraft/lista.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/lista.png",
-          "20": "icones/png/claro/20/lista.png",
-          "24": "icones/png/claro/24/lista.png",
-          "48": "icones/png/claro/48/lista.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/lista.png",
-          "20": "icones/png/escuro/20/lista.png",
-          "24": "icones/png/escuro/24/lista.png",
-          "48": "icones/png/escuro/48/lista.png"
-        }
-      }
-    },
-    {
-      "nome": "lista-numerada",
-      "rotulo": "Lista numerada",
-      "categoria": "editor",
-      "svg": "icones/svg/lista-numerada.svg",
-      "sprite_id": "i-lista-numerada",
-      "vectorcraft": "icones/vectorcraft/lista-numerada.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/lista-numerada.png",
-          "20": "icones/png/claro/20/lista-numerada.png",
-          "24": "icones/png/claro/24/lista-numerada.png",
-          "48": "icones/png/claro/48/lista-numerada.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/lista-numerada.png",
-          "20": "icones/png/escuro/20/lista-numerada.png",
-          "24": "icones/png/escuro/24/lista-numerada.png",
-          "48": "icones/png/escuro/48/lista-numerada.png"
-        }
-      }
-    },
-    {
-      "nome": "lista-tarefas",
-      "rotulo": "Lista de tarefas",
-      "categoria": "editor",
-      "svg": "icones/svg/lista-tarefas.svg",
-      "sprite_id": "i-lista-tarefas",
-      "vectorcraft": "icones/vectorcraft/lista-tarefas.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/lista-tarefas.png",
-          "20": "icones/png/claro/20/lista-tarefas.png",
-          "24": "icones/png/claro/24/lista-tarefas.png",
-          "48": "icones/png/claro/48/lista-tarefas.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/lista-tarefas.png",
-          "20": "icones/png/escuro/20/lista-tarefas.png",
-          "24": "icones/png/escuro/24/lista-tarefas.png",
-          "48": "icones/png/escuro/48/lista-tarefas.png"
-        }
-      }
-    },
-    {
-      "nome": "tabela",
-      "rotulo": "Tabela",
-      "categoria": "editor",
-      "svg": "icones/svg/tabela.svg",
-      "sprite_id": "i-tabela",
-      "vectorcraft": "icones/vectorcraft/tabela.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tabela.png",
-          "20": "icones/png/claro/20/tabela.png",
-          "24": "icones/png/claro/24/tabela.png",
-          "48": "icones/png/claro/48/tabela.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tabela.png",
-          "20": "icones/png/escuro/20/tabela.png",
-          "24": "icones/png/escuro/24/tabela.png",
-          "48": "icones/png/escuro/48/tabela.png"
-        }
-      }
-    },
-    {
-      "nome": "divisor",
-      "rotulo": "Divisor",
-      "categoria": "editor",
-      "svg": "icones/svg/divisor.svg",
-      "sprite_id": "i-divisor",
-      "vectorcraft": "icones/vectorcraft/divisor.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/divisor.png",
-          "20": "icones/png/claro/20/divisor.png",
-          "24": "icones/png/claro/24/divisor.png",
-          "48": "icones/png/claro/48/divisor.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/divisor.png",
-          "20": "icones/png/escuro/20/divisor.png",
-          "24": "icones/png/escuro/24/divisor.png",
-          "48": "icones/png/escuro/48/divisor.png"
-        }
-      }
-    },
-    {
-      "nome": "link",
-      "rotulo": "Wiki link",
-      "categoria": "editor",
-      "svg": "icones/svg/link.svg",
-      "sprite_id": "i-link",
-      "vectorcraft": "icones/vectorcraft/link.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/link.png",
-          "20": "icones/png/claro/20/link.png",
-          "24": "icones/png/claro/24/link.png",
-          "48": "icones/png/claro/48/link.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/link.png",
-          "20": "icones/png/escuro/20/link.png",
-          "24": "icones/png/escuro/24/link.png",
-          "48": "icones/png/escuro/48/link.png"
-        }
-      }
-    },
-    {
-      "nome": "link-quebrado",
-      "rotulo": "Link quebrado",
-      "categoria": "editor",
-      "svg": "icones/svg/link-quebrado.svg",
-      "sprite_id": "i-link-quebrado",
-      "vectorcraft": "icones/vectorcraft/link-quebrado.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/link-quebrado.png",
-          "20": "icones/png/claro/20/link-quebrado.png",
-          "24": "icones/png/claro/24/link-quebrado.png",
-          "48": "icones/png/claro/48/link-quebrado.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/link-quebrado.png",
-          "20": "icones/png/escuro/20/link-quebrado.png",
-          "24": "icones/png/escuro/24/link-quebrado.png",
-          "48": "icones/png/escuro/48/link-quebrado.png"
-        }
-      }
-    },
-    {
-      "nome": "backlink",
-      "rotulo": "Backlinks (entradas)",
-      "categoria": "editor",
-      "svg": "icones/svg/backlink.svg",
-      "sprite_id": "i-backlink",
-      "vectorcraft": "icones/vectorcraft/backlink.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/backlink.png",
-          "20": "icones/png/claro/20/backlink.png",
-          "24": "icones/png/claro/24/backlink.png",
-          "48": "icones/png/claro/48/backlink.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/backlink.png",
-          "20": "icones/png/escuro/20/backlink.png",
-          "24": "icones/png/escuro/24/backlink.png",
-          "48": "icones/png/escuro/48/backlink.png"
-        }
-      }
-    },
-    {
-      "nome": "mencao",
-      "rotulo": "Mencionar (@)",
-      "categoria": "editor",
-      "svg": "icones/svg/mencao.svg",
-      "sprite_id": "i-mencao",
-      "vectorcraft": "icones/vectorcraft/mencao.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/mencao.png",
-          "20": "icones/png/claro/20/mencao.png",
-          "24": "icones/png/claro/24/mencao.png",
-          "48": "icones/png/claro/48/mencao.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/mencao.png",
-          "20": "icones/png/escuro/20/mencao.png",
-          "24": "icones/png/escuro/24/mencao.png",
-          "48": "icones/png/escuro/48/mencao.png"
-        }
-      }
-    },
-    {
-      "nome": "comando-barra",
-      "rotulo": "Menu de blocos (/)",
-      "categoria": "editor",
-      "svg": "icones/svg/comando-barra.svg",
-      "sprite_id": "i-comando-barra",
-      "vectorcraft": "icones/vectorcraft/comando-barra.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/comando-barra.png",
-          "20": "icones/png/claro/20/comando-barra.png",
-          "24": "icones/png/claro/24/comando-barra.png",
-          "48": "icones/png/claro/48/comando-barra.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/comando-barra.png",
-          "20": "icones/png/escuro/20/comando-barra.png",
-          "24": "icones/png/escuro/24/comando-barra.png",
-          "48": "icones/png/escuro/48/comando-barra.png"
-        }
-      }
-    },
-    {
-      "nome": "tarefa",
-      "rotulo": "Tarefa aberta",
-      "categoria": "tarefas",
-      "svg": "icones/svg/tarefa.svg",
-      "sprite_id": "i-tarefa",
-      "vectorcraft": "icones/vectorcraft/tarefa.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tarefa.png",
-          "20": "icones/png/claro/20/tarefa.png",
-          "24": "icones/png/claro/24/tarefa.png",
-          "48": "icones/png/claro/48/tarefa.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tarefa.png",
-          "20": "icones/png/escuro/20/tarefa.png",
-          "24": "icones/png/escuro/24/tarefa.png",
-          "48": "icones/png/escuro/48/tarefa.png"
-        }
-      }
-    },
-    {
-      "nome": "tarefa-feita",
-      "rotulo": "Tarefa concluída",
-      "categoria": "tarefas",
-      "svg": "icones/svg/tarefa-feita.svg",
-      "sprite_id": "i-tarefa-feita",
-      "vectorcraft": "icones/vectorcraft/tarefa-feita.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tarefa-feita.png",
-          "20": "icones/png/claro/20/tarefa-feita.png",
-          "24": "icones/png/claro/24/tarefa-feita.png",
-          "48": "icones/png/claro/48/tarefa-feita.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tarefa-feita.png",
-          "20": "icones/png/escuro/20/tarefa-feita.png",
-          "24": "icones/png/escuro/24/tarefa-feita.png",
-          "48": "icones/png/escuro/48/tarefa-feita.png"
-        }
-      }
-    },
-    {
-      "nome": "prioridade",
-      "rotulo": "Prioridade",
-      "categoria": "tarefas",
-      "svg": "icones/svg/prioridade.svg",
-      "sprite_id": "i-prioridade",
-      "vectorcraft": "icones/vectorcraft/prioridade.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/prioridade.png",
-          "20": "icones/png/claro/20/prioridade.png",
-          "24": "icones/png/claro/24/prioridade.png",
-          "48": "icones/png/claro/48/prioridade.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/prioridade.png",
-          "20": "icones/png/escuro/20/prioridade.png",
-          "24": "icones/png/escuro/24/prioridade.png",
-          "48": "icones/png/escuro/48/prioridade.png"
-        }
-      }
-    },
-    {
-      "nome": "prioridade-alta",
-      "rotulo": "Prioridade alta",
-      "categoria": "tarefas",
-      "svg": "icones/svg/prioridade-alta.svg",
-      "sprite_id": "i-prioridade-alta",
-      "vectorcraft": "icones/vectorcraft/prioridade-alta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/prioridade-alta.png",
-          "20": "icones/png/claro/20/prioridade-alta.png",
-          "24": "icones/png/claro/24/prioridade-alta.png",
-          "48": "icones/png/claro/48/prioridade-alta.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/prioridade-alta.png",
-          "20": "icones/png/escuro/20/prioridade-alta.png",
-          "24": "icones/png/escuro/24/prioridade-alta.png",
-          "48": "icones/png/escuro/48/prioridade-alta.png"
-        }
-      }
-    },
-    {
-      "nome": "prioridade-media",
-      "rotulo": "Prioridade média",
-      "categoria": "tarefas",
-      "svg": "icones/svg/prioridade-media.svg",
-      "sprite_id": "i-prioridade-media",
-      "vectorcraft": "icones/vectorcraft/prioridade-media.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/prioridade-media.png",
-          "20": "icones/png/claro/20/prioridade-media.png",
-          "24": "icones/png/claro/24/prioridade-media.png",
-          "48": "icones/png/claro/48/prioridade-media.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/prioridade-media.png",
-          "20": "icones/png/escuro/20/prioridade-media.png",
-          "24": "icones/png/escuro/24/prioridade-media.png",
-          "48": "icones/png/escuro/48/prioridade-media.png"
-        }
-      }
-    },
-    {
-      "nome": "prioridade-baixa",
-      "rotulo": "Prioridade baixa",
-      "categoria": "tarefas",
-      "svg": "icones/svg/prioridade-baixa.svg",
-      "sprite_id": "i-prioridade-baixa",
-      "vectorcraft": "icones/vectorcraft/prioridade-baixa.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/prioridade-baixa.png",
-          "20": "icones/png/claro/20/prioridade-baixa.png",
-          "24": "icones/png/claro/24/prioridade-baixa.png",
-          "48": "icones/png/claro/48/prioridade-baixa.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/prioridade-baixa.png",
-          "20": "icones/png/escuro/20/prioridade-baixa.png",
-          "24": "icones/png/escuro/24/prioridade-baixa.png",
-          "48": "icones/png/escuro/48/prioridade-baixa.png"
-        }
-      }
-    },
-    {
-      "nome": "prazo",
-      "rotulo": "Prazo",
-      "categoria": "tarefas",
-      "svg": "icones/svg/prazo.svg",
-      "sprite_id": "i-prazo",
-      "vectorcraft": "icones/vectorcraft/prazo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/prazo.png",
-          "20": "icones/png/claro/20/prazo.png",
-          "24": "icones/png/claro/24/prazo.png",
-          "48": "icones/png/claro/48/prazo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/prazo.png",
-          "20": "icones/png/escuro/20/prazo.png",
-          "24": "icones/png/escuro/24/prazo.png",
-          "48": "icones/png/escuro/48/prazo.png"
-        }
-      }
-    },
-    {
-      "nome": "relogio",
-      "rotulo": "Hora",
-      "categoria": "tarefas",
-      "svg": "icones/svg/relogio.svg",
-      "sprite_id": "i-relogio",
-      "vectorcraft": "icones/vectorcraft/relogio.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/relogio.png",
-          "20": "icones/png/claro/20/relogio.png",
-          "24": "icones/png/claro/24/relogio.png",
-          "48": "icones/png/claro/48/relogio.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/relogio.png",
-          "20": "icones/png/escuro/20/relogio.png",
-          "24": "icones/png/escuro/24/relogio.png",
-          "48": "icones/png/escuro/48/relogio.png"
-        }
-      }
-    },
-    {
-      "nome": "repetir",
-      "rotulo": "Recorrente",
-      "categoria": "tarefas",
-      "svg": "icones/svg/repetir.svg",
-      "sprite_id": "i-repetir",
-      "vectorcraft": "icones/vectorcraft/repetir.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/repetir.png",
-          "20": "icones/png/claro/20/repetir.png",
-          "24": "icones/png/claro/24/repetir.png",
-          "48": "icones/png/claro/48/repetir.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/repetir.png",
-          "20": "icones/png/escuro/20/repetir.png",
-          "24": "icones/png/escuro/24/repetir.png",
-          "48": "icones/png/escuro/48/repetir.png"
-        }
-      }
-    },
-    {
-      "nome": "calendario",
-      "rotulo": "Calendário",
-      "categoria": "calendario",
-      "svg": "icones/svg/calendario.svg",
-      "sprite_id": "i-calendario",
-      "vectorcraft": "icones/vectorcraft/calendario.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/calendario.png",
-          "20": "icones/png/claro/20/calendario.png",
-          "24": "icones/png/claro/24/calendario.png",
-          "48": "icones/png/claro/48/calendario.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/calendario.png",
-          "20": "icones/png/escuro/20/calendario.png",
-          "24": "icones/png/escuro/24/calendario.png",
-          "48": "icones/png/escuro/48/calendario.png"
-        }
-      }
-    },
-    {
-      "nome": "hoje",
-      "rotulo": "Hoje",
-      "categoria": "calendario",
-      "svg": "icones/svg/hoje.svg",
-      "sprite_id": "i-hoje",
-      "vectorcraft": "icones/vectorcraft/hoje.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/hoje.png",
-          "20": "icones/png/claro/20/hoje.png",
-          "24": "icones/png/claro/24/hoje.png",
-          "48": "icones/png/claro/48/hoje.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/hoje.png",
-          "20": "icones/png/escuro/20/hoje.png",
-          "24": "icones/png/escuro/24/hoje.png",
-          "48": "icones/png/escuro/48/hoje.png"
-        }
-      }
-    },
-    {
-      "nome": "visao-grade",
-      "rotulo": "Visão em grade",
-      "categoria": "calendario",
-      "svg": "icones/svg/visao-grade.svg",
-      "sprite_id": "i-visao-grade",
-      "vectorcraft": "icones/vectorcraft/visao-grade.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/visao-grade.png",
-          "20": "icones/png/claro/20/visao-grade.png",
-          "24": "icones/png/claro/24/visao-grade.png",
-          "48": "icones/png/claro/48/visao-grade.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/visao-grade.png",
-          "20": "icones/png/escuro/20/visao-grade.png",
-          "24": "icones/png/escuro/24/visao-grade.png",
-          "48": "icones/png/escuro/48/visao-grade.png"
-        }
-      }
-    },
-    {
-      "nome": "visao-lista",
-      "rotulo": "Visão em lista",
-      "categoria": "calendario",
-      "svg": "icones/svg/visao-lista.svg",
-      "sprite_id": "i-visao-lista",
-      "vectorcraft": "icones/vectorcraft/visao-lista.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/visao-lista.png",
-          "20": "icones/png/claro/20/visao-lista.png",
-          "24": "icones/png/claro/24/visao-lista.png",
-          "48": "icones/png/claro/48/visao-lista.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/visao-lista.png",
-          "20": "icones/png/escuro/20/visao-lista.png",
-          "24": "icones/png/escuro/24/visao-lista.png",
-          "48": "icones/png/escuro/48/visao-lista.png"
-        }
-      }
-    },
-    {
-      "nome": "visao-quadro",
-      "rotulo": "Visão em quadro",
-      "categoria": "calendario",
-      "svg": "icones/svg/visao-quadro.svg",
-      "sprite_id": "i-visao-quadro",
-      "vectorcraft": "icones/vectorcraft/visao-quadro.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/visao-quadro.png",
-          "20": "icones/png/claro/20/visao-quadro.png",
-          "24": "icones/png/claro/24/visao-quadro.png",
-          "48": "icones/png/claro/48/visao-quadro.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/visao-quadro.png",
-          "20": "icones/png/escuro/20/visao-quadro.png",
-          "24": "icones/png/escuro/24/visao-quadro.png",
-          "48": "icones/png/escuro/48/visao-quadro.png"
-        }
-      }
-    },
-    {
-      "nome": "grafo",
-      "rotulo": "Grafo",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/grafo.svg",
-      "sprite_id": "i-grafo",
-      "vectorcraft": "icones/vectorcraft/grafo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/grafo.png",
-          "20": "icones/png/claro/20/grafo.png",
-          "24": "icones/png/claro/24/grafo.png",
-          "48": "icones/png/claro/48/grafo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/grafo.png",
-          "20": "icones/png/escuro/20/grafo.png",
-          "24": "icones/png/escuro/24/grafo.png",
-          "48": "icones/png/escuro/48/grafo.png"
-        }
-      }
-    },
-    {
-      "nome": "canvas",
-      "rotulo": "Canvas",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/canvas.svg",
-      "sprite_id": "i-canvas",
-      "vectorcraft": "icones/vectorcraft/canvas.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/canvas.png",
-          "20": "icones/png/claro/20/canvas.png",
-          "24": "icones/png/claro/24/canvas.png",
-          "48": "icones/png/claro/48/canvas.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/canvas.png",
-          "20": "icones/png/escuro/20/canvas.png",
-          "24": "icones/png/escuro/24/canvas.png",
-          "48": "icones/png/escuro/48/canvas.png"
-        }
-      }
-    },
-    {
-      "nome": "cartao",
-      "rotulo": "Cartão",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/cartao.svg",
-      "sprite_id": "i-cartao",
-      "vectorcraft": "icones/vectorcraft/cartao.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/cartao.png",
-          "20": "icones/png/claro/20/cartao.png",
-          "24": "icones/png/claro/24/cartao.png",
-          "48": "icones/png/claro/48/cartao.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/cartao.png",
-          "20": "icones/png/escuro/20/cartao.png",
-          "24": "icones/png/escuro/24/cartao.png",
-          "48": "icones/png/escuro/48/cartao.png"
-        }
-      }
-    },
-    {
-      "nome": "nota-adesiva",
-      "rotulo": "Nota adesiva",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/nota-adesiva.svg",
-      "sprite_id": "i-nota-adesiva",
-      "vectorcraft": "icones/vectorcraft/nota-adesiva.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/nota-adesiva.png",
-          "20": "icones/png/claro/20/nota-adesiva.png",
-          "24": "icones/png/claro/24/nota-adesiva.png",
-          "48": "icones/png/claro/48/nota-adesiva.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/nota-adesiva.png",
-          "20": "icones/png/escuro/20/nota-adesiva.png",
-          "24": "icones/png/escuro/24/nota-adesiva.png",
-          "48": "icones/png/escuro/48/nota-adesiva.png"
-        }
-      }
-    },
-    {
-      "nome": "grupo",
-      "rotulo": "Grupo",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/grupo.svg",
-      "sprite_id": "i-grupo",
-      "vectorcraft": "icones/vectorcraft/grupo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/grupo.png",
-          "20": "icones/png/claro/20/grupo.png",
-          "24": "icones/png/claro/24/grupo.png",
-          "48": "icones/png/claro/48/grupo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/grupo.png",
-          "20": "icones/png/escuro/20/grupo.png",
-          "24": "icones/png/escuro/24/grupo.png",
-          "48": "icones/png/escuro/48/grupo.png"
-        }
-      }
-    },
-    {
-      "nome": "conector",
-      "rotulo": "Conector",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/conector.svg",
-      "sprite_id": "i-conector",
-      "vectorcraft": "icones/vectorcraft/conector.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/conector.png",
-          "20": "icones/png/claro/20/conector.png",
-          "24": "icones/png/claro/24/conector.png",
-          "48": "icones/png/claro/48/conector.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/conector.png",
-          "20": "icones/png/escuro/20/conector.png",
-          "24": "icones/png/escuro/24/conector.png",
-          "48": "icones/png/escuro/48/conector.png"
-        }
-      }
-    },
-    {
-      "nome": "selecionar",
-      "rotulo": "Selecionar",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/selecionar.svg",
-      "sprite_id": "i-selecionar",
-      "vectorcraft": "icones/vectorcraft/selecionar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/selecionar.png",
-          "20": "icones/png/claro/20/selecionar.png",
-          "24": "icones/png/claro/24/selecionar.png",
-          "48": "icones/png/claro/48/selecionar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/selecionar.png",
-          "20": "icones/png/escuro/20/selecionar.png",
-          "24": "icones/png/escuro/24/selecionar.png",
-          "48": "icones/png/escuro/48/selecionar.png"
-        }
-      }
-    },
-    {
-      "nome": "mover-canvas",
-      "rotulo": "Mover a vista",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/mover-canvas.svg",
-      "sprite_id": "i-mover-canvas",
-      "vectorcraft": "icones/vectorcraft/mover-canvas.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/mover-canvas.png",
-          "20": "icones/png/claro/20/mover-canvas.png",
-          "24": "icones/png/claro/24/mover-canvas.png",
-          "48": "icones/png/claro/48/mover-canvas.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/mover-canvas.png",
-          "20": "icones/png/escuro/20/mover-canvas.png",
-          "24": "icones/png/escuro/24/mover-canvas.png",
-          "48": "icones/png/escuro/48/mover-canvas.png"
-        }
-      }
-    },
-    {
-      "nome": "zoom-mais",
-      "rotulo": "Aproximar",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/zoom-mais.svg",
-      "sprite_id": "i-zoom-mais",
-      "vectorcraft": "icones/vectorcraft/zoom-mais.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/zoom-mais.png",
-          "20": "icones/png/claro/20/zoom-mais.png",
-          "24": "icones/png/claro/24/zoom-mais.png",
-          "48": "icones/png/claro/48/zoom-mais.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/zoom-mais.png",
-          "20": "icones/png/escuro/20/zoom-mais.png",
-          "24": "icones/png/escuro/24/zoom-mais.png",
-          "48": "icones/png/escuro/48/zoom-mais.png"
-        }
-      }
-    },
-    {
-      "nome": "zoom-menos",
-      "rotulo": "Afastar",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/zoom-menos.svg",
-      "sprite_id": "i-zoom-menos",
-      "vectorcraft": "icones/vectorcraft/zoom-menos.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/zoom-menos.png",
-          "20": "icones/png/claro/20/zoom-menos.png",
-          "24": "icones/png/claro/24/zoom-menos.png",
-          "48": "icones/png/claro/48/zoom-menos.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/zoom-menos.png",
-          "20": "icones/png/escuro/20/zoom-menos.png",
-          "24": "icones/png/escuro/24/zoom-menos.png",
-          "48": "icones/png/escuro/48/zoom-menos.png"
-        }
-      }
-    },
-    {
-      "nome": "ajustar",
-      "rotulo": "Ajustar à tela",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/ajustar.svg",
-      "sprite_id": "i-ajustar",
-      "vectorcraft": "icones/vectorcraft/ajustar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/ajustar.png",
-          "20": "icones/png/claro/20/ajustar.png",
-          "24": "icones/png/claro/24/ajustar.png",
-          "48": "icones/png/claro/48/ajustar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/ajustar.png",
-          "20": "icones/png/escuro/20/ajustar.png",
-          "24": "icones/png/escuro/24/ajustar.png",
-          "48": "icones/png/escuro/48/ajustar.png"
-        }
-      }
-    },
-    {
-      "nome": "minimapa",
-      "rotulo": "Minimapa",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/minimapa.svg",
-      "sprite_id": "i-minimapa",
-      "vectorcraft": "icones/vectorcraft/minimapa.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/minimapa.png",
-          "20": "icones/png/claro/20/minimapa.png",
-          "24": "icones/png/claro/24/minimapa.png",
-          "48": "icones/png/claro/48/minimapa.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/minimapa.png",
-          "20": "icones/png/escuro/20/minimapa.png",
-          "24": "icones/png/escuro/24/minimapa.png",
-          "48": "icones/png/escuro/48/minimapa.png"
-        }
-      }
-    },
-    {
-      "nome": "foco-no",
-      "rotulo": "Focar nesta nota",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/foco-no.svg",
-      "sprite_id": "i-foco-no",
-      "vectorcraft": "icones/vectorcraft/foco-no.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/foco-no.png",
-          "20": "icones/png/claro/20/foco-no.png",
-          "24": "icones/png/claro/24/foco-no.png",
-          "48": "icones/png/claro/48/foco-no.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/foco-no.png",
-          "20": "icones/png/escuro/20/foco-no.png",
-          "24": "icones/png/escuro/24/foco-no.png",
-          "48": "icones/png/escuro/48/foco-no.png"
-        }
-      }
-    },
-    {
-      "nome": "consulta",
-      "rotulo": "Consulta salva",
-      "categoria": "consultas",
-      "svg": "icones/svg/consulta.svg",
-      "sprite_id": "i-consulta",
-      "vectorcraft": "icones/vectorcraft/consulta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/consulta.png",
-          "20": "icones/png/claro/20/consulta.png",
-          "24": "icones/png/claro/24/consulta.png",
-          "48": "icones/png/claro/48/consulta.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/consulta.png",
-          "20": "icones/png/escuro/20/consulta.png",
-          "24": "icones/png/escuro/24/consulta.png",
-          "48": "icones/png/escuro/48/consulta.png"
-        }
-      }
-    },
-    {
-      "nome": "fixar",
-      "rotulo": "Fixar",
-      "categoria": "consultas",
-      "svg": "icones/svg/fixar.svg",
-      "sprite_id": "i-fixar",
-      "vectorcraft": "icones/vectorcraft/fixar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/fixar.png",
-          "20": "icones/png/claro/20/fixar.png",
-          "24": "icones/png/claro/24/fixar.png",
-          "48": "icones/png/claro/48/fixar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/fixar.png",
-          "20": "icones/png/escuro/20/fixar.png",
-          "24": "icones/png/escuro/24/fixar.png",
-          "48": "icones/png/escuro/48/fixar.png"
-        }
-      }
-    },
-    {
-      "nome": "desafixar",
-      "rotulo": "Desafixar",
-      "categoria": "consultas",
-      "svg": "icones/svg/desafixar.svg",
-      "sprite_id": "i-desafixar",
-      "vectorcraft": "icones/vectorcraft/desafixar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/desafixar.png",
-          "20": "icones/png/claro/20/desafixar.png",
-          "24": "icones/png/claro/24/desafixar.png",
-          "48": "icones/png/claro/48/desafixar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/desafixar.png",
-          "20": "icones/png/escuro/20/desafixar.png",
-          "24": "icones/png/escuro/24/desafixar.png",
-          "48": "icones/png/escuro/48/desafixar.png"
-        }
-      }
-    },
-    {
-      "nome": "filtro",
-      "rotulo": "Filtrar",
-      "categoria": "consultas",
-      "svg": "icones/svg/filtro.svg",
-      "sprite_id": "i-filtro",
-      "vectorcraft": "icones/vectorcraft/filtro.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/filtro.png",
-          "20": "icones/png/claro/20/filtro.png",
-          "24": "icones/png/claro/24/filtro.png",
-          "48": "icones/png/claro/48/filtro.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/filtro.png",
-          "20": "icones/png/escuro/20/filtro.png",
-          "24": "icones/png/escuro/24/filtro.png",
-          "48": "icones/png/escuro/48/filtro.png"
-        }
-      }
-    },
-    {
-      "nome": "ordenar",
-      "rotulo": "Ordenar",
-      "categoria": "consultas",
-      "svg": "icones/svg/ordenar.svg",
-      "sprite_id": "i-ordenar",
-      "vectorcraft": "icones/vectorcraft/ordenar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/ordenar.png",
-          "20": "icones/png/claro/20/ordenar.png",
-          "24": "icones/png/claro/24/ordenar.png",
-          "48": "icones/png/claro/48/ordenar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/ordenar.png",
-          "20": "icones/png/escuro/20/ordenar.png",
-          "24": "icones/png/escuro/24/ordenar.png",
-          "48": "icones/png/escuro/48/ordenar.png"
-        }
-      }
-    },
-    {
-      "nome": "busca",
-      "rotulo": "Buscar",
-      "categoria": "busca",
-      "svg": "icones/svg/busca.svg",
-      "sprite_id": "i-busca",
-      "vectorcraft": "icones/vectorcraft/busca.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/busca.png",
-          "20": "icones/png/claro/20/busca.png",
-          "24": "icones/png/claro/24/busca.png",
-          "48": "icones/png/claro/48/busca.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/busca.png",
-          "20": "icones/png/escuro/20/busca.png",
-          "24": "icones/png/escuro/24/busca.png",
-          "48": "icones/png/escuro/48/busca.png"
-        }
-      }
-    },
-    {
-      "nome": "comando",
-      "rotulo": "Paleta de comandos",
-      "categoria": "busca",
-      "svg": "icones/svg/comando.svg",
-      "sprite_id": "i-comando",
-      "vectorcraft": "icones/vectorcraft/comando.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/comando.png",
-          "20": "icones/png/claro/20/comando.png",
-          "24": "icones/png/claro/24/comando.png",
-          "48": "icones/png/claro/48/comando.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/comando.png",
-          "20": "icones/png/escuro/20/comando.png",
-          "24": "icones/png/escuro/24/comando.png",
-          "48": "icones/png/escuro/48/comando.png"
-        }
-      }
-    },
-    {
-      "nome": "teclado",
-      "rotulo": "Atalhos",
-      "categoria": "busca",
-      "svg": "icones/svg/teclado.svg",
-      "sprite_id": "i-teclado",
-      "vectorcraft": "icones/vectorcraft/teclado.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/teclado.png",
-          "20": "icones/png/claro/20/teclado.png",
-          "24": "icones/png/claro/24/teclado.png",
-          "48": "icones/png/claro/48/teclado.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/teclado.png",
-          "20": "icones/png/escuro/20/teclado.png",
-          "24": "icones/png/escuro/24/teclado.png",
-          "48": "icones/png/escuro/48/teclado.png"
-        }
-      }
-    },
-    {
-      "nome": "agente",
-      "rotulo": "Agente (Sofi)",
-      "categoria": "agente",
-      "svg": "icones/svg/agente.svg",
-      "sprite_id": "i-agente",
-      "vectorcraft": "icones/vectorcraft/agente.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/agente.png",
-          "20": "icones/png/claro/20/agente.png",
-          "24": "icones/png/claro/24/agente.png",
-          "48": "icones/png/claro/48/agente.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/agente.png",
-          "20": "icones/png/escuro/20/agente.png",
-          "24": "icones/png/escuro/24/agente.png",
-          "48": "icones/png/escuro/48/agente.png"
-        }
-      }
-    },
-    {
-      "nome": "faisca",
-      "rotulo": "Ação do agente",
-      "categoria": "agente",
-      "svg": "icones/svg/faisca.svg",
-      "sprite_id": "i-faisca",
-      "vectorcraft": "icones/vectorcraft/faisca.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/faisca.png",
-          "20": "icones/png/claro/20/faisca.png",
-          "24": "icones/png/claro/24/faisca.png",
-          "48": "icones/png/claro/48/faisca.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/faisca.png",
-          "20": "icones/png/escuro/20/faisca.png",
-          "24": "icones/png/escuro/24/faisca.png",
-          "48": "icones/png/escuro/48/faisca.png"
-        }
-      }
-    },
-    {
-      "nome": "conversa",
-      "rotulo": "Conversa",
-      "categoria": "agente",
-      "svg": "icones/svg/conversa.svg",
-      "sprite_id": "i-conversa",
-      "vectorcraft": "icones/vectorcraft/conversa.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/conversa.png",
-          "20": "icones/png/claro/20/conversa.png",
-          "24": "icones/png/claro/24/conversa.png",
-          "48": "icones/png/claro/48/conversa.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/conversa.png",
-          "20": "icones/png/escuro/20/conversa.png",
-          "24": "icones/png/escuro/24/conversa.png",
-          "48": "icones/png/escuro/48/conversa.png"
-        }
-      }
-    },
-    {
-      "nome": "enviar",
-      "rotulo": "Enviar",
-      "categoria": "agente",
-      "svg": "icones/svg/enviar.svg",
-      "sprite_id": "i-enviar",
-      "vectorcraft": "icones/vectorcraft/enviar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/enviar.png",
-          "20": "icones/png/claro/20/enviar.png",
-          "24": "icones/png/claro/24/enviar.png",
-          "48": "icones/png/claro/48/enviar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/enviar.png",
-          "20": "icones/png/escuro/20/enviar.png",
-          "24": "icones/png/escuro/24/enviar.png",
-          "48": "icones/png/escuro/48/enviar.png"
-        }
-      }
-    },
-    {
-      "nome": "parar",
-      "rotulo": "Parar",
-      "categoria": "agente",
-      "svg": "icones/svg/parar.svg",
-      "sprite_id": "i-parar",
-      "vectorcraft": "icones/vectorcraft/parar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/parar.png",
-          "20": "icones/png/claro/20/parar.png",
-          "24": "icones/png/claro/24/parar.png",
-          "48": "icones/png/claro/48/parar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/parar.png",
-          "20": "icones/png/escuro/20/parar.png",
-          "24": "icones/png/escuro/24/parar.png",
-          "48": "icones/png/escuro/48/parar.png"
-        }
-      }
-    },
-    {
-      "nome": "mcp",
-      "rotulo": "MCP / conector",
-      "categoria": "agente",
-      "svg": "icones/svg/mcp.svg",
-      "sprite_id": "i-mcp",
-      "vectorcraft": "icones/vectorcraft/mcp.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/mcp.png",
-          "20": "icones/png/claro/20/mcp.png",
-          "24": "icones/png/claro/24/mcp.png",
-          "48": "icones/png/claro/48/mcp.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/mcp.png",
-          "20": "icones/png/escuro/20/mcp.png",
-          "24": "icones/png/escuro/24/mcp.png",
-          "48": "icones/png/escuro/48/mcp.png"
-        }
-      }
-    },
-    {
-      "nome": "terminal",
-      "rotulo": "CLI / terminal",
-      "categoria": "agente",
-      "svg": "icones/svg/terminal.svg",
-      "sprite_id": "i-terminal",
-      "vectorcraft": "icones/vectorcraft/terminal.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/terminal.png",
-          "20": "icones/png/claro/20/terminal.png",
-          "24": "icones/png/claro/24/terminal.png",
-          "48": "icones/png/claro/48/terminal.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/terminal.png",
-          "20": "icones/png/escuro/20/terminal.png",
-          "24": "icones/png/escuro/24/terminal.png",
-          "48": "icones/png/escuro/48/terminal.png"
-        }
-      }
-    },
-    {
-      "nome": "chave",
-      "rotulo": "Chave de API",
-      "categoria": "agente",
-      "svg": "icones/svg/chave.svg",
-      "sprite_id": "i-chave",
-      "vectorcraft": "icones/vectorcraft/chave.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/chave.png",
-          "20": "icones/png/claro/20/chave.png",
-          "24": "icones/png/claro/24/chave.png",
-          "48": "icones/png/claro/48/chave.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/chave.png",
-          "20": "icones/png/escuro/20/chave.png",
-          "24": "icones/png/escuro/24/chave.png",
-          "48": "icones/png/escuro/48/chave.png"
-        }
-      }
-    },
-    {
-      "nome": "desfazer",
-      "rotulo": "Desfazer",
-      "categoria": "agente",
-      "svg": "icones/svg/desfazer.svg",
-      "sprite_id": "i-desfazer",
-      "vectorcraft": "icones/vectorcraft/desfazer.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/desfazer.png",
-          "20": "icones/png/claro/20/desfazer.png",
-          "24": "icones/png/claro/24/desfazer.png",
-          "48": "icones/png/claro/48/desfazer.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/desfazer.png",
-          "20": "icones/png/escuro/20/desfazer.png",
-          "24": "icones/png/escuro/24/desfazer.png",
-          "48": "icones/png/escuro/48/desfazer.png"
-        }
-      }
-    },
-    {
-      "nome": "refazer",
-      "rotulo": "Refazer",
-      "categoria": "agente",
-      "svg": "icones/svg/refazer.svg",
-      "sprite_id": "i-refazer",
-      "vectorcraft": "icones/vectorcraft/refazer.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/refazer.png",
-          "20": "icones/png/claro/20/refazer.png",
-          "24": "icones/png/claro/24/refazer.png",
-          "48": "icones/png/claro/48/refazer.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/refazer.png",
-          "20": "icones/png/escuro/20/refazer.png",
-          "24": "icones/png/escuro/24/refazer.png",
-          "48": "icones/png/escuro/48/refazer.png"
-        }
-      }
-    },
-    {
-      "nome": "historico",
-      "rotulo": "Histórico",
-      "categoria": "agente",
-      "svg": "icones/svg/historico.svg",
-      "sprite_id": "i-historico",
-      "vectorcraft": "icones/vectorcraft/historico.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/historico.png",
-          "20": "icones/png/claro/20/historico.png",
-          "24": "icones/png/claro/24/historico.png",
-          "48": "icones/png/claro/48/historico.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/historico.png",
-          "20": "icones/png/escuro/20/historico.png",
-          "24": "icones/png/escuro/24/historico.png",
-          "48": "icones/png/escuro/48/historico.png"
-        }
-      }
-    },
-    {
-      "nome": "configuracoes",
-      "rotulo": "Configurações",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/configuracoes.svg",
-      "sprite_id": "i-configuracoes",
-      "vectorcraft": "icones/vectorcraft/configuracoes.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/configuracoes.png",
-          "20": "icones/png/claro/20/configuracoes.png",
-          "24": "icones/png/claro/24/configuracoes.png",
-          "48": "icones/png/claro/48/configuracoes.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/configuracoes.png",
-          "20": "icones/png/escuro/20/configuracoes.png",
-          "24": "icones/png/escuro/24/configuracoes.png",
-          "48": "icones/png/escuro/48/configuracoes.png"
-        }
-      }
-    },
-    {
-      "nome": "tema-claro",
-      "rotulo": "Tema claro",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/tema-claro.svg",
-      "sprite_id": "i-tema-claro",
-      "vectorcraft": "icones/vectorcraft/tema-claro.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tema-claro.png",
-          "20": "icones/png/claro/20/tema-claro.png",
-          "24": "icones/png/claro/24/tema-claro.png",
-          "48": "icones/png/claro/48/tema-claro.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tema-claro.png",
-          "20": "icones/png/escuro/20/tema-claro.png",
-          "24": "icones/png/escuro/24/tema-claro.png",
-          "48": "icones/png/escuro/48/tema-claro.png"
-        }
-      }
-    },
-    {
-      "nome": "tema-escuro",
-      "rotulo": "Tema escuro",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/tema-escuro.svg",
-      "sprite_id": "i-tema-escuro",
-      "vectorcraft": "icones/vectorcraft/tema-escuro.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tema-escuro.png",
-          "20": "icones/png/claro/20/tema-escuro.png",
-          "24": "icones/png/claro/24/tema-escuro.png",
-          "48": "icones/png/claro/48/tema-escuro.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tema-escuro.png",
-          "20": "icones/png/escuro/20/tema-escuro.png",
-          "24": "icones/png/escuro/24/tema-escuro.png",
-          "48": "icones/png/escuro/48/tema-escuro.png"
-        }
-      }
-    },
-    {
-      "nome": "tema-sistema",
-      "rotulo": "Tema do sistema",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/tema-sistema.svg",
-      "sprite_id": "i-tema-sistema",
-      "vectorcraft": "icones/vectorcraft/tema-sistema.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/tema-sistema.png",
-          "20": "icones/png/claro/20/tema-sistema.png",
-          "24": "icones/png/claro/24/tema-sistema.png",
-          "48": "icones/png/claro/48/tema-sistema.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/tema-sistema.png",
-          "20": "icones/png/escuro/20/tema-sistema.png",
-          "24": "icones/png/escuro/24/tema-sistema.png",
-          "48": "icones/png/escuro/48/tema-sistema.png"
-        }
-      }
-    },
-    {
-      "nome": "aparencia",
-      "rotulo": "Aparência",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/aparencia.svg",
-      "sprite_id": "i-aparencia",
-      "vectorcraft": "icones/vectorcraft/aparencia.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/aparencia.png",
-          "20": "icones/png/claro/20/aparencia.png",
-          "24": "icones/png/claro/24/aparencia.png",
-          "48": "icones/png/claro/48/aparencia.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/aparencia.png",
-          "20": "icones/png/escuro/20/aparencia.png",
-          "24": "icones/png/escuro/24/aparencia.png",
-          "48": "icones/png/escuro/48/aparencia.png"
-        }
-      }
-    },
-    {
-      "nome": "fonte",
-      "rotulo": "Fonte",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/fonte.svg",
-      "sprite_id": "i-fonte",
-      "vectorcraft": "icones/vectorcraft/fonte.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/fonte.png",
-          "20": "icones/png/claro/20/fonte.png",
-          "24": "icones/png/claro/24/fonte.png",
-          "48": "icones/png/claro/48/fonte.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/fonte.png",
-          "20": "icones/png/escuro/20/fonte.png",
-          "24": "icones/png/escuro/24/fonte.png",
-          "48": "icones/png/escuro/48/fonte.png"
-        }
-      }
-    },
-    {
-      "nome": "perfil",
-      "rotulo": "Perfil",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/perfil.svg",
-      "sprite_id": "i-perfil",
-      "vectorcraft": "icones/vectorcraft/perfil.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/perfil.png",
-          "20": "icones/png/claro/20/perfil.png",
-          "24": "icones/png/claro/24/perfil.png",
-          "48": "icones/png/claro/48/perfil.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/perfil.png",
-          "20": "icones/png/escuro/20/perfil.png",
-          "24": "icones/png/escuro/24/perfil.png",
-          "48": "icones/png/escuro/48/perfil.png"
-        }
-      }
-    },
-    {
-      "nome": "sair",
-      "rotulo": "Sair",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/sair.svg",
-      "sprite_id": "i-sair",
-      "vectorcraft": "icones/vectorcraft/sair.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/sair.png",
-          "20": "icones/png/claro/20/sair.png",
-          "24": "icones/png/claro/24/sair.png",
-          "48": "icones/png/claro/48/sair.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/sair.png",
-          "20": "icones/png/escuro/20/sair.png",
-          "24": "icones/png/escuro/24/sair.png",
-          "48": "icones/png/escuro/48/sair.png"
-        }
-      }
-    },
-    {
-      "nome": "info",
-      "rotulo": "Informação",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/info.svg",
-      "sprite_id": "i-info",
-      "vectorcraft": "icones/vectorcraft/info.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/info.png",
-          "20": "icones/png/claro/20/info.png",
-          "24": "icones/png/claro/24/info.png",
-          "48": "icones/png/claro/48/info.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/info.png",
-          "20": "icones/png/escuro/20/info.png",
-          "24": "icones/png/escuro/24/info.png",
-          "48": "icones/png/escuro/48/info.png"
-        }
-      }
-    },
-    {
-      "nome": "ajuda",
-      "rotulo": "Ajuda",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/ajuda.svg",
-      "sprite_id": "i-ajuda",
-      "vectorcraft": "icones/vectorcraft/ajuda.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/ajuda.png",
-          "20": "icones/png/claro/20/ajuda.png",
-          "24": "icones/png/claro/24/ajuda.png",
-          "48": "icones/png/claro/48/ajuda.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/ajuda.png",
-          "20": "icones/png/escuro/20/ajuda.png",
-          "24": "icones/png/escuro/24/ajuda.png",
-          "48": "icones/png/escuro/48/ajuda.png"
-        }
-      }
-    },
-    {
-      "nome": "cadeado",
-      "rotulo": "Bloqueado / privado",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/cadeado.svg",
-      "sprite_id": "i-cadeado",
-      "vectorcraft": "icones/vectorcraft/cadeado.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/cadeado.png",
-          "20": "icones/png/claro/20/cadeado.png",
-          "24": "icones/png/claro/24/cadeado.png",
-          "48": "icones/png/claro/48/cadeado.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/cadeado.png",
-          "20": "icones/png/escuro/20/cadeado.png",
-          "24": "icones/png/escuro/24/cadeado.png",
-          "48": "icones/png/escuro/48/cadeado.png"
-        }
-      }
-    },
-    {
-      "nome": "visivel",
-      "rotulo": "Mostrar",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/visivel.svg",
-      "sprite_id": "i-visivel",
-      "vectorcraft": "icones/vectorcraft/visivel.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/visivel.png",
-          "20": "icones/png/claro/20/visivel.png",
-          "24": "icones/png/claro/24/visivel.png",
-          "48": "icones/png/claro/48/visivel.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/visivel.png",
-          "20": "icones/png/escuro/20/visivel.png",
-          "24": "icones/png/escuro/24/visivel.png",
-          "48": "icones/png/escuro/48/visivel.png"
-        }
-      }
-    },
-    {
-      "nome": "oculto",
-      "rotulo": "Ocultar",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/oculto.svg",
-      "sprite_id": "i-oculto",
-      "vectorcraft": "icones/vectorcraft/oculto.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/oculto.png",
-          "20": "icones/png/claro/20/oculto.png",
-          "24": "icones/png/claro/24/oculto.png",
-          "48": "icones/png/claro/48/oculto.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/oculto.png",
-          "20": "icones/png/escuro/20/oculto.png",
-          "24": "icones/png/escuro/24/oculto.png",
-          "48": "icones/png/escuro/48/oculto.png"
-        }
-      }
-    },
-    {
-      "nome": "check",
-      "rotulo": "Confirmado",
-      "categoria": "status",
-      "svg": "icones/svg/check.svg",
-      "sprite_id": "i-check",
-      "vectorcraft": "icones/vectorcraft/check.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/check.png",
-          "20": "icones/png/claro/20/check.png",
-          "24": "icones/png/claro/24/check.png",
-          "48": "icones/png/claro/48/check.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/check.png",
-          "20": "icones/png/escuro/20/check.png",
-          "24": "icones/png/escuro/24/check.png",
-          "48": "icones/png/escuro/48/check.png"
-        }
-      }
-    },
-    {
-      "nome": "salvo",
-      "rotulo": "Salvo",
-      "categoria": "status",
-      "svg": "icones/svg/salvo.svg",
-      "sprite_id": "i-salvo",
-      "vectorcraft": "icones/vectorcraft/salvo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/salvo.png",
-          "20": "icones/png/claro/20/salvo.png",
-          "24": "icones/png/claro/24/salvo.png",
-          "48": "icones/png/claro/48/salvo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/salvo.png",
-          "20": "icones/png/escuro/20/salvo.png",
-          "24": "icones/png/escuro/24/salvo.png",
-          "48": "icones/png/escuro/48/salvo.png"
-        }
-      }
-    },
-    {
-      "nome": "alerta",
-      "rotulo": "Atenção",
-      "categoria": "status",
-      "svg": "icones/svg/alerta.svg",
-      "sprite_id": "i-alerta",
-      "vectorcraft": "icones/vectorcraft/alerta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/alerta.png",
-          "20": "icones/png/claro/20/alerta.png",
-          "24": "icones/png/claro/24/alerta.png",
-          "48": "icones/png/claro/48/alerta.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/alerta.png",
-          "20": "icones/png/escuro/20/alerta.png",
-          "24": "icones/png/escuro/24/alerta.png",
-          "48": "icones/png/escuro/48/alerta.png"
-        }
-      }
-    },
-    {
-      "nome": "erro",
-      "rotulo": "Erro",
-      "categoria": "status",
-      "svg": "icones/svg/erro.svg",
-      "sprite_id": "i-erro",
-      "vectorcraft": "icones/vectorcraft/erro.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/erro.png",
-          "20": "icones/png/claro/20/erro.png",
-          "24": "icones/png/claro/24/erro.png",
-          "48": "icones/png/claro/48/erro.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/erro.png",
-          "20": "icones/png/escuro/20/erro.png",
-          "24": "icones/png/escuro/24/erro.png",
-          "48": "icones/png/escuro/48/erro.png"
-        }
-      }
-    },
-    {
-      "nome": "sincronizar",
-      "rotulo": "Sincronizar",
-      "categoria": "status",
-      "svg": "icones/svg/sincronizar.svg",
-      "sprite_id": "i-sincronizar",
-      "vectorcraft": "icones/vectorcraft/sincronizar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/sincronizar.png",
-          "20": "icones/png/claro/20/sincronizar.png",
-          "24": "icones/png/claro/24/sincronizar.png",
-          "48": "icones/png/claro/48/sincronizar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/sincronizar.png",
-          "20": "icones/png/escuro/20/sincronizar.png",
-          "24": "icones/png/escuro/24/sincronizar.png",
-          "48": "icones/png/escuro/48/sincronizar.png"
-        }
-      }
-    },
-    {
-      "nome": "carregando",
-      "rotulo": "Carregando",
-      "categoria": "status",
-      "svg": "icones/svg/carregando.svg",
-      "sprite_id": "i-carregando",
-      "vectorcraft": "icones/vectorcraft/carregando.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/carregando.png",
-          "20": "icones/png/claro/20/carregando.png",
-          "24": "icones/png/claro/24/carregando.png",
-          "48": "icones/png/claro/48/carregando.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/carregando.png",
-          "20": "icones/png/escuro/20/carregando.png",
-          "24": "icones/png/escuro/24/carregando.png",
-          "48": "icones/png/escuro/48/carregando.png"
-        }
-      }
-    },
-    {
-      "nome": "disco",
-      "rotulo": "Salvo no disco",
-      "categoria": "status",
-      "svg": "icones/svg/disco.svg",
-      "sprite_id": "i-disco",
-      "vectorcraft": "icones/vectorcraft/disco.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/disco.png",
-          "20": "icones/png/claro/20/disco.png",
-          "24": "icones/png/claro/24/disco.png",
-          "48": "icones/png/claro/48/disco.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/disco.png",
-          "20": "icones/png/escuro/20/disco.png",
-          "24": "icones/png/escuro/24/disco.png",
-          "48": "icones/png/escuro/48/disco.png"
-        }
-      }
-    },
-    {
-      "nome": "favorito",
-      "rotulo": "Favorito",
-      "categoria": "status",
-      "svg": "icones/svg/favorito.svg",
-      "sprite_id": "i-favorito",
-      "vectorcraft": "icones/vectorcraft/favorito.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/favorito.png",
-          "20": "icones/png/claro/20/favorito.png",
-          "24": "icones/png/claro/24/favorito.png",
-          "48": "icones/png/claro/48/favorito.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/favorito.png",
-          "20": "icones/png/escuro/20/favorito.png",
-          "24": "icones/png/escuro/24/favorito.png",
-          "48": "icones/png/escuro/48/favorito.png"
-        }
-      }
-    },
-    {
-      "nome": "notificacao",
-      "rotulo": "Notificações",
-      "categoria": "status",
-      "svg": "icones/svg/notificacao.svg",
-      "sprite_id": "i-notificacao",
-      "vectorcraft": "icones/vectorcraft/notificacao.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/notificacao.png",
-          "20": "icones/png/claro/20/notificacao.png",
-          "24": "icones/png/claro/24/notificacao.png",
-          "48": "icones/png/claro/48/notificacao.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/notificacao.png",
-          "20": "icones/png/escuro/20/notificacao.png",
-          "24": "icones/png/escuro/24/notificacao.png",
-          "48": "icones/png/escuro/48/notificacao.png"
-        }
-      }
-    },
-    {
-      "nome": "exportar",
-      "rotulo": "Exportar",
-      "categoria": "status",
-      "svg": "icones/svg/exportar.svg",
-      "sprite_id": "i-exportar",
-      "vectorcraft": "icones/vectorcraft/exportar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/exportar.png",
-          "20": "icones/png/claro/20/exportar.png",
-          "24": "icones/png/claro/24/exportar.png",
-          "48": "icones/png/claro/48/exportar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/exportar.png",
-          "20": "icones/png/escuro/20/exportar.png",
-          "24": "icones/png/escuro/24/exportar.png",
-          "48": "icones/png/escuro/48/exportar.png"
-        }
-      }
-    },
-    {
-      "nome": "importar",
-      "rotulo": "Importar",
-      "categoria": "status",
-      "svg": "icones/svg/importar.svg",
-      "sprite_id": "i-importar",
-      "vectorcraft": "icones/vectorcraft/importar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/importar.png",
-          "20": "icones/png/claro/20/importar.png",
-          "24": "icones/png/claro/24/importar.png",
-          "48": "icones/png/claro/48/importar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/importar.png",
-          "20": "icones/png/escuro/20/importar.png",
-          "24": "icones/png/escuro/24/importar.png",
-          "48": "icones/png/escuro/48/importar.png"
-        }
-      }
-    },
-    {
-      "nome": "visao-semana",
-      "rotulo": "Visão semana",
-      "categoria": "calendario",
-      "svg": "icones/svg/visao-semana.svg",
-      "sprite_id": "i-visao-semana",
-      "vectorcraft": "icones/vectorcraft/visao-semana.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/visao-semana.png",
-          "20": "icones/png/claro/20/visao-semana.png",
-          "24": "icones/png/claro/24/visao-semana.png",
-          "48": "icones/png/claro/48/visao-semana.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/visao-semana.png",
-          "20": "icones/png/escuro/20/visao-semana.png",
-          "24": "icones/png/escuro/24/visao-semana.png",
-          "48": "icones/png/escuro/48/visao-semana.png"
-        }
-      }
-    },
-    {
-      "nome": "agenda",
-      "rotulo": "Visão agenda",
-      "categoria": "calendario",
-      "svg": "icones/svg/agenda.svg",
-      "sprite_id": "i-agenda",
-      "vectorcraft": "icones/vectorcraft/agenda.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/agenda.png",
-          "20": "icones/png/claro/20/agenda.png",
-          "24": "icones/png/claro/24/agenda.png",
-          "48": "icones/png/claro/48/agenda.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/agenda.png",
-          "20": "icones/png/escuro/20/agenda.png",
-          "24": "icones/png/escuro/24/agenda.png",
-          "48": "icones/png/escuro/48/agenda.png"
-        }
-      }
-    },
-    {
-      "nome": "agrupar",
-      "rotulo": "Agrupar por",
-      "categoria": "consultas",
-      "svg": "icones/svg/agrupar.svg",
-      "sprite_id": "i-agrupar",
-      "vectorcraft": "icones/vectorcraft/agrupar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/agrupar.png",
-          "20": "icones/png/claro/20/agrupar.png",
-          "24": "icones/png/claro/24/agrupar.png",
-          "48": "icones/png/claro/48/agrupar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/agrupar.png",
-          "20": "icones/png/escuro/20/agrupar.png",
-          "24": "icones/png/escuro/24/agrupar.png",
-          "48": "icones/png/escuro/48/agrupar.png"
-        }
-      }
-    },
-    {
-      "nome": "destaque",
-      "rotulo": "Bloco de destaque",
-      "categoria": "editor",
-      "svg": "icones/svg/destaque.svg",
-      "sprite_id": "i-destaque",
-      "vectorcraft": "icones/vectorcraft/destaque.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/destaque.png",
-          "20": "icones/png/claro/20/destaque.png",
-          "24": "icones/png/claro/24/destaque.png",
-          "48": "icones/png/claro/48/destaque.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/destaque.png",
-          "20": "icones/png/escuro/20/destaque.png",
-          "24": "icones/png/escuro/24/destaque.png",
-          "48": "icones/png/escuro/48/destaque.png"
-        }
-      }
-    },
-    {
-      "nome": "pasta-nova",
-      "rotulo": "Nova pasta",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/pasta-nova.svg",
-      "sprite_id": "i-pasta-nova",
-      "vectorcraft": "icones/vectorcraft/pasta-nova.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/pasta-nova.png",
-          "20": "icones/png/claro/20/pasta-nova.png",
-          "24": "icones/png/claro/24/pasta-nova.png",
-          "48": "icones/png/claro/48/pasta-nova.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/pasta-nova.png",
-          "20": "icones/png/escuro/20/pasta-nova.png",
-          "24": "icones/png/escuro/24/pasta-nova.png",
-          "48": "icones/png/escuro/48/pasta-nova.png"
-        }
-      }
-    },
-    {
-      "nome": "ir-para-nota",
-      "rotulo": "Abrir nota de origem",
-      "categoria": "tarefas",
-      "svg": "icones/svg/ir-para-nota.svg",
-      "sprite_id": "i-ir-para-nota",
-      "vectorcraft": "icones/vectorcraft/ir-para-nota.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/ir-para-nota.png",
-          "20": "icones/png/claro/20/ir-para-nota.png",
-          "24": "icones/png/claro/24/ir-para-nota.png",
-          "48": "icones/png/claro/48/ir-para-nota.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/ir-para-nota.png",
-          "20": "icones/png/escuro/20/ir-para-nota.png",
-          "24": "icones/png/escuro/24/ir-para-nota.png",
-          "48": "icones/png/escuro/48/ir-para-nota.png"
-        }
-      }
-    },
-    {
-      "nome": "livro",
-      "rotulo": "Livro",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/livro.svg",
-      "sprite_id": "i-livro",
-      "vectorcraft": "icones/vectorcraft/livro.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/livro.png",
-          "20": "icones/png/claro/20/livro.png",
-          "24": "icones/png/claro/24/livro.png",
-          "48": "icones/png/claro/48/livro.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/livro.png",
-          "20": "icones/png/escuro/20/livro.png",
-          "24": "icones/png/escuro/24/livro.png",
-          "48": "icones/png/escuro/48/livro.png"
-        }
-      }
-    },
-    {
-      "nome": "lampada",
-      "rotulo": "Ideia",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/lampada.svg",
-      "sprite_id": "i-lampada",
-      "vectorcraft": "icones/vectorcraft/lampada.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/lampada.png",
-          "20": "icones/png/claro/20/lampada.png",
-          "24": "icones/png/claro/24/lampada.png",
-          "48": "icones/png/claro/48/lampada.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/lampada.png",
-          "20": "icones/png/escuro/20/lampada.png",
-          "24": "icones/png/escuro/24/lampada.png",
-          "48": "icones/png/escuro/48/lampada.png"
-        }
-      }
-    },
-    {
-      "nome": "maleta",
-      "rotulo": "Trabalho",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/maleta.svg",
-      "sprite_id": "i-maleta",
-      "vectorcraft": "icones/vectorcraft/maleta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/maleta.png",
-          "20": "icones/png/claro/20/maleta.png",
-          "24": "icones/png/claro/24/maleta.png",
-          "48": "icones/png/claro/48/maleta.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/maleta.png",
-          "20": "icones/png/escuro/20/maleta.png",
-          "24": "icones/png/escuro/24/maleta.png",
-          "48": "icones/png/escuro/48/maleta.png"
-        }
-      }
-    },
-    {
-      "nome": "capelo",
-      "rotulo": "Estudos",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/capelo.svg",
-      "sprite_id": "i-capelo",
-      "vectorcraft": "icones/vectorcraft/capelo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/capelo.png",
-          "20": "icones/png/claro/20/capelo.png",
-          "24": "icones/png/claro/24/capelo.png",
-          "48": "icones/png/claro/48/capelo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/capelo.png",
-          "20": "icones/png/escuro/20/capelo.png",
-          "24": "icones/png/escuro/24/capelo.png",
-          "48": "icones/png/escuro/48/capelo.png"
-        }
-      }
-    },
-    {
-      "nome": "coracao",
-      "rotulo": "Pessoal",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/coracao.svg",
-      "sprite_id": "i-coracao",
-      "vectorcraft": "icones/vectorcraft/coracao.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/coracao.png",
-          "20": "icones/png/claro/20/coracao.png",
-          "24": "icones/png/claro/24/coracao.png",
-          "48": "icones/png/claro/48/coracao.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/coracao.png",
-          "20": "icones/png/escuro/20/coracao.png",
-          "24": "icones/png/escuro/24/coracao.png",
-          "48": "icones/png/escuro/48/coracao.png"
-        }
-      }
-    },
-    {
-      "nome": "reproduzir",
-      "rotulo": "Reproduzir",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/reproduzir.svg",
-      "sprite_id": "i-reproduzir",
-      "vectorcraft": "icones/vectorcraft/reproduzir.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/reproduzir.png",
-          "20": "icones/png/claro/20/reproduzir.png",
-          "24": "icones/png/claro/24/reproduzir.png",
-          "48": "icones/png/claro/48/reproduzir.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/reproduzir.png",
-          "20": "icones/png/escuro/20/reproduzir.png",
-          "24": "icones/png/escuro/24/reproduzir.png",
-          "48": "icones/png/escuro/48/reproduzir.png"
-        }
-      }
-    },
-    {
-      "nome": "pausar",
-      "rotulo": "Pausar",
-      "categoria": "grafo-canvas",
-      "svg": "icones/svg/pausar.svg",
-      "sprite_id": "i-pausar",
-      "vectorcraft": "icones/vectorcraft/pausar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/pausar.png",
-          "20": "icones/png/claro/20/pausar.png",
-          "24": "icones/png/claro/24/pausar.png",
-          "48": "icones/png/claro/48/pausar.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/pausar.png",
-          "20": "icones/png/escuro/20/pausar.png",
-          "24": "icones/png/escuro/24/pausar.png",
-          "48": "icones/png/escuro/48/pausar.png"
-        }
-      }
-    },
-    {
-      "nome": "caixa-entrada",
-      "rotulo": "Estante de entrada",
-      "categoria": "biblioteca",
-      "svg": "icones/svg/caixa-entrada.svg",
-      "sprite_id": "i-caixa-entrada",
-      "vectorcraft": "icones/vectorcraft/caixa-entrada.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/caixa-entrada.png",
-          "20": "icones/png/claro/20/caixa-entrada.png",
-          "24": "icones/png/claro/24/caixa-entrada.png",
-          "48": "icones/png/claro/48/caixa-entrada.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/caixa-entrada.png",
-          "20": "icones/png/escuro/20/caixa-entrada.png",
-          "24": "icones/png/escuro/24/caixa-entrada.png",
-          "48": "icones/png/escuro/48/caixa-entrada.png"
-        }
-      }
-    },
-    {
-      "nome": "leitura",
-      "rotulo": "Leitura",
-      "categoria": "editor",
-      "svg": "icones/svg/leitura.svg",
-      "sprite_id": "i-leitura",
-      "vectorcraft": "icones/vectorcraft/leitura.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/leitura.png",
-          "20": "icones/png/claro/20/leitura.png",
-          "24": "icones/png/claro/24/leitura.png",
-          "48": "icones/png/claro/48/leitura.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/leitura.png",
-          "20": "icones/png/escuro/20/leitura.png",
-          "24": "icones/png/escuro/24/leitura.png",
-          "48": "icones/png/escuro/48/leitura.png"
-        }
-      }
-    },
-    {
-      "nome": "modelo",
-      "rotulo": "Modelo de nota",
-      "categoria": "editor",
-      "svg": "icones/svg/modelo.svg",
-      "sprite_id": "i-modelo",
-      "vectorcraft": "icones/vectorcraft/modelo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/modelo.png",
-          "20": "icones/png/claro/20/modelo.png",
-          "24": "icones/png/claro/24/modelo.png",
-          "48": "icones/png/claro/48/modelo.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/modelo.png",
-          "20": "icones/png/escuro/20/modelo.png",
-          "24": "icones/png/escuro/24/modelo.png",
-          "48": "icones/png/escuro/48/modelo.png"
-        }
-      }
-    },
-    {
-      "nome": "cor",
-      "rotulo": "Cor",
-      "categoria": "configuracoes",
-      "svg": "icones/svg/cor.svg",
-      "sprite_id": "i-cor",
-      "vectorcraft": "icones/vectorcraft/cor.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "icones/png/claro/16/cor.png",
-          "20": "icones/png/claro/20/cor.png",
-          "24": "icones/png/claro/24/cor.png",
-          "48": "icones/png/claro/48/cor.png"
-        },
-        "escuro": {
-          "16": "icones/png/escuro/16/cor.png",
-          "20": "icones/png/escuro/20/cor.png",
-          "24": "icones/png/escuro/24/cor.png",
-          "48": "icones/png/escuro/48/cor.png"
-        }
-      }
-    },
-    {
-      "nome": "linha-do-tempo",
-      "rotulo": "Linha do tempo",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/linha-do-tempo.svg",
-      "sprite_id": "i-linha-do-tempo",
-      "vectorcraft": "../fase6/icones/vectorcraft/linha-do-tempo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/linha-do-tempo.png",
-          "20": "../fase6/icones/png/claro/20/linha-do-tempo.png",
-          "24": "../fase6/icones/png/claro/24/linha-do-tempo.png",
-          "48": "../fase6/icones/png/claro/48/linha-do-tempo.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/linha-do-tempo.png",
-          "20": "../fase6/icones/png/escuro/20/linha-do-tempo.png",
-          "24": "../fase6/icones/png/escuro/24/linha-do-tempo.png",
-          "48": "../fase6/icones/png/escuro/48/linha-do-tempo.png"
-        }
-      }
-    },
-    {
-      "nome": "captura-rapida",
-      "rotulo": "Captura rápida",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/captura-rapida.svg",
-      "sprite_id": "i-captura-rapida",
-      "vectorcraft": "../fase6/icones/vectorcraft/captura-rapida.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/captura-rapida.png",
-          "20": "../fase6/icones/png/claro/20/captura-rapida.png",
-          "24": "../fase6/icones/png/claro/24/captura-rapida.png",
-          "48": "../fase6/icones/png/claro/48/captura-rapida.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/captura-rapida.png",
-          "20": "../fase6/icones/png/escuro/20/captura-rapida.png",
-          "24": "../fase6/icones/png/escuro/24/captura-rapida.png",
-          "48": "../fase6/icones/png/escuro/48/captura-rapida.png"
-        }
-      }
-    },
-    {
-      "nome": "ligar",
-      "rotulo": "Ligar menção",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/ligar.svg",
-      "sprite_id": "i-ligar",
-      "vectorcraft": "../fase6/icones/vectorcraft/ligar.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/ligar.png",
-          "20": "../fase6/icones/png/claro/20/ligar.png",
-          "24": "../fase6/icones/png/claro/24/ligar.png",
-          "48": "../fase6/icones/png/claro/48/ligar.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/ligar.png",
-          "20": "../fase6/icones/png/escuro/20/ligar.png",
-          "24": "../fase6/icones/png/escuro/24/ligar.png",
-          "48": "../fase6/icones/png/escuro/48/ligar.png"
-        }
-      }
-    },
-    {
-      "nome": "escolher-icone",
-      "rotulo": "Escolher ícone",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/escolher-icone.svg",
-      "sprite_id": "i-escolher-icone",
-      "vectorcraft": "../fase6/icones/vectorcraft/escolher-icone.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/escolher-icone.png",
-          "20": "../fase6/icones/png/claro/20/escolher-icone.png",
-          "24": "../fase6/icones/png/claro/24/escolher-icone.png",
-          "48": "../fase6/icones/png/claro/48/escolher-icone.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/escolher-icone.png",
-          "20": "../fase6/icones/png/escuro/20/escolher-icone.png",
-          "24": "../fase6/icones/png/escuro/24/escolher-icone.png",
-          "48": "../fase6/icones/png/escuro/48/escolher-icone.png"
-        }
-      }
-    },
-    {
-      "nome": "visao-salva",
-      "rotulo": "Visão salva",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/visao-salva.svg",
-      "sprite_id": "i-visao-salva",
-      "vectorcraft": "../fase6/icones/vectorcraft/visao-salva.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/visao-salva.png",
-          "20": "../fase6/icones/png/claro/20/visao-salva.png",
-          "24": "../fase6/icones/png/claro/24/visao-salva.png",
-          "48": "../fase6/icones/png/claro/48/visao-salva.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/visao-salva.png",
-          "20": "../fase6/icones/png/escuro/20/visao-salva.png",
-          "24": "../fase6/icones/png/escuro/24/visao-salva.png",
-          "48": "../fase6/icones/png/escuro/48/visao-salva.png"
-        }
-      }
-    },
-    {
-      "nome": "largura-texto",
-      "rotulo": "Largura do texto",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/largura-texto.svg",
-      "sprite_id": "i-largura-texto",
-      "vectorcraft": "../fase6/icones/vectorcraft/largura-texto.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/largura-texto.png",
-          "20": "../fase6/icones/png/claro/20/largura-texto.png",
-          "24": "../fase6/icones/png/claro/24/largura-texto.png",
-          "48": "../fase6/icones/png/claro/48/largura-texto.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/largura-texto.png",
-          "20": "../fase6/icones/png/escuro/20/largura-texto.png",
-          "24": "../fase6/icones/png/escuro/24/largura-texto.png",
-          "48": "../fase6/icones/png/escuro/48/largura-texto.png"
-        }
-      }
-    },
-    {
-      "nome": "tamanho-texto",
-      "rotulo": "Tamanho do texto",
-      "categoria": "fase6",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/tamanho-texto.svg",
-      "sprite_id": "i-tamanho-texto",
-      "vectorcraft": "../fase6/icones/vectorcraft/tamanho-texto.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/tamanho-texto.png",
-          "20": "../fase6/icones/png/claro/20/tamanho-texto.png",
-          "24": "../fase6/icones/png/claro/24/tamanho-texto.png",
-          "48": "../fase6/icones/png/claro/48/tamanho-texto.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/tamanho-texto.png",
-          "20": "../fase6/icones/png/escuro/20/tamanho-texto.png",
-          "24": "../fase6/icones/png/escuro/24/tamanho-texto.png",
-          "48": "../fase6/icones/png/escuro/48/tamanho-texto.png"
-        }
-      }
-    },
-    {
-      "nome": "globo",
-      "rotulo": "Globo",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-text-italic",
+      "fill_id": "i-text-italic-fill"
+    },
+    {
+      "nome": "text-strikethrough",
+      "rotulo": "Riscado",
+      "categoria": "edicao",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-text-strikethrough",
+      "fill_id": "i-text-strikethrough-fill"
+    },
+    {
+      "nome": "trash",
+      "rotulo": "Lixeira",
+      "categoria": "notas",
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-trash",
+      "fill_id": "i-trash-fill"
+    },
+    {
+      "nome": "tray",
+      "rotulo": "Entrada",
       "categoria": "estante",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/globo.svg",
-      "sprite_id": "i-globo",
-      "vectorcraft": "../fase6/icones/vectorcraft/globo.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/globo.png",
-          "20": "../fase6/icones/png/claro/20/globo.png",
-          "24": "../fase6/icones/png/claro/24/globo.png",
-          "48": "../fase6/icones/png/claro/48/globo.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/globo.png",
-          "20": "../fase6/icones/png/escuro/20/globo.png",
-          "24": "../fase6/icones/png/escuro/24/globo.png",
-          "48": "../fase6/icones/png/escuro/48/globo.png"
-        }
-      }
+      "origem": "phosphor",
+      "peso": [
+        "regular",
+        "fill"
+      ],
+      "sprite_id": "i-tray",
+      "fill_id": "i-tray-fill"
     },
     {
-      "nome": "musica",
-      "rotulo": "Música",
-      "categoria": "estante",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/musica.svg",
-      "sprite_id": "i-musica",
-      "vectorcraft": "../fase6/icones/vectorcraft/musica.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/musica.png",
-          "20": "../fase6/icones/png/claro/20/musica.png",
-          "24": "../fase6/icones/png/claro/24/musica.png",
-          "48": "../fase6/icones/png/claro/48/musica.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/musica.png",
-          "20": "../fase6/icones/png/escuro/20/musica.png",
-          "24": "../fase6/icones/png/escuro/24/musica.png",
-          "48": "../fase6/icones/png/escuro/48/musica.png"
-        }
-      }
+      "nome": "warning-circle",
+      "rotulo": "Aviso",
+      "categoria": "feedback",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-warning-circle",
+      "fill_id": null
     },
     {
-      "nome": "planta",
-      "rotulo": "Planta",
-      "categoria": "estante",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/planta.svg",
-      "sprite_id": "i-planta",
-      "vectorcraft": "../fase6/icones/vectorcraft/planta.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/planta.png",
-          "20": "../fase6/icones/png/claro/20/planta.png",
-          "24": "../fase6/icones/png/claro/24/planta.png",
-          "48": "../fase6/icones/png/claro/48/planta.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/planta.png",
-          "20": "../fase6/icones/png/escuro/20/planta.png",
-          "24": "../fase6/icones/png/escuro/24/planta.png",
-          "48": "../fase6/icones/png/escuro/48/planta.png"
-        }
-      }
-    },
-    {
-      "nome": "pincel",
-      "rotulo": "Pincel",
-      "categoria": "estante",
-      "fase": 6,
-      "svg": "../fase6/icones/svg/pincel.svg",
-      "sprite_id": "i-pincel",
-      "vectorcraft": "../fase6/icones/vectorcraft/pincel.vectorcraft",
-      "png": {
-        "claro": {
-          "16": "../fase6/icones/png/claro/16/pincel.png",
-          "20": "../fase6/icones/png/claro/20/pincel.png",
-          "24": "../fase6/icones/png/claro/24/pincel.png",
-          "48": "../fase6/icones/png/claro/48/pincel.png"
-        },
-        "escuro": {
-          "16": "../fase6/icones/png/escuro/16/pincel.png",
-          "20": "../fase6/icones/png/escuro/20/pincel.png",
-          "24": "../fase6/icones/png/escuro/24/pincel.png",
-          "48": "../fase6/icones/png/escuro/48/pincel.png"
-        }
-      }
+      "nome": "x",
+      "rotulo": "Fechar",
+      "categoria": "janela",
+      "origem": "phosphor",
+      "peso": [
+        "regular"
+      ],
+      "sprite_id": "i-x",
+      "fill_id": null
     }
-  ],
-  "animacoes": [
-    {
-      "nome": "sofi-ocioso",
-      "rotulo": "Sofi · ocioso (piscar)",
-      "tipo": "mascote",
-      "duracao_ms": 3000,
-      "fps": 30,
-      "quadros": 90,
-      "loop": true,
-      "uso": "Piscada (66–74) e olhar de lado (30–60); loop discreto. Use no painel do agente parado.",
-      "lottie": {
-        "claro": "animacoes/sofi/lottie/sofi-ocioso-claro.json",
-        "escuro": "animacoes/sofi/lottie/sofi-ocioso-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/sofi/anicraft/sofi-ocioso-claro.anicraft",
-        "escuro": "animacoes/sofi/anicraft/sofi-ocioso-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 0,
-        "svg": {
-          "claro": "animacoes/sofi/estatico/sofi-ocioso-claro.svg",
-          "escuro": "animacoes/sofi/estatico/sofi-ocioso-escuro.svg"
-        },
-        "png": {
-          "claro": "animacoes/sofi/estatico/sofi-ocioso-claro.png",
-          "escuro": "animacoes/sofi/estatico/sofi-ocioso-escuro.png"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/sofi/previa/sofi-ocioso-claro.gif",
-        "escuro": "animacoes/sofi/previa/sofi-ocioso-escuro.gif"
-      }
-    },
-    {
-      "nome": "sofi-pensando",
-      "rotulo": "Sofi · pensando",
-      "tipo": "mascote",
-      "duracao_ms": 1600,
-      "fps": 30,
-      "quadros": 48,
-      "loop": true,
-      "uso": "Pupilas para o lado com pálpebra e três pontos pulsando em sequência. Enquanto o agente trabalha.",
-      "lottie": {
-        "claro": "animacoes/sofi/lottie/sofi-pensando-claro.json",
-        "escuro": "animacoes/sofi/lottie/sofi-pensando-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/sofi/anicraft/sofi-pensando-claro.anicraft",
-        "escuro": "animacoes/sofi/anicraft/sofi-pensando-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 0,
-        "svg": {
-          "claro": "animacoes/sofi/estatico/sofi-pensando-claro.svg",
-          "escuro": "animacoes/sofi/estatico/sofi-pensando-escuro.svg"
-        },
-        "png": {
-          "claro": "animacoes/sofi/estatico/sofi-pensando-claro.png",
-          "escuro": "animacoes/sofi/estatico/sofi-pensando-escuro.png"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/sofi/previa/sofi-pensando-claro.gif",
-        "escuro": "animacoes/sofi/previa/sofi-pensando-escuro.gif"
-      }
-    },
-    {
-      "nome": "sofi-pronta",
-      "rotulo": "Sofi · pronta / comemora",
-      "tipo": "mascote",
-      "duracao_ms": 600,
-      "fps": 60,
-      "quadros": 36,
-      "loop": false,
-      "uso": "Pulo de 8 px, olhos felizes e selo ✓ índigo. Uma vez, ao terminar uma tarefa.",
-      "lottie": {
-        "claro": "animacoes/sofi/lottie/sofi-pronta-claro.json",
-        "escuro": "animacoes/sofi/lottie/sofi-pronta-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/sofi/anicraft/sofi-pronta-claro.anicraft",
-        "escuro": "animacoes/sofi/anicraft/sofi-pronta-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 35,
-        "svg": {
-          "claro": "animacoes/sofi/estatico/sofi-pronta-claro.svg",
-          "escuro": "animacoes/sofi/estatico/sofi-pronta-escuro.svg"
-        },
-        "png": {
-          "claro": "animacoes/sofi/estatico/sofi-pronta-claro.png",
-          "escuro": "animacoes/sofi/estatico/sofi-pronta-escuro.png"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/sofi/previa/sofi-pronta-claro.gif",
-        "escuro": "animacoes/sofi/previa/sofi-pronta-escuro.gif"
-      }
-    },
-    {
-      "nome": "sofi-erro",
-      "rotulo": "Sofi · erro / tropeço",
-      "tipo": "mascote",
-      "duracao_ms": 600,
-      "fps": 60,
-      "quadros": 36,
-      "loop": false,
-      "uso": "Balanço lateral, sobrancelhas preocupadas e selo “!”. Uma vez, em falha.",
-      "lottie": {
-        "claro": "animacoes/sofi/lottie/sofi-erro-claro.json",
-        "escuro": "animacoes/sofi/lottie/sofi-erro-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/sofi/anicraft/sofi-erro-claro.anicraft",
-        "escuro": "animacoes/sofi/anicraft/sofi-erro-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 35,
-        "svg": {
-          "claro": "animacoes/sofi/estatico/sofi-erro-claro.svg",
-          "escuro": "animacoes/sofi/estatico/sofi-erro-escuro.svg"
-        },
-        "png": {
-          "claro": "animacoes/sofi/estatico/sofi-erro-claro.png",
-          "escuro": "animacoes/sofi/estatico/sofi-erro-escuro.png"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/sofi/previa/sofi-erro-claro.gif",
-        "escuro": "animacoes/sofi/previa/sofi-erro-escuro.gif"
-      }
-    },
-    {
-      "nome": "tarefa-marcar",
-      "rotulo": "Marcar tarefa",
-      "tipo": "icone",
-      "duracao_ms": 300,
-      "fps": 60,
-      "quadros": 18,
-      "loop": false,
-      "uso": "Caixa encolhe 12%, enche de acento e o check entra com leve passagem (112%).",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/tarefa-marcar-claro.json",
-        "escuro": "animacoes/icones/lottie/tarefa-marcar-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/tarefa-marcar-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/tarefa-marcar-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 17,
-        "icone": "tarefa-feita",
-        "icone_svg": "icones/svg/tarefa-feita.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/tarefa-marcar-claro.svg",
-          "escuro": "animacoes/icones/estatico/tarefa-marcar-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/tarefa-marcar-claro.gif",
-        "escuro": "animacoes/icones/previa/tarefa-marcar-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/tarefa-marcar.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "favoritar",
-      "rotulo": "Favoritar",
-      "tipo": "icone",
-      "duracao_ms": 400,
-      "fps": 60,
-      "quadros": 24,
-      "loop": false,
-      "uso": "Estrela troca de contorno para cheia em acento, de 60% a 112% e assenta em 100%.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/favoritar-claro.json",
-        "escuro": "animacoes/icones/lottie/favoritar-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/favoritar-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/favoritar-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 23,
-        "icone": "favorito",
-        "icone_svg": "icones/svg/favorito.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/favoritar-claro.svg",
-          "escuro": "animacoes/icones/estatico/favoritar-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/favoritar-claro.gif",
-        "escuro": "animacoes/icones/previa/favoritar-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/favoritar.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "sincronizar",
-      "rotulo": "Sincronizar",
-      "tipo": "icone",
-      "duracao_ms": 600,
-      "fps": 60,
-      "quadros": 36,
-      "loop": true,
-      "uso": "Uma volta completa a cada 600 ms, linear, enquanto sincroniza.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/sincronizar-claro.json",
-        "escuro": "animacoes/icones/lottie/sincronizar-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/sincronizar-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/sincronizar-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 0,
-        "icone": "sincronizar",
-        "icone_svg": "icones/svg/sincronizar.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/sincronizar-claro.svg",
-          "escuro": "animacoes/icones/estatico/sincronizar-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/sincronizar-claro.gif",
-        "escuro": "animacoes/icones/previa/sincronizar-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/sincronizar.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "agente-trabalhando",
-      "rotulo": "Agente trabalhando",
-      "tipo": "icone",
-      "duracao_ms": 900,
-      "fps": 60,
-      "quadros": 54,
-      "loop": true,
-      "uso": "Faísca respira (100→80%) e o brilho gira e pulsa em acento.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/agente-trabalhando-claro.json",
-        "escuro": "animacoes/icones/lottie/agente-trabalhando-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/agente-trabalhando-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/agente-trabalhando-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 0,
-        "icone": "faisca",
-        "icone_svg": "icones/svg/faisca.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/agente-trabalhando-claro.svg",
-          "escuro": "animacoes/icones/estatico/agente-trabalhando-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/agente-trabalhando-claro.gif",
-        "escuro": "animacoes/icones/previa/agente-trabalhando-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/agente-trabalhando.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "desfazer",
-      "rotulo": "Desfazer",
-      "tipo": "icone",
-      "duracao_ms": 300,
-      "fps": 60,
-      "quadros": 18,
-      "loop": false,
-      "uso": "Seta recua 18° e 1,5 px e volta. Confirma o desfazer.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/desfazer-claro.json",
-        "escuro": "animacoes/icones/lottie/desfazer-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/desfazer-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/desfazer-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 0,
-        "icone": "desfazer",
-        "icone_svg": "icones/svg/desfazer.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/desfazer-claro.svg",
-          "escuro": "animacoes/icones/estatico/desfazer-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/desfazer-claro.gif",
-        "escuro": "animacoes/icones/previa/desfazer-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/desfazer.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "nova-nota",
-      "rotulo": "Nova nota",
-      "tipo": "icone",
-      "duracao_ms": 300,
-      "fps": 60,
-      "quadros": 18,
-      "loop": false,
-      "uso": "O “+” gira de −90° e cresce de 0 a 100%.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/nova-nota-claro.json",
-        "escuro": "animacoes/icones/lottie/nova-nota-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/nova-nota-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/nova-nota-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 17,
-        "icone": "nota-nova",
-        "icone_svg": "icones/svg/nota-nova.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/nova-nota-claro.svg",
-          "escuro": "animacoes/icones/estatico/nova-nota-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/nova-nota-claro.gif",
-        "escuro": "animacoes/icones/previa/nova-nota-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/nova-nota.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "abrir-estante",
-      "rotulo": "Abrir estante (chevron)",
-      "tipo": "icone",
-      "duracao_ms": 183,
-      "fps": 60,
-      "quadros": 11,
-      "loop": false,
-      "uso": "Chevron gira 90° em 180 ms. O inverso fecha.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/abrir-estante-claro.json",
-        "escuro": "animacoes/icones/lottie/abrir-estante-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/abrir-estante-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/abrir-estante-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 10,
-        "icone": "chevron-baixo",
-        "icone_svg": "icones/svg/chevron-baixo.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/abrir-estante-claro.svg",
-          "escuro": "animacoes/icones/estatico/abrir-estante-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/abrir-estante-claro.gif",
-        "escuro": "animacoes/icones/previa/abrir-estante-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/abrir-estante.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "fixar",
-      "rotulo": "Fixar consulta",
-      "tipo": "icone",
-      "duracao_ms": 250,
-      "fps": 60,
-      "quadros": 15,
-      "loop": false,
-      "uso": "Alfinete desce 3 px girando de 25° e a base em acento aparece.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/fixar-claro.json",
-        "escuro": "animacoes/icones/lottie/fixar-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/fixar-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/fixar-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 14,
-        "icone": "fixar",
-        "icone_svg": "icones/svg/fixar.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/fixar-claro.svg",
-          "escuro": "animacoes/icones/estatico/fixar-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/fixar-claro.gif",
-        "escuro": "animacoes/icones/previa/fixar-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/fixar.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "carregando",
-      "rotulo": "Carregando",
-      "tipo": "icone",
-      "duracao_ms": 800,
-      "fps": 60,
-      "quadros": 48,
-      "loop": true,
-      "uso": "Arco gira uma volta a cada 800 ms, linear.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/carregando-claro.json",
-        "escuro": "animacoes/icones/lottie/carregando-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/carregando-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/carregando-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 0,
-        "icone": "carregando",
-        "icone_svg": "icones/svg/carregando.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/carregando-claro.svg",
-          "escuro": "animacoes/icones/estatico/carregando-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/carregando-claro.gif",
-        "escuro": "animacoes/icones/previa/carregando-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/carregando.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    },
-    {
-      "nome": "salvo",
-      "rotulo": "Salvo",
-      "tipo": "icone",
-      "duracao_ms": 300,
-      "fps": 60,
-      "quadros": 18,
-      "loop": false,
-      "uso": "Círculo assenta (90→100%) e o check entra em acento.",
-      "tamanho": "24×24 (escala livre)",
-      "lottie": {
-        "claro": "animacoes/icones/lottie/salvo-claro.json",
-        "escuro": "animacoes/icones/lottie/salvo-escuro.json"
-      },
-      "anicraft": {
-        "claro": "animacoes/icones/anicraft/salvo-claro.anicraft",
-        "escuro": "animacoes/icones/anicraft/salvo-escuro.anicraft"
-      },
-      "parado": {
-        "quadro": 17,
-        "icone": "salvo",
-        "icone_svg": "icones/svg/salvo.svg",
-        "svg": {
-          "claro": "animacoes/icones/estatico/salvo-claro.svg",
-          "escuro": "animacoes/icones/estatico/salvo-escuro.svg"
-        }
-      },
-      "previa_gif": {
-        "claro": "animacoes/icones/previa/salvo-claro.gif",
-        "escuro": "animacoes/icones/previa/salvo-escuro.gif"
-      },
-      "formato_preferido": "css_svg",
-      "css_svg": {
-        "arquivo": "../fase5/animacoes-css/salvo.svg",
-        "cor": "currentColor (herda color do pai; um arquivo para os dois temas)",
-        "parado": "mesmo arquivo: com prefers-reduced-motion: reduce (ou .motion-reduce num ancestral) mostra o quadro parado"
-      }
-    }
-  ],
-  "ilustracoes": [
-    {
-      "nome": "biblioteca-vazia",
-      "rotulo": "Biblioteca vazia",
-      "tamanho": "320×240",
-      "svg": {
-        "claro": "ilustracoes/svg/biblioteca-vazia-claro.svg",
-        "escuro": "ilustracoes/svg/biblioteca-vazia-escuro.svg"
-      },
-      "png": {
-        "claro": "ilustracoes/png/biblioteca-vazia-claro@2x.png",
-        "escuro": "ilustracoes/png/biblioteca-vazia-escuro@2x.png"
-      },
-      "vectorcraft": {
-        "claro": "ilustracoes/vectorcraft/biblioteca-vazia-claro.vectorcraft",
-        "escuro": "ilustracoes/vectorcraft/biblioteca-vazia-escuro.vectorcraft"
-      }
-    },
-    {
-      "nome": "busca-sem-resultado",
-      "rotulo": "Busca sem resultado",
-      "tamanho": "320×240",
-      "svg": {
-        "claro": "ilustracoes/svg/busca-sem-resultado-claro.svg",
-        "escuro": "ilustracoes/svg/busca-sem-resultado-escuro.svg"
-      },
-      "png": {
-        "claro": "ilustracoes/png/busca-sem-resultado-claro@2x.png",
-        "escuro": "ilustracoes/png/busca-sem-resultado-escuro@2x.png"
-      },
-      "vectorcraft": {
-        "claro": "ilustracoes/vectorcraft/busca-sem-resultado-claro.vectorcraft",
-        "escuro": "ilustracoes/vectorcraft/busca-sem-resultado-escuro.vectorcraft"
-      }
-    },
-    {
-      "nome": "nenhuma-tarefa",
-      "rotulo": "Nenhuma tarefa",
-      "tamanho": "320×240",
-      "svg": {
-        "claro": "ilustracoes/svg/nenhuma-tarefa-claro.svg",
-        "escuro": "ilustracoes/svg/nenhuma-tarefa-escuro.svg"
-      },
-      "png": {
-        "claro": "ilustracoes/png/nenhuma-tarefa-claro@2x.png",
-        "escuro": "ilustracoes/png/nenhuma-tarefa-escuro@2x.png"
-      },
-      "vectorcraft": {
-        "claro": "ilustracoes/vectorcraft/nenhuma-tarefa-claro.vectorcraft",
-        "escuro": "ilustracoes/vectorcraft/nenhuma-tarefa-escuro.vectorcraft"
-      }
-    },
-    {
-      "nome": "agente-desconectado",
-      "rotulo": "Agente desconectado",
-      "tamanho": "320×240",
-      "svg": {
-        "claro": "ilustracoes/svg/agente-desconectado-claro.svg",
-        "escuro": "ilustracoes/svg/agente-desconectado-escuro.svg"
-      },
-      "png": {
-        "claro": "ilustracoes/png/agente-desconectado-claro@2x.png",
-        "escuro": "ilustracoes/png/agente-desconectado-escuro@2x.png"
-      },
-      "vectorcraft": {
-        "claro": "ilustracoes/vectorcraft/agente-desconectado-claro.vectorcraft",
-        "escuro": "ilustracoes/vectorcraft/agente-desconectado-escuro.vectorcraft"
-      }
-    }
-  ],
-  "contagens": {
-    "icones": 155,
-    "animacoes_mascote": 4,
-    "animacoes_icone": 10,
-    "ilustracoes": 4
-  }
+  ]
 }

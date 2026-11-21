@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createToolGate } = require('./ui/commands');
+const { chosenFilePaths, isSafeExternalUrl, OPEN_FILE_PROPERTIES } = require('./shell-policy');
 
 app.setName('Sophy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Sophy'));
@@ -139,26 +140,6 @@ function setupIpc() {
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     const body = input && typeof input === 'object' ? input : {};
-    if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
-      const full = path.resolve(sessionPath, ...body.path.split('/').filter(Boolean));
-      const root = path.resolve(sessionPath) + path.sep;
-      if (full.startsWith(root)) {
-        try {
-          const library = engine.openLibrary(sessionPath);
-          const before = engine.capture(library);
-          await shell.trashItem(full);
-          engine.pushHistory(library, {
-            origin: 'ui',
-            tool: 'entry.trash',
-            summary: `Lixeira ${body.path}`,
-            changes: engine.diff(before, engine.capture(library)),
-          });
-          return { path: body.path, trashed: true, trashPath: '' };
-        } catch {
-          /* a engine copia e apaga quando a lixeira do sistema recusa */
-        }
-      }
-    }
     return gate(name, body);
   });
 
@@ -212,6 +193,22 @@ function setupIpc() {
       properties: ['openDirectory', 'createDirectory'],
     });
     return result.canceled ? null : result.filePaths[0];
+  });
+
+  handle('sophy:choose-files', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(owner, {
+      title: 'Escolher arquivos',
+      properties: [...OPEN_FILE_PROPERTIES],
+    });
+    return chosenFilePaths(result);
+  });
+
+  handle('sophy:open-external', async (_event, url) => {
+    if (!isSafeExternalUrl(url))
+      throw new Error('Só é possível abrir links http, https ou mailto.');
+    await shell.openExternal(String(url).trim());
+    return true;
   });
 
   handle('sophy:create-library', (_event, folder) => {

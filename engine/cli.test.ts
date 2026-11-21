@@ -239,8 +239,31 @@ test('grafo humano e --json', () => {
   assert.equal(json.status, 0, json.stderr);
   const graph = JSON.parse(json.stdout) as { edges: Array<{ from: string; to: string }> };
   assert.deepEqual(graph.edges, [
-    { from: 'Estudos/Nota.md', to: 'Estudos/Outra.md', format: 'wiki' },
+    { from: 'Estudos/Nota.md', to: 'Estudos/Outra.md', format: 'wiki', weight: 1 },
   ]);
+});
+
+test('grafo aceita center e depth e preserva a linha from -> to', () => {
+  const root = library();
+  run(['nova', 'A', '--texto', '[[B]]', '--biblioteca', root]);
+  run(['nova', 'B', '--texto', '[[C]]', '--biblioteca', root]);
+  run(['nova', 'C', '--texto', 'fim', '--biblioteca', root]);
+  const human = run(['grafo', '--center', 'A.md', '--depth', '1', '--biblioteca', root]);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /^2 notas\nA\.md -> B\.md\n$/);
+  const focused = run(['grafo', '--center', 'A.md', '--depth', '2', '--json', '--biblioteca', root]);
+  assert.equal(focused.status, 0, focused.stderr);
+  const parsed = JSON.parse(focused.stdout) as { nodes: Array<{ path: string }> };
+  assert.deepEqual(
+    parsed.nodes.map((node) => node.path),
+    ['A.md', 'B.md', 'C.md'],
+  );
+  const bad = run(['grafo', '--depth', '4', '--biblioteca', root]);
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /depth precisa ser um inteiro de 1 a 3/);
+  const missing = run(['grafo', '--center', 'Nao.md', '--biblioteca', root]);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /não existe/);
 });
 
 test('historico e desfazer registram e revertem a última ação', () => {
@@ -336,6 +359,32 @@ test('biblioteca por --biblioteca, SOPHY_LIBRARY e pasta .sophy acima', () => {
   fs.mkdirSync(nested, { recursive: true });
   const byWalk = run(['estantes'], { cwd: nested });
   assert.equal(byWalk.status, 0, byWalk.stderr);
+});
+
+test('atalhos da lixeira listam, restauram e apagam sem ir para a lixeira do sistema', () => {
+  const root = library();
+  const created = run(['nova', 'Nota', '--texto', 'voltar', '--biblioteca', root]);
+  assert.equal(created.status, 0, created.stderr);
+  const trashed = run(['lixeira', 'Nota.md', '--biblioteca', root]);
+  assert.equal(trashed.status, 0, trashed.stderr);
+  assert.match(trashed.stdout, /Na lixeira: Nota.md/);
+  assert.equal(fs.existsSync(path.join(root, 'Nota.md')), false);
+  const listed = run(['lixeira-listar', '--json', '--biblioteca', root]);
+  assert.equal(listed.status, 0, listed.stderr);
+  const items = JSON.parse(listed.stdout) as Array<{ id: string; originalPath: string }>;
+  assert.equal(items[0].originalPath, 'Nota.md');
+  const restored = run(['restaurar', items[0].id, '--biblioteca', root]);
+  assert.equal(restored.status, 0, restored.stderr);
+  assert.match(restored.stdout, /Restaurado em Nota.md/);
+  assert.match(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), /voltar/);
+  const removed = run(['apagar', 'Nota.md', '--biblioteca', root]);
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(fs.existsSync(path.join(root, 'Nota.md')), false);
+  const again = JSON.parse(run(['lixeira-listar', '--json', '--biblioteca', root]).stdout) as unknown[];
+  assert.equal(again.length, 0);
+  const help = run([]);
+  assert.match(help.stdout, /sophy restaurar/);
+  assert.match(help.stdout, /sophy esvaziar-lixeira/);
 });
 
 test('rodar de dentro da biblioteca não é recusado', () => {

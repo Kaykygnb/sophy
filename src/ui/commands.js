@@ -14,6 +14,10 @@
     'note.write',
     'entry.move',
     'entry.trash',
+    'trash.restore',
+    'trash.purge',
+    'trash.empty',
+    'note.deletePermanent',
     'history.undo',
     'canvas.create',
     'canvas.update',
@@ -201,15 +205,40 @@
   }
 
   const SHELF_ICONS = {
-    estudos: 'capelo',
-    diário: 'nota-diaria',
-    diario: 'nota-diaria',
-    leituras: 'livro',
-    trabalho: 'maleta',
-    pesquisa: 'lampada',
-    projeto: 'livro',
-    'projeto livro': 'livro',
+    estudos: 'graduation-cap',
+    diário: 'calendar-dot',
+    diario: 'calendar-dot',
+    leituras: 'book',
+    trabalho: 'briefcase',
+    pesquisa: 'lightbulb',
+    projeto: 'book',
+    'projeto livro': 'book',
   };
+
+  const SHELF_ALIAS = {
+    'caixa-entrada': 'tray',
+    capelo: 'graduation-cap',
+    livro: 'book',
+    lampada: 'lightbulb',
+    maleta: 'briefcase',
+    leitura: 'book-open-text',
+    coracao: 'heart',
+    estante: 'rows',
+    pasta: 'folder',
+    grafo: 'graph',
+    faisca: 'sparkle',
+    conversa: 'chat-teardrop-text',
+    favorito: 'star',
+    globo: 'globe',
+    musica: 'music-notes',
+    planta: 'plant',
+    pincel: 'paint-brush',
+    'nota-diaria': 'calendar-dot',
+  };
+
+  function shelfGlyph(name) {
+    return SHELF_ALIAS[name] || name;
+  }
 
   function kitTaskStatus(status) {
     if (status === '/') return 'andamento';
@@ -358,30 +387,31 @@
   }
 
   const COMMANDS = [
-    { id: 'nota', rotulo: 'Nova nota', grupo: 'Criar', icone: 'nota-nova', atalho: 'Ctrl+N', quando: 'biblioteca' },
-    { id: 'estante', rotulo: 'Nova estante', grupo: 'Criar', icone: 'pasta-nova', atalho: 'Ctrl+Shift+N', quando: 'biblioteca' },
-    { id: 'novo-canvas', rotulo: 'Novo canvas', grupo: 'Criar', icone: 'canvas', atalho: '', quando: 'biblioteca' },
-    { id: 'modelo', rotulo: 'A partir de modelo', grupo: 'Criar', icone: 'modelo', atalho: '', quando: 'biblioteca' },
-    { id: 'buscar', rotulo: 'Buscar', grupo: 'Navegar', icone: 'busca', atalho: 'Ctrl+K', quando: 'sempre' },
-    { id: 'comandos', rotulo: 'Comandos', grupo: 'Navegar', icone: 'comando', atalho: 'Ctrl+Shift+P', quando: 'sempre' },
-    { id: 'biblioteca', rotulo: 'Trocar biblioteca', grupo: 'Navegar', icone: 'alternar', atalho: 'Ctrl+Shift+O', quando: 'sempre' },
-    { id: 'grafo', rotulo: 'Mostrar grafo', grupo: 'Navegar', icone: 'grafo', atalho: '', quando: 'biblioteca' },
-    { id: 'hoje', rotulo: 'Nota do dia', grupo: 'Navegar', icone: 'nota-diaria', atalho: 'Alt+D', quando: 'biblioteca' },
-    { id: 'config', rotulo: 'Configurações', grupo: 'Navegar', icone: 'ajuste', atalho: 'Ctrl+,', quando: 'sempre' },
-    { id: 'captura', rotulo: 'Captura rápida', grupo: 'Criar', icone: 'caixa-entrada', atalho: 'Ctrl+Shift+Espaço', quando: 'biblioteca' },
-    { id: 'visoes', rotulo: 'Visões salvas', grupo: 'Navegar', icone: 'lista', atalho: '', quando: 'biblioteca' },
+    { id: 'nota', rotulo: 'Nova nota', grupo: 'Criar', icone: 'note-pencil', atalho: 'Ctrl+N', quando: 'biblioteca' },
+    { id: 'estante', rotulo: 'Nova estante', grupo: 'Criar', icone: 'folder-plus', atalho: 'Ctrl+Shift+N', quando: 'biblioteca' },
+    { id: 'novo-canvas', rotulo: 'Novo canvas', grupo: 'Criar', icone: 'squares-four', atalho: '', quando: 'biblioteca' },
+    { id: 'modelo', rotulo: 'A partir de modelo', grupo: 'Criar', icone: 'file-dashed', atalho: '', quando: 'biblioteca' },
+    { id: 'buscar', rotulo: 'Buscar', grupo: 'Navegar', icone: 'magnifying-glass', atalho: 'Ctrl+K', quando: 'sempre' },
+    { id: 'comandos', rotulo: 'Comandos', grupo: 'Navegar', icone: 'command', atalho: 'Ctrl+Shift+P', quando: 'sempre' },
+    { id: 'biblioteca', rotulo: 'Trocar biblioteca', grupo: 'Navegar', icone: 'books', atalho: 'Ctrl+Shift+O', quando: 'sempre' },
+    { id: 'grafo', rotulo: 'Mostrar grafo', grupo: 'Navegar', icone: 'graph', atalho: '', quando: 'biblioteca' },
+    { id: 'hoje', rotulo: 'Nota do dia', grupo: 'Navegar', icone: 'calendar-dot', atalho: 'Alt+D', quando: 'biblioteca' },
+    { id: 'config', rotulo: 'Configurações', grupo: 'Navegar', icone: 'gear', atalho: 'Ctrl+,', quando: 'sempre' },
+    { id: 'captura', rotulo: 'Captura rápida', grupo: 'Criar', icone: 'tray', atalho: 'Ctrl+Shift+Espaço', quando: 'biblioteca' },
+    { id: 'visoes', rotulo: 'Visões salvas', grupo: 'Navegar', icone: 'list', atalho: '', quando: 'biblioteca' },
     { id: 'mencoes', rotulo: 'Menções sem link', grupo: 'Editar', icone: 'link', atalho: '', quando: 'biblioteca' },
-    { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
-    { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
-    { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
-    { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
-    { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
-    { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
-    { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'tachado', atalho: 'Ctrl+Shift+X', quando: 'editor' },
-    { id: 'destacar', rotulo: 'Destacar', grupo: 'Editar', icone: 'marca-texto', atalho: 'Ctrl+Shift+H', quando: 'editor' },
+    { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'folder-open', atalho: '', quando: 'biblioteca' },
+    { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'arrows-in', atalho: '', quando: 'sempre' },
+    { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'cards', atalho: '', quando: 'biblioteca' },
+    { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'clock-counter-clockwise', atalho: '', quando: 'biblioteca' },
+    { id: 'lixeira', rotulo: 'Lixeira', grupo: 'Navegar', icone: 'trash', atalho: '', quando: 'biblioteca' },
+    { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'text-b', atalho: 'Ctrl+B', quando: 'editor' },
+    { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'text-italic', atalho: 'Ctrl+I', quando: 'editor' },
+    { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'text-strikethrough', atalho: 'Ctrl+Shift+X', quando: 'editor' },
+    { id: 'destacar', rotulo: 'Destacar', grupo: 'Editar', icone: 'highlighter-circle', atalho: 'Ctrl+Shift+H', quando: 'editor' },
     { id: 'link', rotulo: 'Link', grupo: 'Editar', icone: 'link', atalho: 'Ctrl+L', quando: 'editor' },
-    { id: 'tarefa', rotulo: 'Virar tarefa', grupo: 'Editar', icone: 'lista-tarefas', atalho: 'Ctrl+Enter', quando: 'editor' },
-    { id: 'sofi', rotulo: 'Pedir à Sofi', grupo: 'Editar', icone: 'faisca', atalho: 'Ctrl+J', quando: 'editor' },
+    { id: 'tarefa', rotulo: 'Virar tarefa', grupo: 'Editar', icone: 'check-square', atalho: 'Ctrl+Enter', quando: 'editor' },
+    { id: 'sofi', rotulo: 'Pedir à Sofi', grupo: 'Editar', icone: 'sparkle', atalho: 'Ctrl+J', quando: 'editor' },
   ];
 
   function treeMarked(kind, id, focus = {}) {
@@ -400,26 +430,26 @@
   }
 
   function shelfMark(name) {
-    if (name === 'Entrada') return { icon: 'caixa-entrada', color: null };
+    if (name === 'Entrada') return { icon: 'tray', color: null };
     const icons = [
-      'capelo',
-      'livro',
-      'lampada',
-      'maleta',
-      'leitura',
-      'coracao',
-      'estante',
-      'pasta',
-      'grafo',
-      'faisca',
+      'graduation-cap',
+      'book',
+      'lightbulb',
+      'briefcase',
+      'book-open-text',
+      'heart',
+      'rows',
+      'folder',
+      'graph',
+      'sparkle',
       'tag',
-      'calendario',
-      'conversa',
-      'favorito',
-      'globo',
-      'musica',
-      'planta',
-      'pincel',
+      'calendar',
+      'chat-teardrop-text',
+      'star',
+      'globe',
+      'music-notes',
+      'plant',
+      'paint-brush',
     ];
     let hash = 0;
     for (const char of name) hash = (hash * 33 + char.codePointAt(0)) >>> 0;
@@ -439,18 +469,18 @@
   }
 
   const SLASH_ITEMS = [
-    { group: 'Básicos', id: 'h1', label: 'Título 1', icon: 'titulo', hint: '#', insert: '# ' },
-    { group: 'Básicos', id: 'h2', label: 'Título 2', icon: 'titulo', hint: '##', insert: '## ' },
-    { group: 'Básicos', id: 'h3', label: 'Título 3', icon: 'titulo', hint: '###', insert: '### ' },
-    { group: 'Básicos', id: 'h4', label: 'Título 4', icon: 'titulo', hint: '####', insert: '#### ' },
-    { group: 'Básicos', id: 'h5', label: 'Título 5', icon: 'titulo', hint: '#####', insert: '##### ' },
-    { group: 'Básicos', id: 'h6', label: 'Título 6', icon: 'titulo', hint: '######', insert: '###### ' },
-    { group: 'Básicos', id: 'lista', label: 'Lista', icon: 'lista', hint: '-', insert: '- ' },
+    { group: 'Básicos', id: 'h1', label: 'Título 1', icon: 'text-h', hint: '#', insert: '# ' },
+    { group: 'Básicos', id: 'h2', label: 'Título 2', icon: 'text-h', hint: '##', insert: '## ' },
+    { group: 'Básicos', id: 'h3', label: 'Título 3', icon: 'text-h', hint: '###', insert: '### ' },
+    { group: 'Básicos', id: 'h4', label: 'Título 4', icon: 'text-h', hint: '####', insert: '#### ' },
+    { group: 'Básicos', id: 'h5', label: 'Título 5', icon: 'text-h', hint: '#####', insert: '##### ' },
+    { group: 'Básicos', id: 'h6', label: 'Título 6', icon: 'text-h', hint: '######', insert: '###### ' },
+    { group: 'Básicos', id: 'lista', label: 'Lista', icon: 'list', hint: '-', insert: '- ' },
     {
       group: 'Básicos',
       id: 'numerada',
       label: 'Lista numerada',
-      icon: 'lista-numerada',
+      icon: 'list-numbers',
       hint: '1.',
       insert: '1. ',
     },
@@ -458,16 +488,16 @@
       group: 'Básicos',
       id: 'tarefa',
       label: 'Tarefa',
-      icon: 'tarefa',
+      icon: 'check-square',
       hint: '[ ]',
       insert: '- [ ] ',
     },
-    { group: 'Básicos', id: 'citacao', label: 'Citação', icon: 'citacao', hint: '>', insert: '> ' },
+    { group: 'Básicos', id: 'citacao', label: 'Citação', icon: 'quotes', hint: '>', insert: '> ' },
     {
       group: 'Básicos',
       id: 'codigo',
       label: 'Bloco de código',
-      icon: 'bloco-codigo',
+      icon: 'code-block',
       hint: '```',
       insert: '```\n\n```',
     },
@@ -475,7 +505,7 @@
       group: 'Básicos',
       id: 'divisor',
       label: 'Divisor',
-      icon: 'divisor',
+      icon: 'minus',
       hint: '---',
       insert: '---',
     },
@@ -483,28 +513,28 @@
       group: 'Inserir',
       id: 'tabela',
       label: 'Tabela',
-      icon: 'tabela',
+      icon: 'table',
       insert: '|  |  |\n| --- | --- |\n|  |  |',
     },
     {
       group: 'Inserir',
       id: 'imagem',
       label: 'Imagem ou arquivo',
-      icon: 'imagem',
+      icon: 'image',
       insert: '![[arquivo]]',
     },
     {
       group: 'Inserir',
       id: 'destaque',
       label: 'Destaque',
-      icon: 'destaque',
+      icon: 'chat-centered-text',
       insert: '> [!note]\n> ',
     },
     {
       group: 'Inserir',
       id: 'recolhivel',
       label: 'Lista recolhível',
-      icon: 'lista',
+      icon: 'caret-down',
       insert: '> [!toggle]\n> ',
     },
     { group: 'Comandos', id: 'link', label: 'Link para nota', icon: 'link', insert: '[[' },
@@ -512,7 +542,7 @@
       group: 'Comandos',
       id: 'hoje',
       label: 'Data de hoje',
-      icon: 'calendario',
+      icon: 'calendar',
       insert: '{{hoje}}',
     },
   ];
@@ -531,6 +561,29 @@
     cidade: 'Cidade', 'sofi-galho': 'Sofi no galho', 'sofi-livros': 'Sofi nos livros',
     'sofi-noite': 'Sofi à noite', 'sofi-folhas': 'Sofi entre folhas',
   };
+
+  /** Aceita a lista crua do preload ou o envelope { ok, value } do IPC. */
+  function chosenFileList(result) {
+    if (Array.isArray(result)) return result.filter((item) => typeof item === 'string' && item);
+    if (!result || typeof result !== 'object') return [];
+    if (result.ok === false) {
+      throw new Error(result.error || 'Não foi possível abrir o seletor.');
+    }
+    const value = Object.prototype.hasOwnProperty.call(result, 'value') ? result.value : null;
+    if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item);
+    return [];
+  }
+
+  /** Vazio quando o link abriu. Mensagem quando o IPC recusou. */
+  function externalOpenError(result) {
+    if (result === true) return '';
+    if (result === false || result == null) return 'Não foi possível abrir o link.';
+    if (typeof result === 'object') {
+      if (result.ok === false) return result.error || 'Não foi possível abrir o link.';
+      return '';
+    }
+    return '';
+  }
 
   function capaY(value) {
     if (value == null || value === '') return 0.5;
@@ -578,6 +631,7 @@
     saveNote,
     applyUiCommand,
     shelfMark,
+    shelfGlyph,
     kitTaskStatus,
     taskBlockClass,
     COMMANDS,
@@ -589,6 +643,8 @@
     COVER_IDS,
     COVER_NAMES,
     filterSlash,
+    chosenFileList,
+    externalOpenError,
     CONFLICT,
   };
 });

@@ -1,5 +1,6 @@
 const Doc = SophyDoc;
 const Cmd = SophyCommands;
+const Trash = SophyLixeira;
 
 const state = {
   settings: {},
@@ -24,10 +25,10 @@ const state = {
   unlinkedMentions: [],
   recentNotes: [],
   conflict: false,
-  graphWorkspace: '',
-  graphTag: '',
-  graphCamera: { x: 0, y: 0, zoom: 1 },
-  graphAnimation: 0,
+  graphShelf: '',
+  graphCenter: null,
+  graphPositions: null,
+  graphView: null,
   step: 1,
   folderMode: 'criar',
   folder: '',
@@ -41,6 +42,13 @@ const state = {
   warnedUnsafe: false,
   propertyTemplates: null,
   connectionsOpen: false,
+  trashItems: [],
+  trashStatus: 'idle',
+  trashError: '',
+  trashQuery: '',
+  trashKind: '',
+  trashSelected: null,
+  trashBusy: false,
 };
 
 const slash = Cmd.createSlashSession();
@@ -68,13 +76,18 @@ const Writing = SophyWriting.create({
 });
 
 function icon(name, extra = '') {
-  return `<svg class="icon ${extra}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+  const data = window.SophyIconsData || { fill: [] };
+  const id = String(name || '').replace(/[^a-z0-9-]/g, '');
+  const hasFill = Array.isArray(data.fill) && data.fill.includes(id);
+  const classes = ['icon', extra].filter(Boolean).join(' ');
+  const fill = hasFill ? `<use class="icon__fill" href="#i-${id}-fill"></use>` : '';
+  return `<svg class="${classes}" aria-hidden="true"><use class="icon__regular" href="#i-${id}"></use>${fill}</svg>`;
 }
 function windowButtons() {
   return `<div class="janela-botoes">
-    <button type="button" class="btn btn--icone" data-window="minimize" aria-label="Minimizar">${icon('janela-minimizar')}</button>
-    <button type="button" class="btn btn--icone" data-window="maximize" aria-label="Maximizar">${icon('janela-maximizar')}</button>
-    <button type="button" class="btn btn--icone janela-fechar" data-window="close" aria-label="Fechar">${icon('fechar')}</button>
+    <button type="button" class="btn btn--icone" data-window="minimize" aria-label="Minimizar">${icon('minus')}</button>
+    <button type="button" class="btn btn--icone" data-window="maximize" aria-label="Maximizar">${icon('corners-out')}</button>
+    <button type="button" class="btn btn--icone janela-fechar" data-window="close" aria-label="Fechar">${icon('x')}</button>
   </div>`;
 }
 function bindWindow(root) {
@@ -150,7 +163,7 @@ function toast(message, kind = 'ok', action = null) {
   const el = document.createElement('div');
   el.className = `toast ${kind === 'erro' ? 'toast--erro' : 'toast--ok'}`;
   el.setAttribute('role', kind === 'erro' ? 'alert' : 'status');
-  el.innerHTML = `${icon(kind === 'erro' ? 'erro' : 'salvo', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
+  el.innerHTML = `${icon(kind === 'erro' ? 'warning-circle' : 'check-circle', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
   if (action?.label && typeof action.onClick === 'function') {
     const button = document.createElement('button');
     button.type = 'button';
@@ -172,6 +185,7 @@ async function undoLastAction(message = 'Ação desfeita.') {
   await refreshLibrary();
   if (state.active) await openNote(state.active, { force: true });
   else paintTree();
+  if (state.view === 'trash') paintCenter();
   toast(message);
 }
 
@@ -237,15 +251,15 @@ function paintOnboarding() {
       <h1>Olá, eu sou a Sofi.</h1>
       <p class="onboarding__lead">O Sophy guarda suas notas como arquivos Markdown numa pasta sua.<br />Eu ajudo a organizar, encontrar e ligar ideias.</p>
       <div class="onboarding__cartoes onboarding__cartoes--tres">
-        <div class="opcao">${icon('pasta')}<div><strong>Arquivos seus, no seu disco</strong><p>Pastas e .md comuns, abra em qualquer editor.</p></div></div>
+        <div class="opcao">${icon('folder')}<div><strong>Arquivos seus, no seu disco</strong><p>Pastas e .md comuns, abra em qualquer editor.</p></div></div>
         <div class="opcao">${icon('link')}<div><strong>Notas ligadas com [[ ]]</strong><p>Links, backlinks, grafo e canvas.</p></div></div>
-        <div class="opcao">${icon('agente')}<div><strong>Agente opcional</strong><p>Só funciona se você conectar uma chave.</p></div></div>
+        <div class="opcao">${icon('sparkle')}<div><strong>Agente opcional</strong><p>Só funciona se você conectar uma chave.</p></div></div>
       </div>`,
     2: `<img alt="" src="ui/assets/ilustracoes/biblioteca-vazia-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Onde ficam as suas notas?</h1>
       <div class="onboarding__cartoes">
-        <button type="button" class="opcao ${state.folderMode === 'criar' ? 'is-escolhida' : ''}" data-mode="criar">${icon('pasta-nova')}<div><strong>Criar nova biblioteca</strong><p>Uma pasta nova, com o marcador .sophy.</p></div></button>
-        <button type="button" class="opcao ${state.folderMode === 'abrir' ? 'is-escolhida' : ''}" data-mode="abrir">${icon('pasta-aberta')}<div><strong>Abrir pasta existente</strong><p>Uma biblioteca que você já tem, inclusive vinda do Obsidian.</p></div></button>
+        <button type="button" class="opcao ${state.folderMode === 'criar' ? 'is-escolhida' : ''}" data-mode="criar">${icon('folder-plus')}<div><strong>Criar nova biblioteca</strong><p>Uma pasta nova, com o marcador .sophy.</p></div></button>
+        <button type="button" class="opcao ${state.folderMode === 'abrir' ? 'is-escolhida' : ''}" data-mode="abrir">${icon('folder-open')}<div><strong>Abrir pasta existente</strong><p>Uma biblioteca que você já tem, inclusive vinda do Obsidian.</p></div></button>
       </div>
       ${
         state.folderMode === 'criar'
@@ -253,20 +267,20 @@ function paintOnboarding() {
           : ''
       }
       <label class="campo">Local<input id="lib-folder" readonly value="${escapeHtml(state.folder)}" placeholder="Nenhuma pasta escolhida" /></label>
-      <button type="button" class="btn btn--secundario" id="escolher-pasta" style="margin-top:12px">${icon('pasta')} Escolher pasta</button>
-      <p class="nota-privacidade">${icon('cadeado')} A pasta fica no seu computador. O Sophy não envia as notas.</p>`,
+      <button type="button" class="btn btn--secundario" id="escolher-pasta" style="margin-top:12px">${icon('folder')} Escolher pasta</button>
+      <p class="nota-privacidade">${icon('lock')} A pasta fica no seu computador. O Sophy não envia as notas.</p>`,
     3: `<h1>Escolha a aparência</h1>
       <p class="onboarding__lead">O tema vale na hora. Dá para mudar depois.</p>
       <p id="rot-tema">Tema</p>
       <div class="segmentado" role="radiogroup" aria-labelledby="rot-tema">
         ${[
-          ['light', 'Claro'],
-          ['dark', 'Escuro'],
-          ['system', 'Sistema'],
+          ['light', 'Claro', 'sun'],
+          ['dark', 'Escuro', 'moon'],
+          ['system', 'Sistema', 'desktop'],
         ]
           .map(
-            ([value, label]) =>
-              `<label class="segmentado__opcao"><input type="radio" name="tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''} /><span>${label}</span></label>`,
+            ([value, label, glyph]) =>
+              `<label class="segmentado__opcao"><input type="radio" name="tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''} /><span>${icon(glyph)} ${label}</span></label>`,
           )
           .join('')}
       </div>
@@ -282,7 +296,7 @@ function paintOnboarding() {
       </div>`,
     4: `<img alt="" src="ui/assets/ilustracoes/agente-desconectado-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" />
       <h1>Quer ligar um agente agora?</h1>
-      <p class="nota-privacidade">${icon('cadeado')} A chave fica no cofre do sistema. Nada é gravado na biblioteca.</p>
+      <p class="nota-privacidade">${icon('lock')} A chave fica no cofre do sistema. Nada é gravado na biblioteca.</p>
       <label class="campo">Provedor
         <select id="provedor"><option>OpenAI</option><option>Anthropic</option><option>Outro</option></select>
       </label>
@@ -478,6 +492,7 @@ function openDrawer(opener) {
   lateral.classList.remove('is-fechada');
   lateral.classList.add('is-aberta');
   ensureVeil();
+  syncChromeIcons();
 }
 
 function closeDrawer() {
@@ -488,6 +503,7 @@ function closeDrawer() {
   if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.remove();
   syncConnectionsPanel();
+  syncChromeIcons();
   const opener = state.drawerOpener || $('#abrir-lateral');
   opener?.focus();
 }
@@ -503,6 +519,7 @@ function toggleSidebar(opener) {
   lateral.classList.remove('is-aberta');
   $('#gaveta-veu')?.remove();
   lateral.classList.toggle('is-fechada');
+  syncChromeIcons();
 }
 
 function paintShell() {
@@ -514,40 +531,43 @@ function paintShell() {
       <div class="titulo__marca"><img alt="Sophy" src="ui/assets/logo/logo-horizontal-${logo}.svg" /></div>
       <div class="titulo__abas" role="tablist" id="abas"></div>
       <div class="titulo__acoes">
-        <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
-        <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
-        <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
-        <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('painel-direito')}</button>
-        <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral" aria-pressed="true">${icon('sidebar-simple')}</button>
+        <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('magnifying-glass')}</button>
+        <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo" aria-pressed="false">${icon('graph')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('sidebar-simple', 'icon--espelhado')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-sofi" title="Sofi (Ctrl+J)" aria-label="Sofi (Ctrl+J)" aria-pressed="false">${icon('sparkle')}</button>
+        <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'sun' : 'moon')}</button>
         ${windowButtons()}
       </div>
     </header>
     <div class="miolo">
       <aside class="lateral" id="lateral">
         <div class="lateral__topo">
-          <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-label="Bibliotecas">
-            ${icon('biblioteca')}<span class="biblioteca-seletor__nome">${escapeHtml(state.libraryName || 'Biblioteca')}</span>${icon('alternar')}
+          <button type="button" class="biblioteca-seletor" id="seletor-biblioteca" aria-haspopup="menu" aria-expanded="false" aria-label="Bibliotecas">
+            ${icon('books')}<span class="biblioteca-seletor__nome">${escapeHtml(state.libraryName || 'Biblioteca')}</span>${icon('caret-down')}
           </button>
-          <button type="button" class="btn btn--icone" id="recolher" aria-label="Recolher">${icon('painel-lateral')}</button>
+          <button type="button" class="btn btn--icone" id="recolher" aria-label="Recolher" aria-pressed="true">${icon('sidebar-simple')}</button>
         </div>
         <div class="lateral__acoes">
-          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('novo')} Novo</button>
-          <button type="button" class="btn btn--icone" id="filtrar" aria-label="Filtrar">${icon('busca')}</button>
+          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('plus')} Novo</button>
+          <button type="button" class="btn btn--icone" id="filtrar" aria-label="Filtrar" aria-pressed="false">${icon('funnel')}</button>
         </div>
         <nav class="lateral__nav" aria-label="Seções">
           ${[
-            ['inicio', 'inicio', 'Início'],
-            ['hoje', 'nota-diaria', 'Hoje'],
-            ['tarefas', 'lista-tarefas', 'Tarefas'],
-            ['calendario', 'calendario', 'Calendário'],
-            ['grafo', 'grafo', 'Grafo'],
-            ['canvas', 'canvas', 'Canvas'],
+            ['inicio', 'house', 'Início'],
+            ['hoje', 'calendar-dot', 'Hoje'],
+            ['tarefas', 'check-square', 'Tarefas'],
+            ['calendario', 'calendar', 'Calendário'],
+            ['grafo', 'graph', 'Grafo'],
+            ['canvas', 'squares-four', 'Canvas'],
           ]
             .map(
               ([id, glyph, label]) =>
                 `<button type="button" class="nav__item" data-nav="${id}">${icon(glyph)} ${label}</button>`,
             )
             .join('')}
+          <div class="nav__sep" role="separator"></div>
+          <button type="button" class="nav__item" data-nav="lixeira" aria-label="${escapeHtml(trashNavLabel(state.trashItems.length))}">${icon('trash')}<span>Lixeira</span><span class="nav__conta" id="lixeira-conta">${state.trashItems.length}</span></button>
         </nav>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
@@ -564,6 +584,7 @@ function paintShell() {
   $('#busca').onclick = () => openPalette();
   $('#ver-grafo').onclick = () => showGraph();
   $('#abrir-conexoes').onclick = () => toggleConnections();
+  $('#abrir-sofi').onclick = () => runCommand('sofi');
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
@@ -574,6 +595,7 @@ function paintShell() {
     const box = shell.querySelector('.lateral__busca');
     box.hidden = !box.hidden;
     if (!box.hidden) $('#filtro-arvore').focus();
+    syncChromeIcons();
   };
   shell.querySelectorAll('[data-nav]').forEach((button) => {
     button.onclick = () => runCommand(button.dataset.nav === 'inicio' ? 'inicio' : button.dataset.nav);
@@ -611,13 +633,14 @@ async function refreshLibrary() {
   } catch {
     state.linkCatalog = [];
   }
+  await refreshTrashIndex();
 }
 
 function markFor(name) {
   const base = Cmd.shelfMark(name);
   const saved = state.shelfStyles?.[name];
   if (!saved || name === 'Entrada') return base;
-  return { icon: saved.icon || base.icon, color: saved.color || base.color };
+  return { icon: Cmd.shelfGlyph(saved.icon || base.icon), color: saved.color || base.color };
 }
 
 function treeNotes(workspace) {
@@ -646,7 +669,7 @@ function paintTree() {
           const unsafe = note.unsafe ? ' is-invalido' : '';
           const unsafeTitle = note.unsafe ? ' title="Nome inválido no Windows"' : '';
           return `<li role="treeitem"><button type="button" class="arvore__linha${unsafe}" style="--nivel:${Cmd.noteIndent(note.path)}" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}"${unsafeTitle}>
-            ${icon('nota')}${label}</button></li>`;
+            ${icon('note')}${label}</button></li>`;
         })
         .join('');
       const boards = state.canvases
@@ -654,7 +677,7 @@ function paintTree() {
         .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
         .map(
           (file) =>
-            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
+            `<li role="treeitem"><button type="button" class="arvore__linha" style="--nivel:${Cmd.noteIndent(file.path)}" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('squares-four')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`,
         )
         .join('');
       const shelfLabel =
@@ -663,7 +686,7 @@ function paintTree() {
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
       const shelfUnsafe = workspace.unsafe ? ' title="Nome inválido no Windows"' : '';
       return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}${shelfUnsafe}>
-          ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
+          ${icon('caret-right', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button><ul role="group">${children}${boards}</ul></li>`;
     })
     .join('');
@@ -673,16 +696,16 @@ function paintTree() {
       (
         note,
       ) => `<li><button type="button" class="arvore__linha" data-open="${escapeHtml(note.path)}" aria-selected="${Cmd.treeMarked('note', note.path, state)}">
-        ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
+        ${icon('note')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
     )
     .join('');
   const looseBoards = state.canvases
     .filter((file) => file.workspace === null)
     .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
-    .map((file) => `<li role="treeitem"><button type="button" class="arvore__linha" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`)
+    .map((file) => `<li role="treeitem"><button type="button" class="arvore__linha" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('squares-four')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`)
     .join('');
   const draft = state.namingShelf
-    ? `<li role="treeitem"><div class="arvore__linha">${icon('estante')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
+    ? `<li role="treeitem"><div class="arvore__linha">${icon('rows')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
     : '';
   const name = host.parentElement?.querySelector('.biblioteca-seletor__nome');
   if (name) name.textContent = state.libraryName || 'Biblioteca';
@@ -841,7 +864,7 @@ function paintTabs() {
   host.innerHTML = state.tabs
     .map((file) => {
       const canvas = file.toLowerCase().endsWith('.canvas');
-      return `<span class="aba-wrap"><button type="button" class="aba" role="tab" aria-selected="${file === state.active || file === state.canvasPath}" data-tab="${escapeHtml(file)}">${icon(canvas ? 'canvas' : 'nota')}<span>${escapeHtml(baseName(file))}</span></button><button type="button" class="aba-fechar" data-fechar-aba="${escapeHtml(file)}" aria-label="Fechar ${escapeHtml(baseName(file))}">×</button></span>`;
+      return `<span class="aba-wrap"><button type="button" class="aba" role="tab" aria-selected="${file === state.active || file === state.canvasPath}" data-tab="${escapeHtml(file)}">${icon(canvas ? 'squares-four' : 'note')}<span>${escapeHtml(baseName(file))}</span></button><button type="button" class="aba-fechar" data-fechar-aba="${escapeHtml(file)}" aria-label="Fechar ${escapeHtml(baseName(file))}">${icon('x')}</button></span>`;
     })
     .join('');
   host.querySelectorAll('[data-tab]').forEach((button) => {
@@ -883,8 +906,19 @@ function setFocusMode(on) {
   state.focusMode = !!on;
   document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
   document.querySelectorAll('[data-focus-toggle]').forEach((button) => {
-    button.textContent = state.focusMode ? 'Sair do foco' : 'Modo foco';
     button.setAttribute('aria-pressed', String(state.focusMode));
+    if (button.id !== 'modo-foco') {
+      const label = button.querySelector('[data-focus-label]');
+      const text = state.focusMode ? 'Sair do foco' : 'Modo foco';
+      if (label) label.textContent = text;
+      else button.textContent = text;
+      return;
+    }
+    button.classList.toggle('btn--primario', state.focusMode);
+    button.classList.toggle('nota-foco-sair', state.focusMode);
+    button.classList.toggle('btn--icone', !state.focusMode);
+    button.innerHTML = state.focusMode ? `${icon('arrows-in')} Sair do foco` : icon('arrows-in');
+    button.setAttribute('aria-label', state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco');
   });
 }
 
@@ -1153,7 +1187,7 @@ function openCoverPicker() {
       return `<button type="button" class="acento" data-cor="${color}" aria-label="${color === 'estante' ? 'Cor da estante' : shelfColorName(color)}" style="--amostra:${paint}"></button>`;
     })
     .join('');
-  pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--fantasma" id="fechar-capa" aria-label="Fechar">×</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
+  pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--icone" id="fechar-capa" aria-label="Fechar">${icon('x')}</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
   document.body.append(pop);
   const anchor = $('#trocar-capa')?.getBoundingClientRect();
   const margin = 8;
@@ -1249,8 +1283,8 @@ function propertyValueHtml(property) {
 
 function notePropertiesHtml() {
   const properties = noteProperties();
-  const rows = properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
-  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button></div></details>`;
+  const rows = properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">${icon('x')}</button></div>`).join('');
+  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">${icon('plus')} Adicionar propriedade</button></div></details>`;
 }
 
 function openPropertyValuePicker(propertyId, anchor) {
@@ -1268,7 +1302,7 @@ function openPropertyValuePicker(propertyId, anchor) {
   menu.setAttribute('aria-label', `Preencher ${property.name}`);
   const paint = () => {
     const selected = Array.isArray(property.value) ? property.value : [property.value].filter(Boolean);
-    menu.innerHTML = `<div class="propriedade-picker__topo"><strong>${escapeHtml(property.name)}</strong><span>${property.type === 'multi' ? 'Escolha um ou mais valores' : 'Escolha um valor'}</span></div><div class="propriedade-picker__opcoes">${property.options.map((option) => `<button type="button" class="menu__item ${selected.includes(option) ? 'is-ativa' : ''}" data-property-option="${escapeHtml(option)}"><span>${escapeHtml(option)}</span>${selected.includes(option) ? '<span>✓</span>' : ''}</button>`).join('') || '<p class="nota-privacidade">Nenhum valor usado ainda.</p>'}</div><div class="propriedade-picker__novo"><input id="property-new-value" maxlength="80" placeholder="Criar um novo valor…"><button type="button" class="btn btn--primario" id="property-create-value">Criar</button></div>${property.type === 'multi' ? '<button type="button" class="btn btn--fantasma propriedade-picker__done" id="property-picker-done">Concluído</button>' : ''}`;
+    menu.innerHTML = `<div class="propriedade-picker__topo"><strong>${escapeHtml(property.name)}</strong><span>${property.type === 'multi' ? 'Escolha um ou mais valores' : 'Escolha um valor'}</span></div><div class="propriedade-picker__opcoes">${property.options.map((option) => `<button type="button" class="menu__item ${selected.includes(option) ? 'is-ativa' : ''}" data-property-option="${escapeHtml(option)}"><span>${escapeHtml(option)}</span>${selected.includes(option) ? icon('check') : ''}</button>`).join('') || '<p class="nota-privacidade">Nenhum valor usado ainda.</p>'}</div><div class="propriedade-picker__novo"><input id="property-new-value" maxlength="80" placeholder="Criar um novo valor…"><button type="button" class="btn btn--primario" id="property-create-value">Criar</button></div>${property.type === 'multi' ? '<button type="button" class="btn btn--fantasma propriedade-picker__done" id="property-picker-done">Concluído</button>' : ''}`;
     menu.querySelectorAll('[data-property-option]').forEach((button) => {
       button.onclick = async () => {
         const value = button.dataset.propertyOption;
@@ -1321,7 +1355,7 @@ async function openPropertyEditor(existingId) {
   const templateSection = templates.length
     ? `<section class="propriedade-modelos"><div><strong>Usar uma propriedade existente</strong><span>Tipo e valores conhecidos vêm juntos.</span></div><div class="propriedade-modelos__lista" id="property-templates">${templates.map((template, index) => `<button type="button" class="opcao-cartao" data-property-template="${index}"><b>${escapeHtml(template.name)}</b><small>${escapeHtml(PROPERTY_TYPES[template.type])}${template.uses > 1 ? ` · usada em ${template.uses} notas` : ''}</small></button>`).join('')}</div></section>`
     : '';
-  overlay.innerHTML = `<div class="propriedade-editor" role="dialog" aria-modal="true" aria-labelledby="property-title"><header class="propriedade-editor__topo"><div><h3 id="property-title">${existing ? 'Editar' : 'Nova'} propriedade</h3><p>${existing ? 'Altere o nome desta propriedade.' : 'Reutilize uma propriedade da biblioteca ou crie uma nova.'}</p></div><button type="button" class="btn btn--icone" id="property-close" aria-label="Fechar">×</button></header><div class="propriedade-editor__corpo">${templateSection}<label class="propriedade-editor__campo"><span>Nome</span><input id="property-name" maxlength="80" value="${escapeHtml(existing?.name || '')}" placeholder="Ex.: Época, Status ou Prazo"><small>Ao usar esse nome novamente, o Sophy oferecerá este modelo.</small></label><label class="propriedade-editor__campo"><span>Tipo</span><select id="property-type" ${existing ? 'disabled' : ''}>${Object.entries(PROPERTY_TYPES).map(([value, label]) => `<option value="${value}" ${value === (existing?.type || 'text') ? 'selected' : ''}>${label}</option>`).join('')}</select><small>${existing ? 'O tipo não pode ser alterado depois da criação.' : 'Os valores de seleção serão criados quando você preencher a propriedade.'}</small></label><p class="propriedade-editor__erro" id="property-error" role="alert"></p></div><footer class="propriedade-editor__acoes"><button type="button" class="btn btn--fantasma" id="property-cancel">Cancelar</button><button type="button" class="btn btn--primario" id="property-save">${existing ? 'Salvar alterações' : 'Adicionar propriedade'}</button></footer></div>`;
+  overlay.innerHTML = `<div class="propriedade-editor" role="dialog" aria-modal="true" aria-labelledby="property-title"><header class="propriedade-editor__topo"><div><h3 id="property-title">${existing ? 'Editar' : 'Nova'} propriedade</h3><p>${existing ? 'Altere o nome desta propriedade.' : 'Reutilize uma propriedade da biblioteca ou crie uma nova.'}</p></div><button type="button" class="btn btn--icone" id="property-close" aria-label="Fechar">${icon('x')}</button></header><div class="propriedade-editor__corpo">${templateSection}<label class="propriedade-editor__campo"><span>Nome</span><input id="property-name" maxlength="80" value="${escapeHtml(existing?.name || '')}" placeholder="Ex.: Época, Status ou Prazo"><small>Ao usar esse nome novamente, o Sophy oferecerá este modelo.</small></label><label class="propriedade-editor__campo"><span>Tipo</span><select id="property-type" ${existing ? 'disabled' : ''}>${Object.entries(PROPERTY_TYPES).map(([value, label]) => `<option value="${value}" ${value === (existing?.type || 'text') ? 'selected' : ''}>${label}</option>`).join('')}</select><small>${existing ? 'O tipo não pode ser alterado depois da criação.' : 'Os valores de seleção serão criados quando você preencher a propriedade.'}</small></label><p class="propriedade-editor__erro" id="property-error" role="alert"></p></div><footer class="propriedade-editor__acoes"><button type="button" class="btn btn--fantasma" id="property-cancel">Cancelar</button><button type="button" class="btn btn--primario" id="property-save">${existing ? 'Salvar alterações' : 'Adicionar propriedade'}</button></footer></div>`;
   const type = $('#property-type');
   overlay.querySelectorAll('[data-property-template]').forEach((button) => {
     button.onclick = () => {
@@ -1364,7 +1398,7 @@ function openNoteMenu(anchor) {
   menu.className = 'menu menu-flutuante nota-menu';
   menu.setAttribute('role', 'dialog');
   menu.setAttribute('aria-label', 'Opções da nota');
-  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button>`;
+  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}">${icon('text-aa')}<span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}">${icon('arrows-horizontal')}<span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">${icon('list-bullets')} Propriedades</button><button type="button" class="menu__item" id="menu-cover">${icon('image')} ${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${icon('arrows-in')}<span data-focus-label>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</span></button>`;
   document.body.append(menu);
   anchor.setAttribute('aria-expanded', 'true');
   const rect = anchor.getBoundingClientRect();
@@ -1444,7 +1478,7 @@ function paintSettings(center) {
   center.innerHTML = `<div class="config"><h2>Configurações</h2>
     <section><h3>Aparência</h3>
       <div class="segmentado" role="radiogroup" aria-label="Tema">
-        ${['light', 'dark', 'system'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''}><span>${value === 'light' ? 'Claro' : value === 'dark' ? 'Escuro' : 'Sistema'}</span></label>`).join('')}
+        ${[['light', 'Claro', 'sun'], ['dark', 'Escuro', 'moon'], ['system', 'Sistema', 'desktop']].map(([value, label, glyph]) => `<label class="segmentado__opcao"><input type="radio" name="cfg-tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''}><span>${icon(glyph)} ${label}</span></label>`).join('')}
       </div>
       <div class="segmentado" role="radiogroup" aria-label="Fonte">
         ${['inter', 'literata'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-fonte" value="${value}" ${(state.settings.readingFont || 'inter') === value ? 'checked' : ''}><span>${value === 'inter' ? 'Inter' : 'Literata'}</span></label>`).join('')}
@@ -1454,7 +1488,7 @@ function paintSettings(center) {
     <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><label class="alternar"><input type="checkbox" id="cfg-sistema" ${state.settings.accentSystem ? 'checked' : ''}><span>Seguir a cor do sistema</span></label><p class="nota-privacidade">Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.</p></section>
     <section><h3>Busca por significado</h3><label class="alternar"><input type="checkbox" id="cfg-busca" ${state.settings.semantic ? 'checked' : ''}><span>${state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'}</span></label><p class="nota-privacidade">Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.</p></section>
     <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa ${weekStartsOn() === 0 ? 'no domingo' : 'na segunda'}.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div><button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button></section>
-    <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
+    <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">${icon('clock-counter-clockwise')} Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
   </div>`;
   center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
     input.onchange = async () => {
@@ -1711,7 +1745,7 @@ function paintCanvasGallery(center) {
   const empty = count
     ? ''
     : `<div class="canvas-grade__vazio"><strong>Nenhum canvas ainda</strong><p>Crie um quadro para ligar notas, formas e ideias.</p></div>`;
-  center.innerHTML = `<div class="canvas-grade"><header class="canvas-grade__topo"><div><h2>Canvas</h2><p>${count ? `${count} quadro${count === 1 ? '' : 's'} · capas, formas e wikilinks` : 'Quadros livres para ligar ideias, notas e formas.'}</p></div><button type="button" class="btn btn--primario" id="atalho-novo-canvas">${icon('canvas')} Novo canvas</button></header>${empty}${cards}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas-card">${icon('canvas')}<strong>Novo canvas</strong><span>Começar um quadro em branco</span></button></div>`;
+  center.innerHTML = `<div class="canvas-grade"><header class="canvas-grade__topo"><div><h2>Canvas</h2><p>${count ? `${count} quadro${count === 1 ? '' : 's'} · capas, formas e wikilinks` : 'Quadros livres para ligar ideias, notas e formas.'}</p></div><button type="button" class="btn btn--primario" id="atalho-novo-canvas">${icon('squares-four')} Novo canvas</button></header>${empty}${cards}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas-card">${icon('plus')}<strong>Novo canvas</strong><span>Começar um quadro em branco</span></button></div>`;
   center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
     button.onclick = () => openCanvas(button.dataset.abrirCanvas);
   });
@@ -1726,16 +1760,8 @@ function paintCanvasGallery(center) {
       event.stopPropagation();
       const file = button.dataset.file;
       if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`))) return;
-      $('#overlay').hidden = true;
       try {
-        await tool('entry.trash', { path: file });
-        state.tabs = state.tabs.filter((tab) => tab !== file);
-        state.canvasGalleryLoaded = false;
-        await refreshLibrary();
-        paintTree();
-        paintTabs();
-        paintCenter();
-        toast('Canvas movido para a lixeira.');
+        await trashPath(file, 'canvas');
       } catch (error) {
         toast(error.message, 'erro');
       }
@@ -1766,14 +1792,47 @@ async function loadCanvasGallery() {
   if (state.view === 'canvases') paintCenter();
 }
 
+function sidebarOpen() {
+  const lateral = $('#lateral');
+  if (!lateral) return false;
+  if (drawerNarrow()) return lateral.classList.contains('is-aberta');
+  return !lateral.classList.contains('is-fechada');
+}
+
+function syncChromeIcons() {
+  const open = sidebarOpen();
+  for (const id of ['abrir-lateral', 'recolher']) {
+    const button = document.getElementById(id);
+    if (button) button.setAttribute('aria-pressed', open ? 'true' : 'false');
+  }
+  const graph = $('#ver-grafo');
+  if (graph) {
+    graph.setAttribute('aria-pressed', state.view === 'graph' || state.nav === 'grafo' ? 'true' : 'false');
+  }
+  const sofi = $('#abrir-sofi');
+  if (sofi) sofi.setAttribute('aria-pressed', state.sofiOpen ? 'true' : 'false');
+  const filter = $('#filtrar');
+  const box = document.querySelector('.lateral__busca');
+  if (filter && box) filter.setAttribute('aria-pressed', box.hidden ? 'false' : 'true');
+}
+
 function syncNav() {
   document.querySelectorAll('[data-nav]').forEach((button) => {
     if (button.dataset.nav === state.nav) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  syncChromeIcons();
 }
 
 function paintCenterBody(center) {
+  if (state.graphView) {
+    state.graphView.destroy();
+    state.graphView = null;
+  }
+  if (state.view === 'trash') {
+    paintTrash(center);
+    return;
+  }
   if (state.view === 'canvases') {
     paintCanvasGallery(center);
     return;
@@ -1815,7 +1874,7 @@ function paintCenterBody(center) {
     const boards = state.canvases.filter((file) => file.workspace === state.selectedShelf);
     center.innerHTML = notes.length || boards.length
       ? `<div class="vazio-ensina"><h2>${escapeHtml(state.selectedShelf)}</h2><p>${notes.length} notas · ${boards.length} canvas</p></div>`
-      : `<div class="vazio-estante vazio-ensina"><h2>${escapeHtml(state.selectedShelf)} está vazia</h2><p>Crie a primeira nota desta estante, ou um canvas, pelo botão Novo.</p><button type="button" class="btn btn--primario" id="estante-nova-nota">${icon('nota-nova')} Nova nota aqui</button></div>`;
+      : `<div class="vazio-estante vazio-ensina"><h2>${escapeHtml(state.selectedShelf)} está vazia</h2><p>Crie a primeira nota desta estante, ou um canvas, pelo botão Novo.</p><button type="button" class="btn btn--primario" id="estante-nova-nota">${icon('note-pencil')} Nova nota aqui</button></div>`;
     const create = $('#estante-nova-nota');
     if (create) create.onclick = () => createNote();
     return;
@@ -1899,7 +1958,7 @@ function paintCenterBody(center) {
     return;
   }
   const conflict = state.conflict
-    ? `<div class="aviso" role="alert">${icon('erro')} <span>A nota mudou desde a leitura. Nada foi gravado.</span> <button type="button" class="btn btn--secundario" id="recarregar">Recarregar</button></div>`
+    ? `<div class="aviso" role="alert">${icon('warning-circle')} <span>A nota mudou desde a leitura. Nada foi gravado.</span> <button type="button" class="btn btn--secundario" id="recarregar">Recarregar</button></div>`
     : '';
   const chips = tagChips(state.frontmatter);
   const crumb = noteCrumb(state.active);
@@ -1913,7 +1972,7 @@ function paintCenterBody(center) {
   const strip = dailyStrip(state.active);
   const layout = noteLayout();
   const layoutClasses = [`nota--font-${layout.font}`, layout.small ? 'nota--small' : '', layout.wide ? 'nota--wide' : ''].filter(Boolean).join(' ');
-  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" aria-haspopup="true">•••</button></div>`;
+  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${icon('arrows-in')}${state.focusMode ? ' Sair do foco' : ''}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" aria-haspopup="true" aria-expanded="false">${icon('dots-three')}</button></div>`;
   center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
@@ -2050,16 +2109,16 @@ function renderBlock(block, index) {
     const kit = Cmd.kitTaskStatus(task.status);
     const chips = [
       task.due
-        ? `<span class="chip">${icon('calendario', 'icon--16')}${escapeHtml(task.due)}</span>`
+        ? `<span class="chip">${icon('calendar', 'icon--16')}${escapeHtml(task.due)}</span>`
         : '',
       task.priority === 'alta'
-        ? `<span class="chip chip--alta">${icon('prioridade-alta', 'icon--16')}Alta</span>`
+        ? `<span class="chip chip--alta">${icon('flag', 'icon--16')}Alta</span>`
         : '',
       task.priority === 'media'
-        ? `<span class="chip chip--media">${icon('prioridade-media', 'icon--16')}Média</span>`
+        ? `<span class="chip chip--media">${icon('flag', 'icon--16 icon--prioridade-media')}Média</span>`
         : '',
       task.priority === 'baixa'
-        ? `<span class="chip chip--baixa">${icon('prioridade-baixa', 'icon--16')}Baixa</span>`
+        ? `<span class="chip chip--baixa">${icon('flag', 'icon--16 icon--prioridade-baixa')}Baixa</span>`
         : '',
     ].join('');
     return `<div class="${Cmd.taskBlockClass(task.status)}">
@@ -2099,12 +2158,12 @@ function renderBlock(block, index) {
   }
   const embed = block.raw.trim().match(/^!\[\[([^\]\n]+)\]\]$/);
   if (embed) {
-    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><figure class="embed" data-block="${index}" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure></div>`;
+    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('plus')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('dots-six-vertical')}</button></div><figure class="embed" data-block="${index}" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure></div>`;
   }
   const text = block.raw.replace(/\n$/, '');
     const empty = text.trim() === '';
     const hint = empty ? ' data-dica="1" data-placeholder="Digite / para comandos"' : '';
-    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><p class="bloco bloco--texto" data-block="${index}"${hint} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
+    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('plus')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('dots-six-vertical')}</button></div><p class="bloco bloco--texto" data-block="${index}"${hint} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
 }
 
 function inlineHtml(text) {
@@ -2965,14 +3024,14 @@ function showWiki(el, found) {
       .slice(0, 10)
       .map(
         (heading) =>
-          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#${escapeHtml(heading)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">${highlight(heading, draft.anchor)}</span><span class="menu__caminho">Seção</span></span></button>`,
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#${escapeHtml(heading)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('note')}<span><span class="menu__titulo">${highlight(heading, draft.anchor)}</span><span class="menu__caminho">Seção</span></span></button>`,
       );
     const blockRows = (target?.blockIds || [])
       .filter((id) => !draft.anchor || draft.anchor.startsWith('^') ? foldText(id).includes(anchorNeedle) : foldText(id).includes(anchorNeedle))
       .slice(0, 8)
       .map(
         (id) =>
-          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#^${escapeHtml(id)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">^${escapeHtml(id)}</span><span class="menu__caminho">Bloco</span></span></button>`,
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#^${escapeHtml(id)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('note')}<span><span class="menu__titulo">^${escapeHtml(id)}</span><span class="menu__caminho">Bloco</span></span></button>`,
       );
     const aliasHint = draft.hasPipe
       ? ''
@@ -3029,7 +3088,7 @@ function showWiki(el, found) {
     .join('');
   const createLabel = needle || 'sem título';
   const create = needle
-    ? `<button type="button" class="menu__item" role="option" data-create="${escapeHtml(needle)}">${icon('nota-nova')} Criar nota “${escapeHtml(createLabel)}”</button>
+    ? `<button type="button" class="menu__item" role="option" data-create="${escapeHtml(needle)}">${icon('note-pencil')} Criar nota “${escapeHtml(createLabel)}”</button>
        <div class="menu__rodape"><span><kbd class="kbd">#</kbd> seção</span><span><kbd class="kbd">|</kbd> texto do link</span></div>`
     : `<div class="menu__rodape"><span><kbd class="kbd">#</kbd> seção</span><span><kbd class="kbd">|</kbd> texto do link</span></div>`;
   openMenu(el, 'menu menu--wiki menu-flutuante', rows + create, (button) => {
@@ -3108,8 +3167,8 @@ function openMenu(anchor, className, html, onPick) {
 }
 
 function closeMenus() {
-  document.querySelectorAll('#nota-mais[aria-expanded="true"]').forEach((button) => {
-    button.removeAttribute('aria-expanded');
+  document.querySelectorAll('#nota-mais[aria-expanded], #seletor-biblioteca[aria-expanded]').forEach((button) => {
+    button.setAttribute('aria-expanded', 'false');
   });
   document.querySelectorAll('.menu-flutuante, .seletor-capa').forEach((menu) => {
     if (menu.getAttribute('aria-label') !== 'Conflito') menu.remove();
@@ -3201,8 +3260,12 @@ function cycleTask(index) {
 async function followLink(target, options = {}) {
   if (!target) return;
   if (/^(https?:\/\/|mailto:)/i.test(target)) {
-    const response = await sophy.openExternal(target);
-    if (!response.ok) toast(response.error, 'erro');
+    try {
+      const message = Cmd.externalOpenError(await sophy.openExternal(target));
+      if (message) toast(message, 'erro');
+    } catch (error) {
+      toast(error.message || 'Não foi possível abrir o link.', 'erro');
+    }
     return;
   }
   const draft = Cmd.parseWikiDraft(String(target).replace(/^!?\[\[|\]\]$/g, ''));
@@ -3743,9 +3806,7 @@ async function pickAndInsertImages() {
     toast('Abra uma nota para inserir imagens.', 'erro');
     return;
   }
-  const picked = await sophy.chooseFiles();
-  if (!picked?.ok) throw new Error(picked?.error || 'Não foi possível abrir o seletor.');
-  const paths = picked.value || [];
+  const paths = Cmd.chosenFileList(await sophy.chooseFiles());
   if (!paths.length) return;
   const imported = await importAttachmentFiles(paths.map((path) => ({ path })));
   insertEmbedBlocks(imported);
@@ -3782,7 +3843,9 @@ function paintLinks() {
     return;
   }
   const head =
-    '<div class="conexoes__topo"><h3>Conexões</h3><button type="button" class="btn btn--icone" id="fechar-conexoes" aria-label="Ocultar conexões">×</button></div>';
+    '<div class="conexoes__topo"><h3>Conexões</h3><button type="button" class="btn btn--icone" id="fechar-conexoes" aria-label="Ocultar conexões">' +
+    icon('x') +
+    '</button></div>';
   if (!state.active) {
     host.innerHTML = `${head}<p class="nota-privacidade">Abra uma nota para ver os links.</p>`;
     $('#fechar-conexoes').onclick = () => closeConnections();
@@ -3818,7 +3881,7 @@ function paintLinks() {
     .join('');
   const mentionBlock = `<h3 class="conexoes__titulo">Menções sem link</h3><div class="mencoes">${mentions || '<p class="nota-privacidade">Nenhuma menção solta.</p>'}</div>`;
   host.innerHTML = `${head}<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}${mentionBlock}
-    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
+    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('arrow-counter-clockwise')} Desfazer</button>`;
   $('#fechar-conexoes').onclick = () => closeConnections();
   host.querySelectorAll('[data-go]').forEach((button) => {
     button.onclick = () => {
@@ -3875,10 +3938,10 @@ function openNewMenu(anchor) {
   menu.className = 'menu menu-flutuante';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = [
-    ['nota', 'nota-nova', 'Nova nota'],
-    ['estante', 'pasta-nova', 'Nova estante'],
-    ['novo-canvas', 'canvas', 'Novo canvas'],
-    ['modelo', 'modelo', 'A partir de modelo'],
+    ['nota', 'note-pencil', 'Nova nota'],
+    ['estante', 'folder-plus', 'Nova estante'],
+    ['novo-canvas', 'squares-four', 'Novo canvas'],
+    ['modelo', 'file-dashed', 'A partir de modelo'],
   ]
     .map(
       ([id, glyph, label]) =>
@@ -4061,7 +4124,7 @@ function paintTasks(center) {
     })
     .join('');
   const hasFilter = Object.values(filter).some(Boolean);
-  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} em andamento · ${taskCounts.feita} concluídas</p></div><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
+  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} em andamento · ${taskCounts.feita} concluídas</p></div><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${[['lista', 'Lista', 'list'], ['quadro', 'Quadro', 'kanban']].map(([mode, label, glyph]) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}" aria-pressed="${state.taskMode === mode}">${icon(glyph)} ${label}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
   center.querySelectorAll('[data-filtro]').forEach((button) => {
     button.onclick = () => {
       state.taskFilter[button.dataset.filtro] = button.dataset.valor;
@@ -4147,7 +4210,7 @@ function paintCalendar(center) {
   const body = mode === 'agenda'
     ? `<div class="calendario__miolo"><ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}</div>`
     : `<div class="calendario__miolo"><div><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>${dayPanel}</div>`;
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo calendario__topo"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo calendario__topo"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">${icon('caret-left')}</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">${icon('caret-right')}</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes" aria-pressed="${mode === 'mes'}">${icon('calendar')} Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana" aria-pressed="${mode === 'semana'}">${icon('rows')} Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda" aria-pressed="${mode === 'agenda'}">${icon('list')} Agenda</button></div></header>${body}</div>`;
   $('#cal-hoje').onclick = () => {
     state.calendarCursor = isoToday();
     state.dayFocus = isoToday();
@@ -4215,7 +4278,7 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
-  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
+  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'lixeira', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
   if (leaving && ((state.view === 'note' && state.doc) || state.view === 'canvas')) {
     flushNote().then((saved) => { if (saved) runCommandNow(id); });
     return;
@@ -4224,7 +4287,7 @@ function runCommand(id) {
 }
 
 function runCommandNow(id) {
-  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas'].includes(id)) state.nav = id;
+  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'lixeira'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
     estante: () => createWorkspace(),
@@ -4247,6 +4310,7 @@ function runCommandNow(id) {
       paintCenter();
     },
     versoes: () => showVersions(),
+    lixeira: () => showTrash(),
     buscar: () => openPalette(),
     comandos: () => openCommands(),
     biblioteca: () => {
@@ -4311,7 +4375,7 @@ function dailyStrip(notePath) {
 function paintSofi(host) {
   host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
-  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
+  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">${icon('sparkle')} Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">${icon('x')} Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
   $('#agente-guardar').onclick = async () => {
     const response = await sophy.agentKeySet($('#agente-chave').value);
     $('#agente-chave').value = '';
@@ -4334,6 +4398,7 @@ function paintSofi(host) {
     $('#sofi-gaveta')?.classList.remove('is-aberta');
     if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
     paintLinks();
+    syncChromeIcons();
   };
 }
 
@@ -4350,6 +4415,7 @@ function openAgent() {
     state.sofiOpen = true;
     paintSofi(panel);
     panel.classList.add('is-aberta');
+    syncChromeIcons();
     ensureVeil();
     state.drawerOpener = $('#abrir-lateral');
     return;
@@ -4359,6 +4425,7 @@ function openAgent() {
   state.connectionsOpen = true;
   paintSofi($('#conexoes'));
   syncConnectionsPanel();
+  syncChromeIcons();
 }
 
 function openCapture() {
@@ -4509,17 +4576,435 @@ async function showMentions() {
   });
 }
 
-function confirmDialog(message) {
+function confirmDialog(message, options = {}) {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Confirmar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+  const confirmLabel = options.confirmLabel || 'Confirmar';
+  const cancelLabel = options.cancelLabel || 'Cancelar';
+  const tone = options.danger ? 'btn--perigo' : 'btn--primario';
+  const label = options.label || 'Confirmar';
+  overlay.innerHTML = `<div class="menu confirma" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}"><p id="confirma-texto">${escapeHtml(message)}</p><div class="confirma__acoes"><button type="button" class="btn btn--secundario" id="confirma-nao">${escapeHtml(cancelLabel)}</button><button type="button" class="btn ${tone}" id="confirma-sim">${escapeHtml(confirmLabel)}</button></div></div>`;
+  const cancel = $('#confirma-nao');
+  cancel.focus();
   return new Promise((resolve) => {
-    $('#confirma-sim').onclick = () => resolve(true);
-    $('#confirma-nao').onclick = () => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.onclick = null;
       overlay.hidden = true;
-      resolve(false);
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(false);
+    };
+    document.addEventListener('keydown', onKey, true);
+    $('#confirma-sim').onclick = () => finish(true);
+    cancel.onclick = () => finish(false);
+    overlay.onclick = (event) => {
+      if (event.target === overlay) finish(false);
     };
   });
+}
+
+function trashNavLabel(count) {
+  return `Lixeira, ${Trash.countLabel(count)}`;
+}
+
+function paintTrashBadge() {
+  const count = state.trashItems.length;
+  const badge = $('#lixeira-conta');
+  const button = document.querySelector('[data-nav="lixeira"]');
+  if (badge) badge.textContent = String(count);
+  if (button) button.setAttribute('aria-label', trashNavLabel(count));
+}
+
+async function refreshTrashIndex() {
+  try {
+    const items = await tool('trash.list', {});
+    state.trashItems = Array.isArray(items) ? items : [];
+    state.trashStatus = 'ready';
+    state.trashError = '';
+  } catch (error) {
+    state.trashStatus = 'error';
+    state.trashError = error.message || 'Não foi possível ler a lixeira.';
+  }
+  paintTrashBadge();
+}
+
+function visibleTrash() {
+  return Trash.filterTrash(state.trashItems, {
+    query: state.trashQuery,
+    kind: state.trashKind,
+  });
+}
+
+function syncTrashSelection(items) {
+  if (!items.length) {
+    state.trashSelected = null;
+    return;
+  }
+  if (!items.some((item) => item.id === state.trashSelected)) state.trashSelected = items[0].id;
+}
+
+async function showTrash() {
+  state.view = 'trash';
+  state.nav = 'lixeira';
+  state.active = null;
+  state.canvasPath = null;
+  state.trashStatus = 'loading';
+  paintTree();
+  paintTabs();
+  paintLinks();
+  paintStatus();
+  paintCenter();
+  const delay = Number(window.__sophyTrashDelay) || 0;
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+  if (state.view !== 'trash') return;
+  await refreshTrashIndex();
+  if (state.view !== 'trash') return;
+  syncTrashSelection(visibleTrash());
+  paintCenter();
+}
+
+function trashRow(item, selected) {
+  const when = Trash.formatDeletedAt(item.deletedAt);
+  const size = Trash.formatSize(item.size);
+  const kind = Trash.kindLabel(item.kind);
+  const title = item.title || item.originalPath || 'Sem título';
+  const path = item.originalPath || '';
+  const label = `${kind}: ${title}. Caminho ${path}. Excluído ${when.relative}. ${size}.`;
+  return `<div class="lixeira__item" role="option" id="lixo-${escapeHtml(item.id)}" data-id="${escapeHtml(item.id)}" aria-selected="${selected ? 'true' : 'false'}" aria-label="${escapeHtml(label)}">
+    <span class="lixeira__tipo" title="${escapeHtml(kind)}">${icon(Trash.kindIcon(item.kind))}</span>
+    <span class="lixeira__corpo"><strong class="lixeira__titulo">${escapeHtml(title)}</strong><span class="lixeira__caminho" title="${escapeHtml(path)}">${escapeHtml(path)}</span></span>
+    <time class="lixeira__quando" datetime="${escapeHtml(item.deletedAt || '')}" title="${escapeHtml(when.full)}">${escapeHtml(when.relative)}</time>
+    <span class="lixeira__tamanho">${escapeHtml(size)}</span>
+    <span class="lixeira__acoes">
+      <button type="button" class="btn btn--secundario btn--pequeno" data-restaurar="${escapeHtml(item.id)}" aria-label="${escapeHtml(`Restaurar ${title}`)}">${icon('restaurar')} Restaurar</button>
+      <button type="button" class="btn btn--fantasma btn--pequeno lixeira__apagar" data-apagar="${escapeHtml(item.id)}" aria-label="${escapeHtml(`Excluir ${title} de vez`)}">${icon('apagar')} Excluir de vez</button>
+    </span>
+  </div>`;
+}
+
+function paintTrash(center) {
+  const items = state.trashItems;
+  const visible = visibleTrash();
+  syncTrashSelection(visible);
+  const typing = document.activeElement?.id === 'lixeira-busca';
+  const caret = typing ? document.activeElement.selectionStart : null;
+  const filters = [
+    ['', 'Todos'],
+    ['note', 'Notas'],
+    ['canvas', 'Canvas'],
+    ['attachment', 'Anexos'],
+    ['folder', 'Pastas'],
+  ]
+    .map(
+      ([id, label]) =>
+        `<button type="button" class="btn btn--fantasma btn--pequeno lixeira__tipo-btn" data-tipo="${id}" aria-pressed="${state.trashKind === id}" aria-label="Filtrar ${label.toLocaleLowerCase('pt-BR')}">${label}</button>`,
+    )
+    .join('');
+  let body = '';
+  if (state.trashStatus === 'loading' && !items.length) {
+    body = `<div class="lixeira__estado" role="status">${icon('trash', 'icon--48')}<p>Carregando a lixeira…</p></div>`;
+  } else if (state.trashStatus === 'error') {
+    body = `<div class="lixeira__estado" role="alert">${icon('warning-circle', 'icon--48')}<h2>Não foi possível ler a lixeira</h2><p>${escapeHtml(state.trashError || 'Tente de novo.')}</p><button type="button" class="btn btn--secundario" id="lixeira-tentar" aria-label="Tentar de novo">Tentar de novo</button></div>`;
+  } else if (!items.length) {
+    body = `<div class="lixeira__vazio">${icon('trash', 'icon--48')}<h2>A lixeira está vazia</h2><p>Notas, canvas, anexos e pastas excluídos aparecem aqui. Dá para restaurar ou apagar de vez.</p></div>`;
+  } else if (!visible.length) {
+    body = `<div class="lixeira__vazio"><h2>Nenhum item com esse filtro</h2><p>Tente outro termo ou mostre todos os tipos.</p><button type="button" class="btn btn--fantasma" id="lixeira-limpar">Limpar filtro</button></div>`;
+  } else {
+    const selected = state.trashSelected;
+    body = `<div class="lixeira__lista" id="lixeira-lista" role="listbox" tabindex="0" aria-label="Itens da lixeira" aria-activedescendant="${selected ? `lixo-${escapeHtml(selected)}` : ''}">${visible
+      .map((item) => trashRow(item, item.id === selected))
+      .join('')}</div>`;
+  }
+  const summary =
+    state.trashStatus === 'loading' && !items.length
+      ? 'Carregando…'
+      : state.trashStatus === 'error'
+        ? 'Não foi possível ler a lixeira.'
+        : `${Trash.countLabel(items.length)} na lixeira da biblioteca`;
+  const canEmpty = state.trashStatus === 'ready' && items.length > 0;
+  center.innerHTML = `<section class="lixeira" aria-labelledby="lixeira-titulo"><header class="lixeira__topo"><div><h2 id="lixeira-titulo">Lixeira</h2><p>${escapeHtml(summary)}</p></div><button type="button" class="btn btn--perigo" id="lixeira-esvaziar" aria-label="Esvaziar lixeira" ${canEmpty ? '' : 'disabled'}>Esvaziar lixeira</button></header><div class="lixeira__ferramentas"><label class="input input--busca">${icon('magnifying-glass')}<input id="lixeira-busca" type="search" placeholder="Buscar na lixeira" aria-label="Buscar na lixeira" value="${escapeHtml(state.trashQuery)}" /></label><div class="lixeira__filtros" role="group" aria-label="Filtrar por tipo">${filters}</div></div>${body}</section>`;
+  const search = $('#lixeira-busca');
+  if (search) {
+    search.oninput = () => {
+      state.trashQuery = search.value;
+      paintCenter();
+    };
+    if (typing) {
+      search.focus();
+      const pos = caret == null ? search.value.length : caret;
+      search.setSelectionRange(pos, pos);
+    }
+  }
+  center.querySelectorAll('[data-tipo]').forEach((button) => {
+    button.onclick = () => {
+      state.trashKind = button.dataset.tipo || '';
+      paintCenter();
+    };
+  });
+  const empty = $('#lixeira-esvaziar');
+  if (empty) empty.onclick = () => emptyTrash().catch((error) => toast(error.message, 'erro'));
+  const retry = $('#lixeira-tentar');
+  if (retry)
+    retry.onclick = () => {
+      showTrash().catch((error) => toast(error.message, 'erro'));
+    };
+  const clear = $('#lixeira-limpar');
+  if (clear)
+    clear.onclick = () => {
+      state.trashQuery = '';
+      state.trashKind = '';
+      paintCenter();
+    };
+  const list = $('#lixeira-lista');
+  if (list) {
+    list.onclick = (event) => {
+      const restore = event.target.closest('[data-restaurar]');
+      const purge = event.target.closest('[data-apagar]');
+      const row = event.target.closest('.lixeira__item');
+      if (restore) {
+        const item = state.trashItems.find((entry) => entry.id === restore.dataset.restaurar);
+        if (item) restoreTrashItem(item);
+        return;
+      }
+      if (purge) {
+        const item = state.trashItems.find((entry) => entry.id === purge.dataset.apagar);
+        if (item) purgeTrashItem(item);
+        return;
+      }
+      if (row && row.dataset.id !== state.trashSelected) {
+        state.trashSelected = row.dataset.id;
+        paintCenter();
+      }
+    };
+    list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function onTrashKey(event) {
+  if (state.view !== 'trash') return false;
+  const overlay = $('#overlay');
+  if (overlay && !overlay.hidden) return false;
+  const list = event.target?.closest?.('#lixeira-lista');
+  if (!list) return false;
+  const tag = event.target?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  const items = visibleTrash();
+  if (!items.length) return false;
+  let index = items.findIndex((item) => item.id === state.trashSelected);
+  if (index < 0) index = 0;
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const next =
+      event.key === 'ArrowDown' ? Math.min(items.length - 1, index + 1) : Math.max(0, index - 1);
+    state.trashSelected = items[next].id;
+    paintCenter();
+    $('#lixeira-lista')?.focus();
+    return true;
+  }
+  if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    state.trashSelected = items[event.key === 'Home' ? 0 : items.length - 1].id;
+    paintCenter();
+    $('#lixeira-lista')?.focus();
+    return true;
+  }
+  if (event.key === 'Enter') {
+    if (event.target?.closest?.('button')) return false;
+    event.preventDefault();
+    restoreTrashItem(items[index]);
+    return true;
+  }
+  if (event.key === 'Delete') {
+    event.preventDefault();
+    purgeTrashItem(items[index]);
+    return true;
+  }
+  return false;
+}
+
+async function restoreTrashItem(item) {
+  if (!item || state.trashBusy) return;
+  state.trashBusy = true;
+  try {
+    const result = await tool('trash.restore', { id: item.id });
+    const finalPath = result?.path || item.originalPath;
+    state.trashSelected = null;
+    await refreshLibrary();
+    if (state.view === 'trash') {
+      syncTrashSelection(visibleTrash());
+      paintTree();
+      paintCenter();
+    } else {
+      paintTree();
+      paintCenter();
+    }
+    const openable = item.kind === 'note' || item.kind === 'canvas';
+    toast(
+      `Restaurado em ${finalPath}`,
+      'ok',
+      openable
+        ? {
+            label: 'Abrir',
+            onClick: async () => {
+              state.nav = '';
+              if (item.kind === 'canvas') await openCanvas(finalPath);
+              else await openNote(finalPath);
+            },
+          }
+        : null,
+    );
+  } catch (error) {
+    toast(error.message, 'erro');
+  } finally {
+    state.trashBusy = false;
+  }
+}
+
+async function purgeTrashItem(item) {
+  if (!item || state.trashBusy) return;
+  const title = item.title || item.originalPath || 'este item';
+  const ok = await confirmDialog(
+    `Excluir “${title}” de vez? Sai da lixeira e não dá para desfazer.`,
+    { danger: true, confirmLabel: 'Excluir de vez', label: 'Excluir de vez' },
+  );
+  if (!ok) {
+    $('#lixeira-lista')?.focus();
+    return;
+  }
+  state.trashBusy = true;
+  try {
+    await tool('trash.purge', { id: item.id });
+    if (state.trashSelected === item.id) state.trashSelected = null;
+    await refreshLibrary();
+    if (state.view === 'trash') {
+      syncTrashSelection(visibleTrash());
+      paintCenter();
+    }
+    toast('Excluído de vez.');
+  } catch (error) {
+    toast(error.message, 'erro');
+  } finally {
+    state.trashBusy = false;
+  }
+}
+
+async function emptyTrash() {
+  const count = state.trashItems.length;
+  if (!count || state.trashBusy) return;
+  const sentence =
+    count === 1
+      ? 'Esvaziar a lixeira? 1 item será apagado de vez. Não dá para desfazer.'
+      : `Esvaziar a lixeira? ${count} itens serão apagados de vez. Não dá para desfazer.`;
+  const ok = await confirmDialog(sentence, {
+    danger: true,
+    confirmLabel: 'Esvaziar lixeira',
+    label: 'Esvaziar lixeira',
+  });
+  if (!ok) {
+    $('#lixeira-lista')?.focus();
+    return;
+  }
+  state.trashBusy = true;
+  try {
+    await tool('trash.empty', {});
+    state.trashSelected = null;
+    state.trashQuery = '';
+    state.trashKind = '';
+    await refreshLibrary();
+    if (state.view === 'trash') paintCenter();
+    else paintTree();
+    toast('Lixeira esvaziada.');
+  } catch (error) {
+    toast(error.message, 'erro');
+  } finally {
+    state.trashBusy = false;
+  }
+}
+
+function entryMatches(target, kind, file) {
+  if (!file || !target) return false;
+  if (kind === 'shelf' || kind === 'folder')
+    return file === target || file.startsWith(`${target}/`);
+  return file === target;
+}
+
+async function forgetOpenEntry(target, kind) {
+  const hit = (file) => entryMatches(target, kind, file);
+  const closingActive = hit(state.active) || hit(state.canvasPath);
+  if (closingActive && !(await flushNote())) return false;
+  state.tabs = state.tabs.filter((tab) => !hit(tab));
+  if (!closingActive) return true;
+  state.active = null;
+  state.doc = null;
+  state.dirty = false;
+  state.revision = null;
+  state.frontmatter = null;
+  state.outgoing = [];
+  state.backlinks = [];
+  state.canvasPath = null;
+  state.canvasDoc = null;
+  state.canvasDirty = false;
+  if (state.view === 'note' || state.view === 'canvas' || state.view === 'canvas-error') {
+    state.view = 'home';
+    state.nav = 'inicio';
+  }
+  return true;
+}
+
+async function trashPath(target, kind) {
+  if (kind === 'shelf') {
+    const count = state.notes.filter(
+      (note) => note.workspace === target || note.path.startsWith(`${target}/`),
+    ).length;
+    const ok = await confirmDialog(
+      `Mover a estante ${target} para a lixeira, com ${count} nota(s)?`,
+      { confirmLabel: 'Mover', label: 'Mover estante' },
+    );
+    if (!ok) return false;
+  }
+  if (!(await forgetOpenEntry(target, kind))) return false;
+  await tool('entry.trash', { path: target });
+  state.canvasGalleryLoaded = false;
+  await refreshLibrary();
+  paintTree();
+  paintTabs();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+  toast('Movido para a lixeira.', 'ok', {
+    label: 'Desfazer',
+    onClick: () => undoLastAction('Item restaurado da lixeira.'),
+  });
+  return true;
+}
+
+async function deleteForever(target, kind) {
+  const label = kind === 'shelf' ? target : baseName(target);
+  const ok = await confirmDialog(
+    `Excluir “${label}” permanentemente? O item não vai para a lixeira e não dá para desfazer.`,
+    { danger: true, confirmLabel: 'Excluir permanentemente', label: 'Excluir permanentemente' },
+  );
+  if (!ok) return false;
+  if (!(await forgetOpenEntry(target, kind))) return false;
+  await tool('note.deletePermanent', { path: target });
+  state.canvasGalleryLoaded = false;
+  await refreshLibrary();
+  paintTree();
+  paintTabs();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+  toast('Excluído permanentemente.');
+  return true;
 }
 
 async function showReview() {
@@ -4748,6 +5233,7 @@ function insertBlockBelow(index) {
 
 function openLibraryMenu(anchor) {
   closeMenus();
+  anchor?.setAttribute('aria-expanded', 'true');
   const recents = [...new Set([state.libraryPath, ...(state.settings.libraries || [])])].filter(Boolean);
   const menu = document.createElement('div');
   menu.className = 'menu menu-flutuante';
@@ -4756,14 +5242,14 @@ function openLibraryMenu(anchor) {
     recents
       .map((folder) => {
         const name = folder.split(/[/\\]/).pop();
-        return `<button type="button" class="menu__item" role="menuitem" data-lib="${escapeHtml(folder)}" ${folder === state.libraryPath ? 'aria-selected="true"' : ''}>${icon('biblioteca')}<span>${escapeHtml(name)}</span></button>`;
+        return `<button type="button" class="menu__item" role="menuitem" data-lib="${escapeHtml(folder)}" ${folder === state.libraryPath ? 'aria-selected="true"' : ''}>${icon('books')}<span>${escapeHtml(name)}</span></button>`;
       })
       .join('') +
     `<div class="menu__sep"></div>
-    <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
-    <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
-    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>
-    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('mostrar-pasta')} ${/linux/i.test(navigator.userAgent) ? 'Mostrar na pasta' : 'Mostrar no Explorer'}</button>`;
+    <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('folder-plus')} Nova biblioteca…</button>
+    <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('folder-open')} Abrir pasta…</button>
+    <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('trash')} Remover da lista</button>
+    <button type="button" class="menu__item" role="menuitem" data-acao="revelar">${icon('arrow-square-out')} ${/linux/i.test(navigator.userAgent) ? 'Mostrar na pasta' : 'Mostrar no Explorer'}</button>`;
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
@@ -4894,14 +5380,24 @@ async function applyLibrary(root, libraries) {
 function openShelfStyle(name) {
   const current = markFor(name);
   const icons = [
-    ['capelo', 'Capelo'],
-    ['livro', 'Livro'],
-    ['lampada', 'Lâmpada'],
-    ['maleta', 'Maleta'],
-    ['leitura', 'Leitura'],
-    ['coracao', 'Coração'],
-    ['estante', 'Estante'],
-    ['pasta', 'Pasta'],
+    ['graduation-cap', 'Capelo'],
+    ['book', 'Livro'],
+    ['lightbulb', 'Lâmpada'],
+    ['briefcase', 'Maleta'],
+    ['book-open-text', 'Leitura'],
+    ['heart', 'Coração'],
+    ['rows', 'Estante'],
+    ['folder', 'Pasta'],
+    ['graph', 'Grafo'],
+    ['sparkle', 'Faísca'],
+    ['tag', 'Tag'],
+    ['calendar', 'Calendário'],
+    ['chat-teardrop-text', 'Conversa'],
+    ['star', 'Favorito'],
+    ['globe', 'Globo'],
+    ['music-notes', 'Música'],
+    ['plant', 'Planta'],
+    ['paint-brush', 'Pincel'],
   ];
   const pop = document.createElement('div');
   pop.className = 'menu menu-flutuante';
@@ -4909,7 +5405,7 @@ function openShelfStyle(name) {
   pop.setAttribute('aria-label', 'Cor e ícone');
   pop.innerHTML = `<p>Cor e ícone de ${escapeHtml(name)}</p>
     <div class="acentos">${[1, 2, 3, 4, 5, 6, 7, 8].map((color) => `<button type="button" class="acento ${current.color === color ? 'is-escolhida' : ''}" data-cor="${color}" aria-label="${shelfColorName(color)}" style="--amostra: var(--shelf-${color})"></button>`).join('')}</div>
-    <div class="inicio__cartoes">${icons.map(([iconName, label]) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}">${icon(iconName)} ${label}</button>`).join('')}</div>`;
+    <div class="estante-icones">${icons.map(([iconName, label]) => `<button type="button" class="btn btn--fantasma" data-icone="${iconName}" aria-pressed="${current.icon === iconName}">${icon(iconName)} ${label}</button>`).join('')}</div>`;
   document.body.append(pop);
   pop.style.position = 'fixed';
   pop.style.left = '280px';
@@ -4943,17 +5439,22 @@ function openTreeMenu(event, kind, target) {
   const items =
     kind === 'shelf'
       ? [
-          ['nota', 'Nova nota aqui'],
-          ['cor', 'Cor e ícone…'],
-          ['renomear', 'Renomear'],
-          ['lixo', 'Mover para a lixeira'],
+          ['nota', 'Nova nota aqui', ''],
+          ['cor', 'Cor e ícone…', ''],
+          ['renomear', 'Renomear', ''],
+          ['lixo', 'Mover para a lixeira', 'trash'],
+          ['apagar', 'Excluir permanentemente…', 'apagar'],
         ]
       : [
-          ['renomear', 'Renomear'],
-          ['lixo', 'Mover para a lixeira'],
+          ['renomear', 'Renomear', ''],
+          ['lixo', 'Mover para a lixeira', 'trash'],
+          ['apagar', 'Excluir permanentemente…', 'apagar'],
         ];
   menu.innerHTML = items
-    .map(([id, label]) => `<button type="button" class="menu__item" role="menuitem" data-arvore="${id}">${label}</button>`)
+    .map(([id, label, glyph]) => {
+      const danger = id === 'apagar' ? ' menu__item--perigo' : '';
+      return `<button type="button" class="menu__item${danger}" role="menuitem" data-arvore="${id}">${glyph ? icon(glyph) : ''}${label}</button>`;
+    })
     .join('');
   document.body.append(menu);
   menu.style.position = 'fixed';
@@ -4978,39 +5479,13 @@ function openTreeMenu(event, kind, target) {
       closeMenus();
       openShelfStyle(target);
     };
-  menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
+  menu.querySelector('[data-arvore="lixo"]').onclick = () => {
     closeMenus();
-    try {
-      if (kind === 'shelf') {
-        const count = state.notes.filter((note) => note.workspace === target || note.path.startsWith(`${target}/`)).length;
-        const overlay = $('#overlay');
-        overlay.hidden = false;
-        overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Mover estante"><p>Mover a estante ${escapeHtml(target)} para a lixeira, com ${count} nota(s)?</p><button type="button" id="confirma-sim">Mover</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
-        const ok = await new Promise((resolve) => {
-          $('#confirma-nao').onclick = () => { overlay.hidden = true; resolve(false); };
-          $('#confirma-sim').onclick = () => { overlay.hidden = true; resolve(true); };
-        });
-        if (!ok) return;
-      }
-      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(`${target}/`)))
-        if (!(await flushNote())) return;
-      await tool('entry.trash', { path: target });
-      const prefix = kind === 'shelf' ? `${target}/` : target;
-      state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));
-      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(prefix))) {
-        state.active = null;
-        state.doc = null;
-        state.view = 'home';
-        state.nav = 'inicio';
-      }
-      await refreshLibrary();
-      paintTree();
-      paintTabs();
-      paintCenter();
-      toast('Movido para a lixeira.');
-    } catch (error) {
-      toast(error.message, 'erro');
-    }
+    trashPath(target, kind).catch((error) => toast(error.message, 'erro'));
+  };
+  menu.querySelector('[data-arvore="apagar"]').onclick = () => {
+    closeMenus();
+    deleteForever(target, kind).catch((error) => toast(error.message, 'erro'));
   };
 }
 
@@ -5020,10 +5495,10 @@ function openBlockMenu(anchor, index) {
   menu.className = 'menu menu--bloco menu-flutuante';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = [
-    ['titulo', 'titulo', 'Transformar em título'],
-    ['lista', 'lista', 'Transformar em lista'],
-    ['tarefa', 'tarefa', 'Transformar em tarefa'],
-    ['apagar', 'lixeira', 'Excluir bloco'],
+    ['titulo', 'text-h', 'Transformar em título'],
+    ['lista', 'list', 'Transformar em lista'],
+    ['tarefa', 'check-square', 'Transformar em tarefa'],
+    ['apagar', 'trash', 'Excluir bloco'],
   ]
     .map(
       ([id, glyph, label]) =>
@@ -5152,6 +5627,23 @@ function editWritingLink(el) {
   input.focus(); input.select();
 }
 
+function formatAlreadyOn(glyph, index, range) {
+  const block = state.doc?.blocks?.[index];
+  const node = range.startContainer;
+  const el = node?.nodeType === 1 ? node : node?.parentElement;
+  if (glyph === 'text-b') return !!el?.closest('strong, b');
+  if (glyph === 'text-italic') return !!el?.closest('em, i');
+  if (glyph === 'text-strikethrough') return !!el?.closest('s, del');
+  if (glyph === 'highlighter-circle') return !!el?.closest('mark');
+  if (glyph === 'code') return !!el?.closest('code') || block?.type === 'code';
+  if (glyph === 'link') return !!el?.closest('a');
+  if (glyph === 'text-h') return block?.type === 'heading';
+  if (glyph === 'list') return block?.type === 'item';
+  if (glyph === 'check-square') return block?.type === 'task';
+  if (glyph === 'quotes') return block?.type === 'quote';
+  return false;
+}
+
 function showFormatBar(range) {
   document.querySelector('.barra-formato')?.remove();
   const host = range.startContainer.parentElement?.closest?.('[data-block]');
@@ -5162,22 +5654,22 @@ function showFormatBar(range) {
   bar.className = 'barra-formatacao barra-formato';
   bar.setAttribute('role', 'toolbar');
   bar.innerHTML = [
-    ['Negrito', 'negrito', '**', '**'],
-    ['Itálico', 'italico', '*', '*'],
+    ['Negrito', 'text-b', '**', '**'],
+    ['Itálico', 'text-italic', '*', '*'],
     ['Link', 'link', '[', '](https://)'],
-    ['Wikilink', 'nota', '[[', ']]'],
-    ['Título', 'titulo', '# ', ''],
-    ['Lista', 'lista', '- ', ''],
-    ['Tarefa', 'tarefa', '- [ ] ', ''],
-    ['Citação', 'citacao', '> ', ''],
-    ['Código', 'codigo', '`', '`'],
-    ['Riscado', 'tachado', '~~', '~~'],
-    ['Destacar', 'marca-texto', '==', '=='],
+    ['Wikilink', 'note', '[[', ']]'],
+    ['Título', 'text-h', '# ', ''],
+    ['Lista', 'list', '- ', ''],
+    ['Tarefa', 'check-square', '- [ ] ', ''],
+    ['Citação', 'quotes', '> ', ''],
+    ['Código', 'code', '`', '`'],
+    ['Riscado', 'text-strikethrough', '~~', '~~'],
+    ['Destacar', 'highlighter-circle', '==', '=='],
   ]
-    .map(
-      ([label, glyph, prefix, suffix]) =>
-        `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}">${icon(glyph)}</button>`,
-    )
+    .map(([label, glyph, prefix, suffix]) => {
+      const on = formatAlreadyOn(glyph, index, range);
+      return `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}" aria-pressed="${on}">${icon(glyph)}</button>`;
+    })
     .join('');
   document.body.append(bar);
   const rect = range.getBoundingClientRect();
@@ -5195,14 +5687,14 @@ function showFormatBar(range) {
 function openCommands() {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  const commands = Cmd.COMMANDS.map((item) => [item.rotulo, item.atalho, () => runCommand(item.id)]).concat([
-    ['Alternar tema', '', () => toggleTheme()],
-    ['Nova biblioteca', '', () => chooseLibrary(true)],
-    ['Abrir biblioteca', '', () => chooseLibrary(false)],
-    ['Remover biblioteca da lista', '', () => forgetLibrary()],
+  const commands = Cmd.COMMANDS.map((item) => [item.rotulo, item.atalho, () => runCommand(item.id), item.icone]).concat([
+    ['Alternar tema', '', () => toggleTheme(), themeName() === 'dark' ? 'sun' : 'moon'],
+    ['Nova biblioteca', '', () => chooseLibrary(true), 'folder-plus'],
+    ['Abrir biblioteca', '', () => chooseLibrary(false), 'folder-open'],
+    ['Remover biblioteca da lista', '', () => forgetLibrary(), 'trash'],
   ]);
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Comandos">
-    <div class="paleta__busca">${icon('busca')}<input id="comando-q" placeholder="Comandos" aria-label="Comandos" /></div>
+    <div class="paleta__busca">${icon('magnifying-glass')}<input id="comando-q" placeholder="Comandos" aria-label="Comandos" /></div>
     <div class="paleta__lista" id="comando-lista"></div>
     <div class="menu__rodape"><span><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">P</span></span><span><span class="kbd">esc</span> fechar</span></div>
   </div>`;
@@ -5212,8 +5704,8 @@ function openCommands() {
     $('#comando-lista').innerHTML = commands
       .filter(([label]) => !needle || label.toLocaleLowerCase().includes(needle))
       .map(
-        ([label, shortcut]) =>
-          `<button type="button" class="menu__item" data-cmd="${escapeHtml(label)}"><span>${escapeHtml(label)}</span>${shortcut ? `<span class="menu__atalho">${escapeHtml(shortcut)}</span>` : ''}</button>`,
+        ([label, shortcut, , glyph]) =>
+          `<button type="button" class="menu__item" data-cmd="${escapeHtml(label)}">${glyph ? icon(glyph) : ''}<span>${escapeHtml(label)}</span>${shortcut ? `<span class="menu__atalho">${escapeHtml(shortcut)}</span>` : ''}</button>`,
       )
       .join('');
     $('#comando-lista')
@@ -5314,316 +5806,68 @@ function renameSelection() {
   }
 }
 
-async function showGraph(workspace) {
+function showGraph(workspace) {
   state.view = 'graph';
-  if (typeof workspace === 'string') state.graphWorkspace = workspace;
+  state.nav = 'grafo';
+  state.graphShelf = typeof workspace === 'string' && workspace ? workspace : '';
   paintTabs();
   paintCenter();
   paintLinks();
 }
 
-async function paintGraph(center) {
-  const legend = state.workspaces
-    .map((item) => {
-      const mark = markFor(item.name);
-      const color = mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
-      return `<span class="chip"><span class="arvore__ponto" style="background:${color}"></span>${escapeHtml(item.name)}</span>`;
-    })
-    .join('');
-  center.innerHTML = `<div class="grafo">
-    <div class="grafo__barra">
-      <label>Estante <select id="grafo-estante"><option value="">Todas</option>${state.workspaces
-        .map(
-          (item) =>
-            `<option value="${escapeHtml(item.name)}" ${item.name === state.graphWorkspace ? 'selected' : ''}>${escapeHtml(item.name)}</option>`,
-        )
-        .join('')}</select></label>
-      <label>Tag <input id="grafo-tag" value="${escapeHtml(state.graphTag)}" placeholder="filtrar" /></label>
-      <label>Linha do tempo <input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" /></label>
-      <span class="nota-privacidade" id="grafo-foco">${state.active ? `Foco: ${escapeHtml(baseName(state.active))}` : ''}</span>
-    </div>
-    <div class="grafo__palco">
-      <canvas id="grafo-canvas"></canvas>
-      <div class="grafo__legenda">${legend}</div>
-      <div class="grafo__quadros" id="grafo-quadros"></div>
-      <div class="grafo__zoom">
-        <button type="button" class="btn btn--icone" id="grafo-mais" aria-label="Aproximar">${icon('zoom-mais')}</button>
-        <button type="button" class="btn btn--icone" id="grafo-menos" aria-label="Afastar">${icon('zoom-menos')}</button>
-        <button type="button" class="btn btn--icone" id="grafo-ajustar" aria-label="Ajustar">1</button>
-      </div>
-    </div>
-  </div>`;
-  $('#grafo-estante').onchange = (event) => {
-    state.graphWorkspace = event.target.value;
-    paintGraph(center);
-  };
-  $('#grafo-tag').onchange = (event) => {
-    state.graphTag = event.target.value.trim();
-    paintGraph(center);
-  };
-  $('#grafo-tempo').oninput = (event) => {
-    state.graphUntil = Number(event.target.value) / 100;
-    drawGraph(state.graphData);
-  };
-  const graph = await tool('graph.query', {
-    workspace: state.graphWorkspace || undefined,
-    tag: state.graphTag || undefined,
-  });
-  state.graphData = graph;
-  drawGraph(graph);
-}
-
-function drawGraph(graph) {
-  if (!graph) return;
-  if (state.graphAnimation) cancelAnimationFrame(state.graphAnimation);
-  const until = state.graphUntil ?? 1;
-  const times = graph.nodes.map((node) => node.modifiedAt || 0).filter(Boolean).sort((a, b) => a - b);
-  const cutoff = times.length ? times[Math.min(times.length - 1, Math.floor(until * (times.length - 1)))] : Infinity;
-  const visibleNodes = until >= 1 ? graph.nodes : graph.nodes.filter((node) => (node.modifiedAt || 0) <= cutoff);
-  const visible = new Set(visibleNodes.map((node) => node.path));
-  graph = {
-    nodes: visibleNodes,
-    edges: graph.edges.filter((edge) => visible.has(edge.from) && visible.has(edge.to)),
-  };
-  const frames = $('#grafo-quadros');
-  if (frames && times.length) {
-    const thirds = [0.33, 0.66, 1].map((ratio, index) => {
-      const end = times[Math.min(times.length - 1, Math.floor(ratio * (times.length - 1)))];
-      const start = index === 0 ? 0 : times[Math.min(times.length - 1, Math.floor([0, 0.33, 0.66][index] * (times.length - 1)))];
-      const count = graph.nodes.filter((node) => (node.modifiedAt || 0) <= end && (index === 0 || (node.modifiedAt || 0) > start)).length;
-      return `<section><h3>${['Antes', 'Agora', 'Depois'][index]}</h3><p>${count}</p></section>`;
-    });
-    frames.innerHTML = thirds.join('');
-  }
-  const canvas = $('#grafo-canvas');
-  if (!canvas) return;
-  const stage = canvas.parentElement;
-  const fit = () => {
-    const rect = stage.getBoundingClientRect();
-    canvas.width = Math.max(320, Math.floor(rect.width));
-    canvas.height = Math.max(280, Math.floor(rect.height));
-  };
-  fit();
-  const degree = new Map();
-  for (const edge of graph.edges) {
-    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
-    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
-  }
-  const targetNodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height);
-  const nodes = targetNodes.map((node, index) => {
-    const angle = (index / Math.max(targetNodes.length, 1)) * Math.PI * 2;
-    const startRadius = Math.min(canvas.width, canvas.height) * 0.08;
-    return {
-      ...node,
-      targetX: node.x,
-      targetY: node.y,
-      x: canvas.width / 2 + Math.cos(angle) * startRadius,
-      y: canvas.height / 2 + Math.sin(angle) * startRadius,
-      degree: degree.get(node.path) || 0,
-    };
-  });
-  const byPath = new Map(nodes.map((node) => [node.path, node]));
+function graphColor(workspace) {
   const styles = getComputedStyle(document.documentElement);
-  const colorOf = (workspace) => {
-    const mark = markFor(workspace || '');
-    return mark.color
-      ? styles.getPropertyValue(`--shelf-${mark.color}`).trim()
-      : styles.getPropertyValue('--ink-3').trim();
-  };
-  const project = (node) => {
-    const camera = state.graphCamera;
-    return {
-      x: canvas.width / 2 + (node.x - canvas.width / 2 + camera.x) * camera.zoom,
-      y: canvas.height / 2 + (node.y - canvas.height / 2 + camera.y) * camera.zoom,
-    };
-  };
-  const redraw = () => {
-    const ctx = canvas.getContext('2d');
-    const ink = styles.getPropertyValue('--ink').trim();
-    const dot = styles.getPropertyValue('--canvas-dot').trim() || '#D9D5CE';
-    const bg = styles.getPropertyValue('--bg').trim();
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let x = 12; x < canvas.width; x += 22) {
-      for (let y = 12; y < canvas.height; y += 22) {
-        ctx.fillStyle = dot;
-        ctx.fillRect(x, y, 1.4, 1.4);
-      }
-    }
-    for (const edge of graph.edges) {
-      const from = byPath.get(edge.from);
-      const to = byPath.get(edge.to);
-      if (!from || !to) continue;
-      const a = project(from);
-      const b = project(to);
-      ctx.beginPath();
-      ctx.strokeStyle = colorOf(from.workspace);
-      ctx.globalAlpha = 0.45;
-      ctx.lineWidth = 1.4;
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    for (const node of nodes) {
-      const at = project(node);
-      const focused = node.path === state.active;
-      const radius = (4 + Math.min(node.degree, 8) * 1.7) * state.graphCamera.zoom;
-      const color = colorOf(node.workspace);
-      if (focused) {
-        ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.18;
-        ctx.arc(at.x, at.y, radius + 14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      ctx.beginPath();
-      ctx.fillStyle = color || '#6E72B0';
-      ctx.arc(at.x, at.y, focused ? radius + 3 : radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = ink;
-      ctx.font = `${focused ? 600 : 400} 13px Inter, sans-serif`;
-      ctx.fillText(node.title || baseName(node.path), at.x + radius + 8, at.y + 4);
-    }
-  };
-  state.graphRedraw = redraw;
-  redraw();
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    for (const node of nodes) {
-      node.x = node.targetX;
-      node.y = node.targetY;
-    }
-    redraw();
-  } else {
-    const animationStart = performance.now();
-    const animateGraph = (now) => {
-      const elapsed = Math.min(1, (now - animationStart) / 720);
-      const eased = 1 - Math.pow(1 - elapsed, 3);
-      for (const node of nodes) {
-        node.x += (node.targetX - node.x) * Math.max(0.12, eased);
-        node.y += (node.targetY - node.y) * Math.max(0.12, eased);
-      }
-      redraw();
-      if (elapsed < 1) state.graphAnimation = requestAnimationFrame(animateGraph);
-      else state.graphAnimation = 0;
-    };
-    state.graphAnimation = requestAnimationFrame(animateGraph);
+  const neutral = styles.getPropertyValue('--ink-3').trim() || '#625F75';
+  if (!workspace) return neutral;
+  const mark = markFor(workspace);
+  if (!mark.color) return neutral;
+  return styles.getPropertyValue(`--shelf-${mark.color}`).trim() || neutral;
+}
+
+async function openGraphNode(file) {
+  state.graphCenter = file;
+  if (String(file).toLowerCase().endsWith('.canvas')) {
+    await openCanvas(file);
+    return;
   }
-  const zoomBy = (factor) => {
-    state.graphCamera.zoom = Math.min(2.4, Math.max(0.4, state.graphCamera.zoom * factor));
-    redraw();
-  };
-  $('#grafo-mais').onclick = () => zoomBy(1.2);
-  $('#grafo-menos').onclick = () => zoomBy(1 / 1.2);
-  $('#grafo-ajustar').onclick = () => {
-    state.graphCamera = { x: 0, y: 0, zoom: 1 };
-    redraw();
-  };
-  canvas.onwheel = (event) => {
-    event.preventDefault();
-    zoomBy(event.deltaY > 0 ? 1 / 1.08 : 1.08);
-  };
-  let drag = null;
-  canvas.onpointerdown = (event) => {
-    drag = { x: event.clientX, y: event.clientY, moved: false };
-    canvas.setPointerCapture(event.pointerId);
-  };
-  canvas.onpointermove = (event) => {
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    if (Math.hypot(dx, dy) > 3) drag.moved = true;
-    state.graphCamera.x += dx / state.graphCamera.zoom;
-    state.graphCamera.y += dy / state.graphCamera.zoom;
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    redraw();
-  };
-  canvas.onpointerup = (event) => {
-    if (!drag) return;
-    const moved = drag.moved;
-    drag = null;
-    if (moved) return;
-    const bounds = canvas.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left) / bounds.width) * canvas.width;
-    const y = ((event.clientY - bounds.top) / bounds.height) * canvas.height;
-    const hit = nodes.find((node) => {
-      const at = project(node);
-      return Math.hypot(at.x - x, at.y - y) < 18;
-    });
-    if (hit) focusGraphNote(hit.path);
-  };
+  await openNote(file);
 }
 
-async function focusGraphNote(path) {
-  state.active = path;
-  if (!state.tabs.includes(path)) state.tabs.push(path);
-  const note = await tool('note.read', { path });
-  state.frontmatter = note.frontmatter;
-  state.revision = note.revision;
-  state.doc = Doc.parseBody(note.body);
-  await loadLinks();
-  const focus = $('#grafo-foco');
-  if (focus) focus.textContent = `Foco: ${baseName(path)}`;
-  paintTabs();
-  paintLinks();
-  paintStatus();
-  if (state.graphRedraw) state.graphRedraw();
-}
-
-function layout(nodes, edges, width, height) {
-  const placed = nodes.map((node, index) => {
-    const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
-    const radius = Math.min(width, height) * 0.28;
-    return {
-      ...node,
-      x: width / 2 + Math.cos(angle) * radius,
-      y: height / 2 + Math.sin(angle) * radius,
-      vx: 0,
-      vy: 0,
-    };
+function paintGraph(center) {
+  const shelf = state.graphShelf;
+  state.graphShelf = '';
+  center.innerHTML = '';
+  const host = document.createElement('div');
+  center.append(host);
+  state.graphView = SophyGraph.mount(host, {
+    icon,
+    escapeHtml,
+    baseName,
+    query: (input) => tool('graph.query', input),
+    openPath: (file) => openGraphNode(file),
+    colorFor: (workspace) => graphColor(workspace),
+    shelves: () =>
+      state.workspaces.map((item) => {
+        const mark = markFor(item.name);
+        return { name: item.name, color: mark.color || '' };
+      }),
+    notes: () => state.notes.map((note) => ({ path: note.path, title: baseName(note.path) })),
+    focusPath: () => state.graphCenter || state.active || state.canvasPath || '',
+    reduceMotion: () => motionReduced(),
+    toast: (message) => toast(message, 'erro'),
+    positions: () => state.graphPositions || {},
+    savePositions: (positions) => {
+      state.graphPositions = positions;
+    },
+    forcedShelf: shelf,
   });
-  const index = new Map(placed.map((node) => [node.path, node]));
-  for (let step = 0; step < 80; step += 1) {
-    for (let a = 0; a < placed.length; a += 1) {
-      for (let b = a + 1; b < placed.length; b += 1) {
-        let dx = placed[a].x - placed[b].x;
-        let dy = placed[a].y - placed[b].y;
-        const dist = Math.hypot(dx, dy) || 0.1;
-        const force = dist < 120 ? (120 - dist) * 0.9 : 2400 / (dist * dist);
-        placed[a].vx += (dx / dist) * force;
-        placed[a].vy += (dy / dist) * force;
-        placed[b].vx -= (dx / dist) * force;
-        placed[b].vy -= (dy / dist) * force;
-      }
-    }
-    for (const edge of edges) {
-      const from = index.get(edge.from);
-      const to = index.get(edge.to);
-      if (!from || !to) continue;
-      from.vx += (to.x - from.x) * 0.02;
-      from.vy += (to.y - from.y) * 0.02;
-      to.vx -= (to.x - from.x) * 0.02;
-      to.vy -= (to.y - from.y) * 0.02;
-    }
-    for (const node of placed) {
-      node.vx += (width / 2 - node.x) * 0.02;
-      node.vy += (height / 2 - node.y) * 0.02;
-      node.vx *= 0.75;
-      node.vy *= 0.75;
-      node.x = Math.max(28, Math.min(width - 28, node.x + node.vx));
-      node.y = Math.max(28, Math.min(height - 28, node.y + node.vy));
-    }
-  }
-  return placed;
 }
 
 function openPalette() {
   const overlay = $('#overlay');
   overlay.hidden = false;
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Busca">
-    <div class="paleta__busca">${icon('busca')}<input id="paleta-q" placeholder="Buscar ou comando…" aria-label="Buscar" /><span class="kbd">esc</span></div>
+    <div class="paleta__busca">${icon('magnifying-glass')}<input id="paleta-q" placeholder="Buscar ou comando…" aria-label="Buscar" /><span class="kbd">esc</span></div>
     <div class="paleta__lista" id="paleta-lista"></div>
     <div class="menu__rodape"><span><span class="kbd">↵</span> abrir</span><span><span class="kbd">esc</span> fechar</span></div>
   </div>`;
@@ -5671,7 +5915,7 @@ function openPalette() {
     const list = $('#paleta-lista');
     const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
       .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
-      .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
+      .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id), icon: item.icone }));
     const noteHits = hits.filter((hit) => hit.kind !== 'canvas');
     const canvasHits = hits.filter((hit) => hit.kind === 'canvas');
     const row = (hit) => {
@@ -5683,7 +5927,7 @@ function openPalette() {
       const dot = shelf?.color
         ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
         : '';
-      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
+      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'squares-four' : 'note')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
     };
     list.innerHTML =
       (noteHits.length ? '<div class="menu__grupo">Notas</div>' : '') +
@@ -5695,7 +5939,7 @@ function openPalette() {
       commands
         .map(
           (item) =>
-            `<button type="button" class="menu__item" data-cmd="${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>`,
+            `<button type="button" class="menu__item" data-cmd="${escapeHtml(item.label)}">${item.icon ? icon(item.icon) : ''}<span>${escapeHtml(item.label)}</span></button>`,
         )
         .join('') +
       (hits.length === 0 && query.length >= 2
@@ -5742,7 +5986,7 @@ async function toggleTheme() {
   applyTheme(next);
   await sophy.saveSettings({ theme: next });
   const button = $('#tema');
-  if (button) button.innerHTML = icon(next === 'dark' ? 'tema-claro' : 'tema-escuro');
+  if (button) button.innerHTML = icon(next === 'dark' ? 'sun' : 'moon');
   paintStatus();
 }
 
@@ -5765,7 +6009,7 @@ async function applyCommand(command) {
     }
     if (command.agent !== undefined) {
       if (command.agent) openAgent();
-      else { state.sofiOpen = false; $('#sofi-gaveta')?.classList.remove('is-aberta'); paintLinks(); }
+      else { state.sofiOpen = false; $('#sofi-gaveta')?.classList.remove('is-aberta'); paintLinks(); syncChromeIcons(); }
     }
     if (command.focus !== undefined) setFocusMode(command.focus);
     return;
@@ -5793,6 +6037,7 @@ document.addEventListener('mousedown', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (onTrashKey(event)) return;
   if (event.key === 'Escape') {
     closeMenus();
     const overlay = $('#overlay');

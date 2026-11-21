@@ -45,6 +45,11 @@ const SHORTCUTS = new Set([
   'backlinks',
   'mover',
   'lixeira',
+  'lixeira-listar',
+  'restaurar',
+  'purgar',
+  'esvaziar-lixeira',
+  'apagar',
   'grafo',
   'historico',
   'desfazer',
@@ -199,8 +204,10 @@ function initLibrary(parsed: Parsed, io: Io) {
 }
 
 function runShortcut(parsed: Parsed, io: Io) {
-  if (Object.keys(parsed.flags).length)
-    throw new CliError('Este atalho não usa essas opções. Use sophy help.', 1);
+  const extra = Object.keys(parsed.flags).filter(
+    (key) => !(parsed.command === 'grafo' && (key === 'center' || key === 'depth')),
+  );
+  if (extra.length) throw new CliError('Este atalho não usa essas opções. Use sophy help.', 1);
   if (parsed.texto !== undefined && parsed.command !== 'nova')
     throw new CliError('--texto só vale para sophy nova.', 1);
   if (parsed.jsonInput) throw new CliError('Este atalho não recebe JSON de entrada.', 1);
@@ -286,9 +293,66 @@ function runShortcut(parsed: Parsed, io: Io) {
         'lixeira',
       );
     }
-    case 'grafo':
+    case 'lixeira-listar':
       requireEmpty(parsed);
-      return emit(callTool('graph.query', { libraryPath: library }), parsed, io, 'grafo');
+      return emit(callTool('trash.list', { libraryPath: library }), parsed, io, 'lixeira-listar');
+    case 'restaurar': {
+      const id = parsed.positionals[0];
+      if (!id || parsed.positionals.length > 1)
+        throw new CliError('Uso: sophy restaurar <id>', 1);
+      return emit(
+        callTool('trash.restore', { libraryPath: library, id, origin: 'cli' }),
+        parsed,
+        io,
+        'restaurar',
+      );
+    }
+    case 'purgar': {
+      const id = parsed.positionals[0];
+      if (!id || parsed.positionals.length > 1) throw new CliError('Uso: sophy purgar <id>', 1);
+      return emit(
+        callTool('trash.purge', { libraryPath: library, id, origin: 'cli' }),
+        parsed,
+        io,
+        'purgar',
+      );
+    }
+    case 'esvaziar-lixeira':
+      requireEmpty(parsed);
+      return emit(
+        callTool('trash.empty', { libraryPath: library, origin: 'cli' }),
+        parsed,
+        io,
+        'esvaziar-lixeira',
+      );
+    case 'apagar': {
+      const target = parsed.positionals[0];
+      if (!target || parsed.positionals.length > 1)
+        throw new CliError('Uso: sophy apagar <caminho>', 1);
+      return emit(
+        callTool('note.deletePermanent', { libraryPath: library, path: target, origin: 'cli' }),
+        parsed,
+        io,
+        'apagar',
+      );
+    }
+    case 'grafo': {
+      requireEmpty(parsed);
+      const input: { libraryPath: string; center?: string; depth?: number } = {
+        libraryPath: library,
+      };
+      const center = parsed.flags.center;
+      const depth = parsed.flags.depth;
+      if (center === true) throw new CliError('Informe o caminho de --center.', 1);
+      if (typeof center === 'string') input.center = center;
+      if (depth === true) throw new CliError('--depth espera um número.', 1);
+      if (typeof depth === 'string') {
+        const number = Number(depth);
+        if (!Number.isFinite(number)) throw new CliError('--depth espera um número.', 1);
+        input.depth = number;
+      }
+      return emit(callTool('graph.query', input), parsed, io, 'grafo');
+    }
     case 'historico':
       requireEmpty(parsed);
       return emit(callTool('history.list', { libraryPath: library }), parsed, io, 'historico');
@@ -356,6 +420,16 @@ function human(command: string, value: unknown) {
     return `Biblioteca pronta em ${value.root}\n`;
   if (command === 'desfazer' && isRecord(value) && typeof value.summary === 'string')
     return `Desfeito: ${value.summary}\n`;
+  if (command === 'lixeira' && isRecord(value) && value.trashed === true)
+    return `Na lixeira: ${value.path}\n`;
+  if (command === 'restaurar' && isRecord(value) && typeof value.path === 'string')
+    return `Restaurado em ${value.path}\n`;
+  if (command === 'purgar' && isRecord(value) && typeof value.id === 'string')
+    return `Purgado ${value.id}\n`;
+  if (command === 'esvaziar-lixeira' && isRecord(value) && typeof value.purged === 'number')
+    return value.purged ? `Lixeira esvaziada (${value.purged}).\n` : 'A lixeira já estava vazia.\n';
+  if (command === 'apagar' && isRecord(value) && typeof value.path === 'string')
+    return `Apagado ${value.path}\n`;
   if (
     command === 'grafo' &&
     isRecord(value) &&
@@ -388,6 +462,8 @@ function humanItem(command: string, item: unknown) {
   }
   if (typeof item.path === 'string' && typeof item.workspace === 'string') return item.path;
   if (typeof item.path === 'string' && item.workspace === null) return item.path;
+  if (typeof item.id === 'string' && typeof item.originalPath === 'string' && typeof item.deletedAt === 'string')
+    return `${item.deletedAt}  ${item.kind}  ${item.originalPath}  ${item.id}`;
   if (typeof item.summary === 'string' && typeof item.origin === 'string')
     return `${item.origin} ${item.tool} ${item.summary}`;
   if (typeof item.raw === 'string' && typeof item.status === 'string')
@@ -424,7 +500,12 @@ Uso:
   sophy backlinks <nota>
   sophy mover <origem> <destino>
   sophy lixeira <caminho>
-  sophy grafo
+  sophy lixeira-listar
+  sophy restaurar <id>
+  sophy purgar <id>
+  sophy esvaziar-lixeira
+  sophy apagar <caminho>
+  sophy grafo [--center <nota>] [--depth <1-3>]
   sophy historico
   sophy desfazer
   sophy tools
