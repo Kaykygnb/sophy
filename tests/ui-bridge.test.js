@@ -126,7 +126,7 @@ test('cada comando ui.* muda a janela', () => {
 });
 
 test('Entrada não tem cor e as outras estantes usam um marcador de 1 a 8', () => {
-  assert.deepEqual(commands.shelfMark('Entrada'), { icon: 'caixa-entrada', color: null });
+  assert.deepEqual(commands.shelfMark('Entrada'), { icon: 'tray', color: null });
   const mark = commands.shelfMark('Estudos');
   assert.equal(mark.color >= 1 && mark.color <= 8, true);
   assert.equal(typeof mark.icon, 'string');
