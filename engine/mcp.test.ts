@@ -122,7 +122,7 @@ test('graph.query devolve a aresta entre as notas', { timeout: 30000 }, async ()
     const graph = await client.callTool({ name: 'graph.query', arguments: {} });
     assert.notEqual(graph.isError, true, textOf(graph));
     assert.deepEqual(jsonOf<{ edges: unknown[] }>(graph).edges, [
-      { from: 'Estudos/Nota.md', to: 'Estudos/Outra.md', format: 'wiki' },
+      { from: 'Estudos/Nota.md', to: 'Estudos/Outra.md', format: 'wiki', weight: 1 },
     ]);
   } finally {
     await client.close();
