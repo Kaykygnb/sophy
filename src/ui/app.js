@@ -896,7 +896,10 @@ function setFocusMode(on) {
   document.querySelectorAll('[data-focus-toggle]').forEach((button) => {
     button.setAttribute('aria-pressed', String(state.focusMode));
     if (button.id !== 'modo-foco') {
-      button.textContent = state.focusMode ? 'Sair do foco' : 'Modo foco';
+      const label = button.querySelector('[data-focus-label]');
+      const text = state.focusMode ? 'Sair do foco' : 'Modo foco';
+      if (label) label.textContent = text;
+      else button.textContent = text;
       return;
     }
     button.classList.toggle('btn--primario', state.focusMode);
@@ -1172,7 +1175,7 @@ function openCoverPicker() {
       return `<button type="button" class="acento" data-cor="${color}" aria-label="${color === 'estante' ? 'Cor da estante' : shelfColorName(color)}" style="--amostra:${paint}"></button>`;
     })
     .join('');
-  pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--fantasma" id="fechar-capa" aria-label="Fechar">×</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
+  pop.innerHTML = `<div class="seletor-capa__topo"><h3>Capa da nota</h3><button type="button" class="btn btn--icone" id="fechar-capa" aria-label="Fechar">${icon('x')}</button></div><div class="seletor-capa__filtros">${filters}</div><div class="capa-galeria">${arts}</div><p class="seletor-capa__nota">Ou só uma cor</p><div class="acentos">${colors}</div><div class="seletor-capa__acoes"><button type="button" class="btn btn--secundario" id="capa-arquivo">Usar arquivo do computador…</button><button type="button" class="btn btn--fantasma" id="capa-remover">Remover capa</button></div><label class="capa-posicao">Altura <input id="capa-y" type="range" min="0" max="100" value="${y}"><output>${y}%</output></label><p class="seletor-capa__fm">capa: ${escapeHtml(state.frontmatter?.capa || '—')}</p>`;
   document.body.append(pop);
   const anchor = $('#trocar-capa')?.getBoundingClientRect();
   const margin = 8;
@@ -1268,8 +1271,8 @@ function propertyValueHtml(property) {
 
 function notePropertiesHtml() {
   const properties = noteProperties();
-  const rows = properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
-  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button></div></details>`;
+  const rows = properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">${icon('x')}</button></div>`).join('');
+  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">${icon('plus')} Adicionar propriedade</button></div></details>`;
 }
 
 function openPropertyValuePicker(propertyId, anchor) {
@@ -1287,7 +1290,7 @@ function openPropertyValuePicker(propertyId, anchor) {
   menu.setAttribute('aria-label', `Preencher ${property.name}`);
   const paint = () => {
     const selected = Array.isArray(property.value) ? property.value : [property.value].filter(Boolean);
-    menu.innerHTML = `<div class="propriedade-picker__topo"><strong>${escapeHtml(property.name)}</strong><span>${property.type === 'multi' ? 'Escolha um ou mais valores' : 'Escolha um valor'}</span></div><div class="propriedade-picker__opcoes">${property.options.map((option) => `<button type="button" class="menu__item ${selected.includes(option) ? 'is-ativa' : ''}" data-property-option="${escapeHtml(option)}"><span>${escapeHtml(option)}</span>${selected.includes(option) ? '<span>✓</span>' : ''}</button>`).join('') || '<p class="nota-privacidade">Nenhum valor usado ainda.</p>'}</div><div class="propriedade-picker__novo"><input id="property-new-value" maxlength="80" placeholder="Criar um novo valor…"><button type="button" class="btn btn--primario" id="property-create-value">Criar</button></div>${property.type === 'multi' ? '<button type="button" class="btn btn--fantasma propriedade-picker__done" id="property-picker-done">Concluído</button>' : ''}`;
+    menu.innerHTML = `<div class="propriedade-picker__topo"><strong>${escapeHtml(property.name)}</strong><span>${property.type === 'multi' ? 'Escolha um ou mais valores' : 'Escolha um valor'}</span></div><div class="propriedade-picker__opcoes">${property.options.map((option) => `<button type="button" class="menu__item ${selected.includes(option) ? 'is-ativa' : ''}" data-property-option="${escapeHtml(option)}"><span>${escapeHtml(option)}</span>${selected.includes(option) ? icon('check') : ''}</button>`).join('') || '<p class="nota-privacidade">Nenhum valor usado ainda.</p>'}</div><div class="propriedade-picker__novo"><input id="property-new-value" maxlength="80" placeholder="Criar um novo valor…"><button type="button" class="btn btn--primario" id="property-create-value">Criar</button></div>${property.type === 'multi' ? '<button type="button" class="btn btn--fantasma propriedade-picker__done" id="property-picker-done">Concluído</button>' : ''}`;
     menu.querySelectorAll('[data-property-option]').forEach((button) => {
       button.onclick = async () => {
         const value = button.dataset.propertyOption;
@@ -1340,7 +1343,7 @@ async function openPropertyEditor(existingId) {
   const templateSection = templates.length
     ? `<section class="propriedade-modelos"><div><strong>Usar uma propriedade existente</strong><span>Tipo e valores conhecidos vêm juntos.</span></div><div class="propriedade-modelos__lista" id="property-templates">${templates.map((template, index) => `<button type="button" class="opcao-cartao" data-property-template="${index}"><b>${escapeHtml(template.name)}</b><small>${escapeHtml(PROPERTY_TYPES[template.type])}${template.uses > 1 ? ` · usada em ${template.uses} notas` : ''}</small></button>`).join('')}</div></section>`
     : '';
-  overlay.innerHTML = `<div class="propriedade-editor" role="dialog" aria-modal="true" aria-labelledby="property-title"><header class="propriedade-editor__topo"><div><h3 id="property-title">${existing ? 'Editar' : 'Nova'} propriedade</h3><p>${existing ? 'Altere o nome desta propriedade.' : 'Reutilize uma propriedade da biblioteca ou crie uma nova.'}</p></div><button type="button" class="btn btn--icone" id="property-close" aria-label="Fechar">×</button></header><div class="propriedade-editor__corpo">${templateSection}<label class="propriedade-editor__campo"><span>Nome</span><input id="property-name" maxlength="80" value="${escapeHtml(existing?.name || '')}" placeholder="Ex.: Época, Status ou Prazo"><small>Ao usar esse nome novamente, o Sophy oferecerá este modelo.</small></label><label class="propriedade-editor__campo"><span>Tipo</span><select id="property-type" ${existing ? 'disabled' : ''}>${Object.entries(PROPERTY_TYPES).map(([value, label]) => `<option value="${value}" ${value === (existing?.type || 'text') ? 'selected' : ''}>${label}</option>`).join('')}</select><small>${existing ? 'O tipo não pode ser alterado depois da criação.' : 'Os valores de seleção serão criados quando você preencher a propriedade.'}</small></label><p class="propriedade-editor__erro" id="property-error" role="alert"></p></div><footer class="propriedade-editor__acoes"><button type="button" class="btn btn--fantasma" id="property-cancel">Cancelar</button><button type="button" class="btn btn--primario" id="property-save">${existing ? 'Salvar alterações' : 'Adicionar propriedade'}</button></footer></div>`;
+  overlay.innerHTML = `<div class="propriedade-editor" role="dialog" aria-modal="true" aria-labelledby="property-title"><header class="propriedade-editor__topo"><div><h3 id="property-title">${existing ? 'Editar' : 'Nova'} propriedade</h3><p>${existing ? 'Altere o nome desta propriedade.' : 'Reutilize uma propriedade da biblioteca ou crie uma nova.'}</p></div><button type="button" class="btn btn--icone" id="property-close" aria-label="Fechar">${icon('x')}</button></header><div class="propriedade-editor__corpo">${templateSection}<label class="propriedade-editor__campo"><span>Nome</span><input id="property-name" maxlength="80" value="${escapeHtml(existing?.name || '')}" placeholder="Ex.: Época, Status ou Prazo"><small>Ao usar esse nome novamente, o Sophy oferecerá este modelo.</small></label><label class="propriedade-editor__campo"><span>Tipo</span><select id="property-type" ${existing ? 'disabled' : ''}>${Object.entries(PROPERTY_TYPES).map(([value, label]) => `<option value="${value}" ${value === (existing?.type || 'text') ? 'selected' : ''}>${label}</option>`).join('')}</select><small>${existing ? 'O tipo não pode ser alterado depois da criação.' : 'Os valores de seleção serão criados quando você preencher a propriedade.'}</small></label><p class="propriedade-editor__erro" id="property-error" role="alert"></p></div><footer class="propriedade-editor__acoes"><button type="button" class="btn btn--fantasma" id="property-cancel">Cancelar</button><button type="button" class="btn btn--primario" id="property-save">${existing ? 'Salvar alterações' : 'Adicionar propriedade'}</button></footer></div>`;
   const type = $('#property-type');
   overlay.querySelectorAll('[data-property-template]').forEach((button) => {
     button.onclick = () => {
@@ -1383,7 +1386,7 @@ function openNoteMenu(anchor) {
   menu.className = 'menu menu-flutuante nota-menu';
   menu.setAttribute('role', 'dialog');
   menu.setAttribute('aria-label', 'Opções da nota');
-  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button>`;
+  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}">${icon('text-aa')}<span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}">${icon('arrows-horizontal')}<span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">${icon('list-bullets')} Propriedades</button><button type="button" class="menu__item" id="menu-cover">${icon('image')} ${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${icon('arrows-in')}<span data-focus-label>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</span></button>`;
   document.body.append(menu);
   anchor.setAttribute('aria-expanded', 'true');
   const rect = anchor.getBoundingClientRect();
@@ -1943,7 +1946,7 @@ function paintCenterBody(center) {
     return;
   }
   const conflict = state.conflict
-    ? `<div class="aviso" role="alert">${icon('erro')} <span>A nota mudou desde a leitura. Nada foi gravado.</span> <button type="button" class="btn btn--secundario" id="recarregar">Recarregar</button></div>`
+    ? `<div class="aviso" role="alert">${icon('warning-circle')} <span>A nota mudou desde a leitura. Nada foi gravado.</span> <button type="button" class="btn btn--secundario" id="recarregar">Recarregar</button></div>`
     : '';
   const chips = tagChips(state.frontmatter);
   const crumb = noteCrumb(state.active);
@@ -2094,16 +2097,16 @@ function renderBlock(block, index) {
     const kit = Cmd.kitTaskStatus(task.status);
     const chips = [
       task.due
-        ? `<span class="chip">${icon('calendario', 'icon--16')}${escapeHtml(task.due)}</span>`
+        ? `<span class="chip">${icon('calendar', 'icon--16')}${escapeHtml(task.due)}</span>`
         : '',
       task.priority === 'alta'
-        ? `<span class="chip chip--alta">${icon('prioridade-alta', 'icon--16')}Alta</span>`
+        ? `<span class="chip chip--alta">${icon('flag', 'icon--16')}Alta</span>`
         : '',
       task.priority === 'media'
-        ? `<span class="chip chip--media">${icon('prioridade-media', 'icon--16')}Média</span>`
+        ? `<span class="chip chip--media">${icon('flag', 'icon--16 icon--prioridade-media')}Média</span>`
         : '',
       task.priority === 'baixa'
-        ? `<span class="chip chip--baixa">${icon('prioridade-baixa', 'icon--16')}Baixa</span>`
+        ? `<span class="chip chip--baixa">${icon('flag', 'icon--16 icon--prioridade-baixa')}Baixa</span>`
         : '',
     ].join('');
     return `<div class="${Cmd.taskBlockClass(task.status)}">
@@ -2143,12 +2146,12 @@ function renderBlock(block, index) {
   }
   const embed = block.raw.trim().match(/^!\[\[([^\]\n]+)\]\]$/);
   if (embed) {
-    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><figure class="embed" data-block="${index}" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure></div>`;
+    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('plus')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('dots-six-vertical')}</button></div><figure class="embed" data-block="${index}" data-embed="${escapeHtml(embed[1])}"><div class="embed__caminho">${escapeHtml(embed[1])}</div><div class="embed__corpo">…</div></figure></div>`;
   }
   const text = block.raw.replace(/\n$/, '');
     const empty = text.trim() === '';
     const hint = empty ? ' data-dica="1" data-placeholder="Digite / para comandos"' : '';
-    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><p class="bloco bloco--texto" data-block="${index}"${hint} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
+    return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('plus')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('dots-six-vertical')}</button></div><p class="bloco bloco--texto" data-block="${index}"${hint} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
 }
 
 function inlineHtml(text) {
@@ -3009,14 +3012,14 @@ function showWiki(el, found) {
       .slice(0, 10)
       .map(
         (heading) =>
-          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#${escapeHtml(heading)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">${highlight(heading, draft.anchor)}</span><span class="menu__caminho">Seção</span></span></button>`,
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#${escapeHtml(heading)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('note')}<span><span class="menu__titulo">${highlight(heading, draft.anchor)}</span><span class="menu__caminho">Seção</span></span></button>`,
       );
     const blockRows = (target?.blockIds || [])
       .filter((id) => !draft.anchor || draft.anchor.startsWith('^') ? foldText(id).includes(anchorNeedle) : foldText(id).includes(anchorNeedle))
       .slice(0, 8)
       .map(
         (id) =>
-          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#^${escapeHtml(id)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">^${escapeHtml(id)}</span><span class="menu__caminho">Bloco</span></span></button>`,
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#^${escapeHtml(id)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('note')}<span><span class="menu__titulo">^${escapeHtml(id)}</span><span class="menu__caminho">Bloco</span></span></button>`,
       );
     const aliasHint = draft.hasPipe
       ? ''
@@ -3073,7 +3076,7 @@ function showWiki(el, found) {
     .join('');
   const createLabel = needle || 'sem título';
   const create = needle
-    ? `<button type="button" class="menu__item" role="option" data-create="${escapeHtml(needle)}">${icon('nota-nova')} Criar nota “${escapeHtml(createLabel)}”</button>
+    ? `<button type="button" class="menu__item" role="option" data-create="${escapeHtml(needle)}">${icon('note-pencil')} Criar nota “${escapeHtml(createLabel)}”</button>
        <div class="menu__rodape"><span><kbd class="kbd">#</kbd> seção</span><span><kbd class="kbd">|</kbd> texto do link</span></div>`
     : `<div class="menu__rodape"><span><kbd class="kbd">#</kbd> seção</span><span><kbd class="kbd">|</kbd> texto do link</span></div>`;
   openMenu(el, 'menu menu--wiki menu-flutuante', rows + create, (button) => {
@@ -5068,10 +5071,10 @@ function openBlockMenu(anchor, index) {
   menu.className = 'menu menu--bloco menu-flutuante';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = [
-    ['titulo', 'titulo', 'Transformar em título'],
-    ['lista', 'lista', 'Transformar em lista'],
-    ['tarefa', 'tarefa', 'Transformar em tarefa'],
-    ['apagar', 'lixeira', 'Excluir bloco'],
+    ['titulo', 'text-h', 'Transformar em título'],
+    ['lista', 'list', 'Transformar em lista'],
+    ['tarefa', 'check-square', 'Transformar em tarefa'],
+    ['apagar', 'trash', 'Excluir bloco'],
   ]
     .map(
       ([id, glyph, label]) =>
@@ -5200,6 +5203,23 @@ function editWritingLink(el) {
   input.focus(); input.select();
 }
 
+function formatAlreadyOn(glyph, index, range) {
+  const block = state.doc?.blocks?.[index];
+  const node = range.startContainer;
+  const el = node?.nodeType === 1 ? node : node?.parentElement;
+  if (glyph === 'text-b') return !!el?.closest('strong, b');
+  if (glyph === 'text-italic') return !!el?.closest('em, i');
+  if (glyph === 'text-strikethrough') return !!el?.closest('s, del');
+  if (glyph === 'highlighter-circle') return !!el?.closest('mark');
+  if (glyph === 'code') return !!el?.closest('code') || block?.type === 'code';
+  if (glyph === 'link') return !!el?.closest('a');
+  if (glyph === 'text-h') return block?.type === 'heading';
+  if (glyph === 'list') return block?.type === 'item';
+  if (glyph === 'check-square') return block?.type === 'task';
+  if (glyph === 'quotes') return block?.type === 'quote';
+  return false;
+}
+
 function showFormatBar(range) {
   document.querySelector('.barra-formato')?.remove();
   const host = range.startContainer.parentElement?.closest?.('[data-block]');
@@ -5210,22 +5230,22 @@ function showFormatBar(range) {
   bar.className = 'barra-formatacao barra-formato';
   bar.setAttribute('role', 'toolbar');
   bar.innerHTML = [
-    ['Negrito', 'negrito', '**', '**'],
-    ['Itálico', 'italico', '*', '*'],
+    ['Negrito', 'text-b', '**', '**'],
+    ['Itálico', 'text-italic', '*', '*'],
     ['Link', 'link', '[', '](https://)'],
-    ['Wikilink', 'nota', '[[', ']]'],
-    ['Título', 'titulo', '# ', ''],
-    ['Lista', 'lista', '- ', ''],
-    ['Tarefa', 'tarefa', '- [ ] ', ''],
-    ['Citação', 'citacao', '> ', ''],
-    ['Código', 'codigo', '`', '`'],
-    ['Riscado', 'tachado', '~~', '~~'],
-    ['Destacar', 'marca-texto', '==', '=='],
+    ['Wikilink', 'note', '[[', ']]'],
+    ['Título', 'text-h', '# ', ''],
+    ['Lista', 'list', '- ', ''],
+    ['Tarefa', 'check-square', '- [ ] ', ''],
+    ['Citação', 'quotes', '> ', ''],
+    ['Código', 'code', '`', '`'],
+    ['Riscado', 'text-strikethrough', '~~', '~~'],
+    ['Destacar', 'highlighter-circle', '==', '=='],
   ]
-    .map(
-      ([label, glyph, prefix, suffix]) =>
-        `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}">${icon(glyph)}</button>`,
-    )
+    .map(([label, glyph, prefix, suffix]) => {
+      const on = formatAlreadyOn(glyph, index, range);
+      return `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}" aria-pressed="${on}">${icon(glyph)}</button>`;
+    })
     .join('');
   document.body.append(bar);
   const rect = range.getBoundingClientRect();

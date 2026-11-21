@@ -118,5 +118,5 @@ module.exports = {
   // Nomes gravados em estantes antigas. O desenho pede o glifo novo.
   apelidos: {},
   // O id antigo coincide com o nome Phosphor. Segura a arte legada até o PR da tela.
-  segurarLegado: ['link'],
+  segurarLegado: [],
 };
