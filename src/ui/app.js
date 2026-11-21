@@ -24,10 +24,10 @@ const state = {
   unlinkedMentions: [],
   recentNotes: [],
   conflict: false,
-  graphWorkspace: '',
-  graphTag: '',
-  graphCamera: { x: 0, y: 0, zoom: 1 },
-  graphAnimation: 0,
+  graphShelf: '',
+  graphCenter: null,
+  graphPositions: null,
+  graphView: null,
   step: 1,
   folderMode: 'criar',
   folder: '',
@@ -1774,6 +1774,10 @@ function syncNav() {
 }
 
 function paintCenterBody(center) {
+  if (state.graphView) {
+    state.graphView.destroy();
+    state.graphView = null;
+  }
   if (state.view === 'canvases') {
     paintCanvasGallery(center);
     return;
@@ -5314,309 +5318,61 @@ function renameSelection() {
   }
 }
 
-async function showGraph(workspace) {
+function showGraph(workspace) {
   state.view = 'graph';
-  if (typeof workspace === 'string') state.graphWorkspace = workspace;
+  state.nav = 'grafo';
+  state.graphShelf = typeof workspace === 'string' && workspace ? workspace : '';
   paintTabs();
   paintCenter();
   paintLinks();
 }
 
-async function paintGraph(center) {
-  const legend = state.workspaces
-    .map((item) => {
-      const mark = markFor(item.name);
-      const color = mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
-      return `<span class="chip"><span class="arvore__ponto" style="background:${color}"></span>${escapeHtml(item.name)}</span>`;
-    })
-    .join('');
-  center.innerHTML = `<div class="grafo">
-    <div class="grafo__barra">
-      <label>Estante <select id="grafo-estante"><option value="">Todas</option>${state.workspaces
-        .map(
-          (item) =>
-            `<option value="${escapeHtml(item.name)}" ${item.name === state.graphWorkspace ? 'selected' : ''}>${escapeHtml(item.name)}</option>`,
-        )
-        .join('')}</select></label>
-      <label>Tag <input id="grafo-tag" value="${escapeHtml(state.graphTag)}" placeholder="filtrar" /></label>
-      <label>Linha do tempo <input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" /></label>
-      <span class="nota-privacidade" id="grafo-foco">${state.active ? `Foco: ${escapeHtml(baseName(state.active))}` : ''}</span>
-    </div>
-    <div class="grafo__palco">
-      <canvas id="grafo-canvas"></canvas>
-      <div class="grafo__legenda">${legend}</div>
-      <div class="grafo__quadros" id="grafo-quadros"></div>
-      <div class="grafo__zoom">
-        <button type="button" class="btn btn--icone" id="grafo-mais" aria-label="Aproximar">${icon('zoom-mais')}</button>
-        <button type="button" class="btn btn--icone" id="grafo-menos" aria-label="Afastar">${icon('zoom-menos')}</button>
-        <button type="button" class="btn btn--icone" id="grafo-ajustar" aria-label="Ajustar">1</button>
-      </div>
-    </div>
-  </div>`;
-  $('#grafo-estante').onchange = (event) => {
-    state.graphWorkspace = event.target.value;
-    paintGraph(center);
-  };
-  $('#grafo-tag').onchange = (event) => {
-    state.graphTag = event.target.value.trim();
-    paintGraph(center);
-  };
-  $('#grafo-tempo').oninput = (event) => {
-    state.graphUntil = Number(event.target.value) / 100;
-    drawGraph(state.graphData);
-  };
-  const graph = await tool('graph.query', {
-    workspace: state.graphWorkspace || undefined,
-    tag: state.graphTag || undefined,
-  });
-  state.graphData = graph;
-  drawGraph(graph);
-}
-
-function drawGraph(graph) {
-  if (!graph) return;
-  if (state.graphAnimation) cancelAnimationFrame(state.graphAnimation);
-  const until = state.graphUntil ?? 1;
-  const times = graph.nodes.map((node) => node.modifiedAt || 0).filter(Boolean).sort((a, b) => a - b);
-  const cutoff = times.length ? times[Math.min(times.length - 1, Math.floor(until * (times.length - 1)))] : Infinity;
-  const visibleNodes = until >= 1 ? graph.nodes : graph.nodes.filter((node) => (node.modifiedAt || 0) <= cutoff);
-  const visible = new Set(visibleNodes.map((node) => node.path));
-  graph = {
-    nodes: visibleNodes,
-    edges: graph.edges.filter((edge) => visible.has(edge.from) && visible.has(edge.to)),
-  };
-  const frames = $('#grafo-quadros');
-  if (frames && times.length) {
-    const thirds = [0.33, 0.66, 1].map((ratio, index) => {
-      const end = times[Math.min(times.length - 1, Math.floor(ratio * (times.length - 1)))];
-      const start = index === 0 ? 0 : times[Math.min(times.length - 1, Math.floor([0, 0.33, 0.66][index] * (times.length - 1)))];
-      const count = graph.nodes.filter((node) => (node.modifiedAt || 0) <= end && (index === 0 || (node.modifiedAt || 0) > start)).length;
-      return `<section><h3>${['Antes', 'Agora', 'Depois'][index]}</h3><p>${count}</p></section>`;
-    });
-    frames.innerHTML = thirds.join('');
-  }
-  const canvas = $('#grafo-canvas');
-  if (!canvas) return;
-  const stage = canvas.parentElement;
-  const fit = () => {
-    const rect = stage.getBoundingClientRect();
-    canvas.width = Math.max(320, Math.floor(rect.width));
-    canvas.height = Math.max(280, Math.floor(rect.height));
-  };
-  fit();
-  const degree = new Map();
-  for (const edge of graph.edges) {
-    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
-    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
-  }
-  const targetNodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height);
-  const nodes = targetNodes.map((node, index) => {
-    const angle = (index / Math.max(targetNodes.length, 1)) * Math.PI * 2;
-    const startRadius = Math.min(canvas.width, canvas.height) * 0.08;
-    return {
-      ...node,
-      targetX: node.x,
-      targetY: node.y,
-      x: canvas.width / 2 + Math.cos(angle) * startRadius,
-      y: canvas.height / 2 + Math.sin(angle) * startRadius,
-      degree: degree.get(node.path) || 0,
-    };
-  });
-  const byPath = new Map(nodes.map((node) => [node.path, node]));
+function graphColor(workspace) {
   const styles = getComputedStyle(document.documentElement);
-  const colorOf = (workspace) => {
-    const mark = markFor(workspace || '');
-    return mark.color
-      ? styles.getPropertyValue(`--shelf-${mark.color}`).trim()
-      : styles.getPropertyValue('--ink-3').trim();
-  };
-  const project = (node) => {
-    const camera = state.graphCamera;
-    return {
-      x: canvas.width / 2 + (node.x - canvas.width / 2 + camera.x) * camera.zoom,
-      y: canvas.height / 2 + (node.y - canvas.height / 2 + camera.y) * camera.zoom,
-    };
-  };
-  const redraw = () => {
-    const ctx = canvas.getContext('2d');
-    const ink = styles.getPropertyValue('--ink').trim();
-    const dot = styles.getPropertyValue('--canvas-dot').trim() || '#D9D5CE';
-    const bg = styles.getPropertyValue('--bg').trim();
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let x = 12; x < canvas.width; x += 22) {
-      for (let y = 12; y < canvas.height; y += 22) {
-        ctx.fillStyle = dot;
-        ctx.fillRect(x, y, 1.4, 1.4);
-      }
-    }
-    for (const edge of graph.edges) {
-      const from = byPath.get(edge.from);
-      const to = byPath.get(edge.to);
-      if (!from || !to) continue;
-      const a = project(from);
-      const b = project(to);
-      ctx.beginPath();
-      ctx.strokeStyle = colorOf(from.workspace);
-      ctx.globalAlpha = 0.45;
-      ctx.lineWidth = 1.4;
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    for (const node of nodes) {
-      const at = project(node);
-      const focused = node.path === state.active;
-      const radius = (4 + Math.min(node.degree, 8) * 1.7) * state.graphCamera.zoom;
-      const color = colorOf(node.workspace);
-      if (focused) {
-        ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.18;
-        ctx.arc(at.x, at.y, radius + 14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      ctx.beginPath();
-      ctx.fillStyle = color || '#6E72B0';
-      ctx.arc(at.x, at.y, focused ? radius + 3 : radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = ink;
-      ctx.font = `${focused ? 600 : 400} 13px Inter, sans-serif`;
-      ctx.fillText(node.title || baseName(node.path), at.x + radius + 8, at.y + 4);
-    }
-  };
-  state.graphRedraw = redraw;
-  redraw();
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    for (const node of nodes) {
-      node.x = node.targetX;
-      node.y = node.targetY;
-    }
-    redraw();
-  } else {
-    const animationStart = performance.now();
-    const animateGraph = (now) => {
-      const elapsed = Math.min(1, (now - animationStart) / 720);
-      const eased = 1 - Math.pow(1 - elapsed, 3);
-      for (const node of nodes) {
-        node.x += (node.targetX - node.x) * Math.max(0.12, eased);
-        node.y += (node.targetY - node.y) * Math.max(0.12, eased);
-      }
-      redraw();
-      if (elapsed < 1) state.graphAnimation = requestAnimationFrame(animateGraph);
-      else state.graphAnimation = 0;
-    };
-    state.graphAnimation = requestAnimationFrame(animateGraph);
+  const neutral = styles.getPropertyValue('--ink-3').trim() || '#625F75';
+  if (!workspace) return neutral;
+  const mark = markFor(workspace);
+  if (!mark.color) return neutral;
+  return styles.getPropertyValue(`--shelf-${mark.color}`).trim() || neutral;
+}
+
+async function openGraphNode(file) {
+  state.graphCenter = file;
+  if (String(file).toLowerCase().endsWith('.canvas')) {
+    await openCanvas(file);
+    return;
   }
-  const zoomBy = (factor) => {
-    state.graphCamera.zoom = Math.min(2.4, Math.max(0.4, state.graphCamera.zoom * factor));
-    redraw();
-  };
-  $('#grafo-mais').onclick = () => zoomBy(1.2);
-  $('#grafo-menos').onclick = () => zoomBy(1 / 1.2);
-  $('#grafo-ajustar').onclick = () => {
-    state.graphCamera = { x: 0, y: 0, zoom: 1 };
-    redraw();
-  };
-  canvas.onwheel = (event) => {
-    event.preventDefault();
-    zoomBy(event.deltaY > 0 ? 1 / 1.08 : 1.08);
-  };
-  let drag = null;
-  canvas.onpointerdown = (event) => {
-    drag = { x: event.clientX, y: event.clientY, moved: false };
-    canvas.setPointerCapture(event.pointerId);
-  };
-  canvas.onpointermove = (event) => {
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    if (Math.hypot(dx, dy) > 3) drag.moved = true;
-    state.graphCamera.x += dx / state.graphCamera.zoom;
-    state.graphCamera.y += dy / state.graphCamera.zoom;
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    redraw();
-  };
-  canvas.onpointerup = (event) => {
-    if (!drag) return;
-    const moved = drag.moved;
-    drag = null;
-    if (moved) return;
-    const bounds = canvas.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left) / bounds.width) * canvas.width;
-    const y = ((event.clientY - bounds.top) / bounds.height) * canvas.height;
-    const hit = nodes.find((node) => {
-      const at = project(node);
-      return Math.hypot(at.x - x, at.y - y) < 18;
-    });
-    if (hit) focusGraphNote(hit.path);
-  };
+  await openNote(file);
 }
 
-async function focusGraphNote(path) {
-  state.active = path;
-  if (!state.tabs.includes(path)) state.tabs.push(path);
-  const note = await tool('note.read', { path });
-  state.frontmatter = note.frontmatter;
-  state.revision = note.revision;
-  state.doc = Doc.parseBody(note.body);
-  await loadLinks();
-  const focus = $('#grafo-foco');
-  if (focus) focus.textContent = `Foco: ${baseName(path)}`;
-  paintTabs();
-  paintLinks();
-  paintStatus();
-  if (state.graphRedraw) state.graphRedraw();
-}
-
-function layout(nodes, edges, width, height) {
-  const placed = nodes.map((node, index) => {
-    const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
-    const radius = Math.min(width, height) * 0.28;
-    return {
-      ...node,
-      x: width / 2 + Math.cos(angle) * radius,
-      y: height / 2 + Math.sin(angle) * radius,
-      vx: 0,
-      vy: 0,
-    };
+function paintGraph(center) {
+  const shelf = state.graphShelf;
+  state.graphShelf = '';
+  center.innerHTML = '';
+  const host = document.createElement('div');
+  center.append(host);
+  state.graphView = SophyGraph.mount(host, {
+    icon,
+    escapeHtml,
+    baseName,
+    query: (input) => tool('graph.query', input),
+    openPath: (file) => openGraphNode(file),
+    colorFor: (workspace) => graphColor(workspace),
+    shelves: () =>
+      state.workspaces.map((item) => {
+        const mark = markFor(item.name);
+        return { name: item.name, color: mark.color || '' };
+      }),
+    notes: () => state.notes.map((note) => ({ path: note.path, title: baseName(note.path) })),
+    focusPath: () => state.graphCenter || state.active || state.canvasPath || '',
+    reduceMotion: () => motionReduced(),
+    toast: (message) => toast(message, 'erro'),
+    positions: () => state.graphPositions || {},
+    savePositions: (positions) => {
+      state.graphPositions = positions;
+    },
+    forcedShelf: shelf,
   });
-  const index = new Map(placed.map((node) => [node.path, node]));
-  for (let step = 0; step < 80; step += 1) {
-    for (let a = 0; a < placed.length; a += 1) {
-      for (let b = a + 1; b < placed.length; b += 1) {
-        let dx = placed[a].x - placed[b].x;
-        let dy = placed[a].y - placed[b].y;
-        const dist = Math.hypot(dx, dy) || 0.1;
-        const force = dist < 120 ? (120 - dist) * 0.9 : 2400 / (dist * dist);
-        placed[a].vx += (dx / dist) * force;
-        placed[a].vy += (dy / dist) * force;
-        placed[b].vx -= (dx / dist) * force;
-        placed[b].vy -= (dy / dist) * force;
-      }
-    }
-    for (const edge of edges) {
-      const from = index.get(edge.from);
-      const to = index.get(edge.to);
-      if (!from || !to) continue;
-      from.vx += (to.x - from.x) * 0.02;
-      from.vy += (to.y - from.y) * 0.02;
-      to.vx -= (to.x - from.x) * 0.02;
-      to.vy -= (to.y - from.y) * 0.02;
-    }
-    for (const node of placed) {
-      node.vx += (width / 2 - node.x) * 0.02;
-      node.vy += (height / 2 - node.y) * 0.02;
-      node.vx *= 0.75;
-      node.vy *= 0.75;
-      node.x = Math.max(28, Math.min(width - 28, node.x + node.vx));
-      node.y = Math.max(28, Math.min(height - 28, node.y + node.vy));
-    }
-  }
-  return placed;
 }
 
 function openPalette() {
