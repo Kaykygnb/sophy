@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Ícones B · Phosphor Regular em repouso, Fill no item ativo.
+   Cor: --ink-2 em repouso, --ink no hover, --accent só no estado ativo.
+   Estante continua em --estante-cor. 180ms, com reduced motion em 0.
+   ========================================================================== */
+
+.icon {
+  color: var(--ink-2);
+  transition: color var(--dur-medium) var(--ease);
+}
+.icon__regular,
+.icon__fill {
+  transition: opacity var(--dur-medium) var(--ease);
+}
+.icon__fill {
+  opacity: 0;
+}
+
+.btn--icone:hover:not(:disabled):not(.janela-fechar):not([aria-pressed='true']) .icon,
+.nav__item:hover:not([aria-current='page']) .icon,
+.arvore__linha:hover:not([aria-selected='true']) > .icon:not(.icon--estante),
+.aba:hover:not([aria-selected='true']) .icon,
+.menu__item:hover:not([aria-selected='true']):not([aria-pressed='true']):not(.menu__item--perigo) .icon {
+  color: var(--ink);
+}
+
+.nav__item[aria-current='page'] .icon,
+.aba[aria-selected='true'] .icon,
+.arvore__linha[aria-selected='true'] > .icon:not(.icon--estante):not(.arvore__seta),
+.menu__item[aria-selected='true']:not(.menu__item--perigo) .icon,
+.menu__item[aria-pressed='true'] .icon,
+.btn--icone[aria-pressed='true']:not(.btn--primario):not(.btn--perigo) .icon,
+.opcao.is-escolhida .icon,
+.segmentado__opcao:has(input:checked) .icon {
+  color: var(--accent);
+}
+
+.nav__item[aria-current='page'] .icon:has(.icon__fill) .icon__regular,
+.aba[aria-selected='true'] .icon:has(.icon__fill) .icon__regular,
+.arvore__linha[aria-selected='true'] > .icon:not(.arvore__seta):has(.icon__fill) .icon__regular,
+.menu__item[aria-selected='true'] .icon:has(.icon__fill) .icon__regular,
+.menu__item[aria-pressed='true'] .icon:has(.icon__fill) .icon__regular,
+[aria-pressed='true'] > .icon:has(.icon__fill) .icon__regular,
+[aria-expanded='true'] > .icon:has(.icon__fill) .icon__regular,
+.opcao.is-escolhida .icon:has(.icon__fill) .icon__regular,
+.is-escolhida > .icon:has(.icon__fill) .icon__regular,
+.segmentado__opcao:has(input:checked) .icon:has(.icon__fill) .icon__regular {
+  opacity: 0;
+}
+.nav__item[aria-current='page'] .icon__fill,
+.aba[aria-selected='true'] .icon__fill,
+.arvore__linha[aria-selected='true'] > .icon:not(.arvore__seta) .icon__fill,
+.menu__item[aria-selected='true'] .icon__fill,
+.menu__item[aria-pressed='true'] .icon__fill,
+[aria-pressed='true'] > .icon .icon__fill,
+[aria-expanded='true'] > .icon .icon__fill,
+.opcao.is-escolhida .icon__fill,
+.is-escolhida > .icon .icon__fill,
+.segmentado__opcao:has(input:checked) .icon__fill {
+  opacity: 1;
+}
+
+.icon--estante,
+.arvore__linha[aria-selected='true'] > .icon.icon--estante,
+.arvore__linha:hover > .icon.icon--estante,
+.btn .icon.icon--estante {
+  color: var(--estante-cor, var(--ink-2));
+}
+
+.btn--primario .icon,
+.btn--primario[aria-pressed='true'] .icon,
+.btn--perigo .icon,
+.menu__item--perigo .icon,
+.menu__item--perigo:hover .icon,
+.janela-fechar:hover .icon,
+.toast .icon {
+  color: currentColor;
+}
+
+.icon--espelhado {
+  transform: scaleX(-1);
+}
+.icon--prioridade-media {
+  opacity: 0.62;
+}
+.icon--prioridade-baixa {
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon,
+  .icon__regular,
+  .icon__fill {
+    transition: none;
+  }
+}

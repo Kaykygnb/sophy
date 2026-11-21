@@ -10,6 +10,7 @@
     "dev": "node scripts/start.js --dev",
     "mcp": "node --experimental-strip-types engine/cli.ts mcp",
     "check": "node scripts/check.js",
+    "icons": "node scripts/build-icons.js",
     "test": "node --experimental-strip-types --test tests/*.test.js",
     "test:engine": "node --experimental-strip-types --test engine/*.test.ts",
     "test:e2e": "playwright test",
@@ -20,6 +21,7 @@
     "dist:win": "electron-builder --win"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "^2.1.1",
     "@playwright/test": "1.65.0",
     "electron": "^45.2.3",
     "electron-builder": "^26.0.12",
