@@ -1,5 +1,6 @@
 const Doc = SophyDoc;
 const Cmd = SophyCommands;
+const Trash = SophyLixeira;
 
 const state = {
   settings: {},
@@ -41,6 +42,13 @@ const state = {
   warnedUnsafe: false,
   propertyTemplates: null,
   connectionsOpen: false,
+  trashItems: [],
+  trashStatus: 'idle',
+  trashError: '',
+  trashQuery: '',
+  trashKind: '',
+  trashSelected: null,
+  trashBusy: false,
 };
 
 const slash = Cmd.createSlashSession();
@@ -172,6 +180,7 @@ async function undoLastAction(message = 'Ação desfeita.') {
   await refreshLibrary();
   if (state.active) await openNote(state.active, { force: true });
   else paintTree();
+  if (state.view === 'trash') paintCenter();
   toast(message);
 }
 
@@ -548,6 +557,8 @@ function paintShell() {
                 `<button type="button" class="nav__item" data-nav="${id}">${icon(glyph)} ${label}</button>`,
             )
             .join('')}
+          <div class="nav__sep" role="separator"></div>
+          <button type="button" class="nav__item" data-nav="lixeira" aria-label="${escapeHtml(trashNavLabel(state.trashItems.length))}">${icon('lixeira')}<span>Lixeira</span><span class="nav__conta" id="lixeira-conta">${state.trashItems.length}</span></button>
         </nav>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
@@ -611,6 +622,7 @@ async function refreshLibrary() {
   } catch {
     state.linkCatalog = [];
   }
+  await refreshTrashIndex();
 }
 
 function markFor(name) {
@@ -1726,16 +1738,8 @@ function paintCanvasGallery(center) {
       event.stopPropagation();
       const file = button.dataset.file;
       if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`))) return;
-      $('#overlay').hidden = true;
       try {
-        await tool('entry.trash', { path: file });
-        state.tabs = state.tabs.filter((tab) => tab !== file);
-        state.canvasGalleryLoaded = false;
-        await refreshLibrary();
-        paintTree();
-        paintTabs();
-        paintCenter();
-        toast('Canvas movido para a lixeira.');
+        await trashPath(file, 'canvas');
       } catch (error) {
         toast(error.message, 'erro');
       }
@@ -1774,6 +1778,10 @@ function syncNav() {
 }
 
 function paintCenterBody(center) {
+  if (state.view === 'trash') {
+    paintTrash(center);
+    return;
+  }
   if (state.view === 'canvases') {
     paintCanvasGallery(center);
     return;
@@ -3201,8 +3209,12 @@ function cycleTask(index) {
 async function followLink(target, options = {}) {
   if (!target) return;
   if (/^(https?:\/\/|mailto:)/i.test(target)) {
-    const response = await sophy.openExternal(target);
-    if (!response.ok) toast(response.error, 'erro');
+    try {
+      const message = Cmd.externalOpenError(await sophy.openExternal(target));
+      if (message) toast(message, 'erro');
+    } catch (error) {
+      toast(error.message || 'Não foi possível abrir o link.', 'erro');
+    }
     return;
   }
   const draft = Cmd.parseWikiDraft(String(target).replace(/^!?\[\[|\]\]$/g, ''));
@@ -3743,9 +3755,7 @@ async function pickAndInsertImages() {
     toast('Abra uma nota para inserir imagens.', 'erro');
     return;
   }
-  const picked = await sophy.chooseFiles();
-  if (!picked?.ok) throw new Error(picked?.error || 'Não foi possível abrir o seletor.');
-  const paths = picked.value || [];
+  const paths = Cmd.chosenFileList(await sophy.chooseFiles());
   if (!paths.length) return;
   const imported = await importAttachmentFiles(paths.map((path) => ({ path })));
   insertEmbedBlocks(imported);
@@ -4215,7 +4225,7 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
-  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
+  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'lixeira', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
   if (leaving && ((state.view === 'note' && state.doc) || state.view === 'canvas')) {
     flushNote().then((saved) => { if (saved) runCommandNow(id); });
     return;
@@ -4224,7 +4234,7 @@ function runCommand(id) {
 }
 
 function runCommandNow(id) {
-  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas'].includes(id)) state.nav = id;
+  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'lixeira'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
     estante: () => createWorkspace(),
@@ -4247,6 +4257,7 @@ function runCommandNow(id) {
       paintCenter();
     },
     versoes: () => showVersions(),
+    lixeira: () => showTrash(),
     buscar: () => openPalette(),
     comandos: () => openCommands(),
     biblioteca: () => {
@@ -4509,17 +4520,435 @@ async function showMentions() {
   });
 }
 
-function confirmDialog(message) {
+function confirmDialog(message, options = {}) {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Confirmar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+  const confirmLabel = options.confirmLabel || 'Confirmar';
+  const cancelLabel = options.cancelLabel || 'Cancelar';
+  const tone = options.danger ? 'btn--perigo' : 'btn--primario';
+  const label = options.label || 'Confirmar';
+  overlay.innerHTML = `<div class="menu confirma" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}"><p id="confirma-texto">${escapeHtml(message)}</p><div class="confirma__acoes"><button type="button" class="btn btn--secundario" id="confirma-nao">${escapeHtml(cancelLabel)}</button><button type="button" class="btn ${tone}" id="confirma-sim">${escapeHtml(confirmLabel)}</button></div></div>`;
+  const cancel = $('#confirma-nao');
+  cancel.focus();
   return new Promise((resolve) => {
-    $('#confirma-sim').onclick = () => resolve(true);
-    $('#confirma-nao').onclick = () => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.onclick = null;
       overlay.hidden = true;
-      resolve(false);
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(false);
+    };
+    document.addEventListener('keydown', onKey, true);
+    $('#confirma-sim').onclick = () => finish(true);
+    cancel.onclick = () => finish(false);
+    overlay.onclick = (event) => {
+      if (event.target === overlay) finish(false);
     };
   });
+}
+
+function trashNavLabel(count) {
+  return `Lixeira, ${Trash.countLabel(count)}`;
+}
+
+function paintTrashBadge() {
+  const count = state.trashItems.length;
+  const badge = $('#lixeira-conta');
+  const button = document.querySelector('[data-nav="lixeira"]');
+  if (badge) badge.textContent = String(count);
+  if (button) button.setAttribute('aria-label', trashNavLabel(count));
+}
+
+async function refreshTrashIndex() {
+  try {
+    const items = await tool('trash.list', {});
+    state.trashItems = Array.isArray(items) ? items : [];
+    state.trashStatus = 'ready';
+    state.trashError = '';
+  } catch (error) {
+    state.trashStatus = 'error';
+    state.trashError = error.message || 'Não foi possível ler a lixeira.';
+  }
+  paintTrashBadge();
+}
+
+function visibleTrash() {
+  return Trash.filterTrash(state.trashItems, {
+    query: state.trashQuery,
+    kind: state.trashKind,
+  });
+}
+
+function syncTrashSelection(items) {
+  if (!items.length) {
+    state.trashSelected = null;
+    return;
+  }
+  if (!items.some((item) => item.id === state.trashSelected)) state.trashSelected = items[0].id;
+}
+
+async function showTrash() {
+  state.view = 'trash';
+  state.nav = 'lixeira';
+  state.active = null;
+  state.canvasPath = null;
+  state.trashStatus = 'loading';
+  paintTree();
+  paintTabs();
+  paintLinks();
+  paintStatus();
+  paintCenter();
+  const delay = Number(window.__sophyTrashDelay) || 0;
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+  if (state.view !== 'trash') return;
+  await refreshTrashIndex();
+  if (state.view !== 'trash') return;
+  syncTrashSelection(visibleTrash());
+  paintCenter();
+}
+
+function trashRow(item, selected) {
+  const when = Trash.formatDeletedAt(item.deletedAt);
+  const size = Trash.formatSize(item.size);
+  const kind = Trash.kindLabel(item.kind);
+  const title = item.title || item.originalPath || 'Sem título';
+  const path = item.originalPath || '';
+  const label = `${kind}: ${title}. Caminho ${path}. Excluído ${when.relative}. ${size}.`;
+  return `<div class="lixeira__item" role="option" id="lixo-${escapeHtml(item.id)}" data-id="${escapeHtml(item.id)}" aria-selected="${selected ? 'true' : 'false'}" aria-label="${escapeHtml(label)}">
+    <span class="lixeira__tipo" title="${escapeHtml(kind)}">${icon(Trash.kindIcon(item.kind))}</span>
+    <span class="lixeira__corpo"><strong class="lixeira__titulo">${escapeHtml(title)}</strong><span class="lixeira__caminho" title="${escapeHtml(path)}">${escapeHtml(path)}</span></span>
+    <time class="lixeira__quando" datetime="${escapeHtml(item.deletedAt || '')}" title="${escapeHtml(when.full)}">${escapeHtml(when.relative)}</time>
+    <span class="lixeira__tamanho">${escapeHtml(size)}</span>
+    <span class="lixeira__acoes">
+      <button type="button" class="btn btn--secundario btn--pequeno" data-restaurar="${escapeHtml(item.id)}" aria-label="${escapeHtml(`Restaurar ${title}`)}">${icon('restaurar')} Restaurar</button>
+      <button type="button" class="btn btn--fantasma btn--pequeno lixeira__apagar" data-apagar="${escapeHtml(item.id)}" aria-label="${escapeHtml(`Excluir ${title} de vez`)}">${icon('apagar')} Excluir de vez</button>
+    </span>
+  </div>`;
+}
+
+function paintTrash(center) {
+  const items = state.trashItems;
+  const visible = visibleTrash();
+  syncTrashSelection(visible);
+  const typing = document.activeElement?.id === 'lixeira-busca';
+  const caret = typing ? document.activeElement.selectionStart : null;
+  const filters = [
+    ['', 'Todos'],
+    ['note', 'Notas'],
+    ['canvas', 'Canvas'],
+    ['attachment', 'Anexos'],
+    ['folder', 'Pastas'],
+  ]
+    .map(
+      ([id, label]) =>
+        `<button type="button" class="btn btn--fantasma btn--pequeno lixeira__tipo-btn" data-tipo="${id}" aria-pressed="${state.trashKind === id}" aria-label="Filtrar ${label.toLocaleLowerCase('pt-BR')}">${label}</button>`,
+    )
+    .join('');
+  let body = '';
+  if (state.trashStatus === 'loading' && !items.length) {
+    body = `<div class="lixeira__estado" role="status">${icon('lixeira', 'icon--48')}<p>Carregando a lixeira…</p></div>`;
+  } else if (state.trashStatus === 'error') {
+    body = `<div class="lixeira__estado" role="alert">${icon('erro', 'icon--48')}<h2>Não foi possível ler a lixeira</h2><p>${escapeHtml(state.trashError || 'Tente de novo.')}</p><button type="button" class="btn btn--secundario" id="lixeira-tentar" aria-label="Tentar de novo">Tentar de novo</button></div>`;
+  } else if (!items.length) {
+    body = `<div class="lixeira__vazio">${icon('lixeira', 'icon--48')}<h2>A lixeira está vazia</h2><p>Notas, canvas, anexos e pastas excluídos aparecem aqui. Dá para restaurar ou apagar de vez.</p></div>`;
+  } else if (!visible.length) {
+    body = `<div class="lixeira__vazio"><h2>Nenhum item com esse filtro</h2><p>Tente outro termo ou mostre todos os tipos.</p><button type="button" class="btn btn--fantasma" id="lixeira-limpar">Limpar filtro</button></div>`;
+  } else {
+    const selected = state.trashSelected;
+    body = `<div class="lixeira__lista" id="lixeira-lista" role="listbox" tabindex="0" aria-label="Itens da lixeira" aria-activedescendant="${selected ? `lixo-${escapeHtml(selected)}` : ''}">${visible
+      .map((item) => trashRow(item, item.id === selected))
+      .join('')}</div>`;
+  }
+  const summary =
+    state.trashStatus === 'loading' && !items.length
+      ? 'Carregando…'
+      : state.trashStatus === 'error'
+        ? 'Não foi possível ler a lixeira.'
+        : `${Trash.countLabel(items.length)} na lixeira da biblioteca`;
+  const canEmpty = state.trashStatus === 'ready' && items.length > 0;
+  center.innerHTML = `<section class="lixeira" aria-labelledby="lixeira-titulo"><header class="lixeira__topo"><div><h2 id="lixeira-titulo">Lixeira</h2><p>${escapeHtml(summary)}</p></div><button type="button" class="btn btn--perigo" id="lixeira-esvaziar" aria-label="Esvaziar lixeira" ${canEmpty ? '' : 'disabled'}>Esvaziar lixeira</button></header><div class="lixeira__ferramentas"><label class="input input--busca">${icon('busca')}<input id="lixeira-busca" type="search" placeholder="Buscar na lixeira" aria-label="Buscar na lixeira" value="${escapeHtml(state.trashQuery)}" /></label><div class="lixeira__filtros" role="group" aria-label="Filtrar por tipo">${filters}</div></div>${body}</section>`;
+  const search = $('#lixeira-busca');
+  if (search) {
+    search.oninput = () => {
+      state.trashQuery = search.value;
+      paintCenter();
+    };
+    if (typing) {
+      search.focus();
+      const pos = caret == null ? search.value.length : caret;
+      search.setSelectionRange(pos, pos);
+    }
+  }
+  center.querySelectorAll('[data-tipo]').forEach((button) => {
+    button.onclick = () => {
+      state.trashKind = button.dataset.tipo || '';
+      paintCenter();
+    };
+  });
+  const empty = $('#lixeira-esvaziar');
+  if (empty) empty.onclick = () => emptyTrash().catch((error) => toast(error.message, 'erro'));
+  const retry = $('#lixeira-tentar');
+  if (retry)
+    retry.onclick = () => {
+      showTrash().catch((error) => toast(error.message, 'erro'));
+    };
+  const clear = $('#lixeira-limpar');
+  if (clear)
+    clear.onclick = () => {
+      state.trashQuery = '';
+      state.trashKind = '';
+      paintCenter();
+    };
+  const list = $('#lixeira-lista');
+  if (list) {
+    list.onclick = (event) => {
+      const restore = event.target.closest('[data-restaurar]');
+      const purge = event.target.closest('[data-apagar]');
+      const row = event.target.closest('.lixeira__item');
+      if (restore) {
+        const item = state.trashItems.find((entry) => entry.id === restore.dataset.restaurar);
+        if (item) restoreTrashItem(item);
+        return;
+      }
+      if (purge) {
+        const item = state.trashItems.find((entry) => entry.id === purge.dataset.apagar);
+        if (item) purgeTrashItem(item);
+        return;
+      }
+      if (row && row.dataset.id !== state.trashSelected) {
+        state.trashSelected = row.dataset.id;
+        paintCenter();
+      }
+    };
+    list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function onTrashKey(event) {
+  if (state.view !== 'trash') return false;
+  const overlay = $('#overlay');
+  if (overlay && !overlay.hidden) return false;
+  const list = event.target?.closest?.('#lixeira-lista');
+  if (!list) return false;
+  const tag = event.target?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  const items = visibleTrash();
+  if (!items.length) return false;
+  let index = items.findIndex((item) => item.id === state.trashSelected);
+  if (index < 0) index = 0;
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const next =
+      event.key === 'ArrowDown' ? Math.min(items.length - 1, index + 1) : Math.max(0, index - 1);
+    state.trashSelected = items[next].id;
+    paintCenter();
+    $('#lixeira-lista')?.focus();
+    return true;
+  }
+  if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    state.trashSelected = items[event.key === 'Home' ? 0 : items.length - 1].id;
+    paintCenter();
+    $('#lixeira-lista')?.focus();
+    return true;
+  }
+  if (event.key === 'Enter') {
+    if (event.target?.closest?.('button')) return false;
+    event.preventDefault();
+    restoreTrashItem(items[index]);
+    return true;
+  }
+  if (event.key === 'Delete') {
+    event.preventDefault();
+    purgeTrashItem(items[index]);
+    return true;
+  }
+  return false;
+}
+
+async function restoreTrashItem(item) {
+  if (!item || state.trashBusy) return;
+  state.trashBusy = true;
+  try {
+    const result = await tool('trash.restore', { id: item.id });
+    const finalPath = result?.path || item.originalPath;
+    state.trashSelected = null;
+    await refreshLibrary();
+    if (state.view === 'trash') {
+      syncTrashSelection(visibleTrash());
+      paintTree();
+      paintCenter();
+    } else {
+      paintTree();
+      paintCenter();
+    }
+    const openable = item.kind === 'note' || item.kind === 'canvas';
+    toast(
+      `Restaurado em ${finalPath}`,
+      'ok',
+      openable
+        ? {
+            label: 'Abrir',
+            onClick: async () => {
+              state.nav = '';
+              if (item.kind === 'canvas') await openCanvas(finalPath);
+              else await openNote(finalPath);
+            },
+          }
+        : null,
+    );
+  } catch (error) {
+    toast(error.message, 'erro');
+  } finally {
+    state.trashBusy = false;
+  }
+}
+
+async function purgeTrashItem(item) {
+  if (!item || state.trashBusy) return;
+  const title = item.title || item.originalPath || 'este item';
+  const ok = await confirmDialog(
+    `Excluir “${title}” de vez? Sai da lixeira e não dá para desfazer.`,
+    { danger: true, confirmLabel: 'Excluir de vez', label: 'Excluir de vez' },
+  );
+  if (!ok) {
+    $('#lixeira-lista')?.focus();
+    return;
+  }
+  state.trashBusy = true;
+  try {
+    await tool('trash.purge', { id: item.id });
+    if (state.trashSelected === item.id) state.trashSelected = null;
+    await refreshLibrary();
+    if (state.view === 'trash') {
+      syncTrashSelection(visibleTrash());
+      paintCenter();
+    }
+    toast('Excluído de vez.');
+  } catch (error) {
+    toast(error.message, 'erro');
+  } finally {
+    state.trashBusy = false;
+  }
+}
+
+async function emptyTrash() {
+  const count = state.trashItems.length;
+  if (!count || state.trashBusy) return;
+  const sentence =
+    count === 1
+      ? 'Esvaziar a lixeira? 1 item será apagado de vez. Não dá para desfazer.'
+      : `Esvaziar a lixeira? ${count} itens serão apagados de vez. Não dá para desfazer.`;
+  const ok = await confirmDialog(sentence, {
+    danger: true,
+    confirmLabel: 'Esvaziar lixeira',
+    label: 'Esvaziar lixeira',
+  });
+  if (!ok) {
+    $('#lixeira-lista')?.focus();
+    return;
+  }
+  state.trashBusy = true;
+  try {
+    await tool('trash.empty', {});
+    state.trashSelected = null;
+    state.trashQuery = '';
+    state.trashKind = '';
+    await refreshLibrary();
+    if (state.view === 'trash') paintCenter();
+    else paintTree();
+    toast('Lixeira esvaziada.');
+  } catch (error) {
+    toast(error.message, 'erro');
+  } finally {
+    state.trashBusy = false;
+  }
+}
+
+function entryMatches(target, kind, file) {
+  if (!file || !target) return false;
+  if (kind === 'shelf' || kind === 'folder')
+    return file === target || file.startsWith(`${target}/`);
+  return file === target;
+}
+
+async function forgetOpenEntry(target, kind) {
+  const hit = (file) => entryMatches(target, kind, file);
+  const closingActive = hit(state.active) || hit(state.canvasPath);
+  if (closingActive && !(await flushNote())) return false;
+  state.tabs = state.tabs.filter((tab) => !hit(tab));
+  if (!closingActive) return true;
+  state.active = null;
+  state.doc = null;
+  state.dirty = false;
+  state.revision = null;
+  state.frontmatter = null;
+  state.outgoing = [];
+  state.backlinks = [];
+  state.canvasPath = null;
+  state.canvasDoc = null;
+  state.canvasDirty = false;
+  if (state.view === 'note' || state.view === 'canvas' || state.view === 'canvas-error') {
+    state.view = 'home';
+    state.nav = 'inicio';
+  }
+  return true;
+}
+
+async function trashPath(target, kind) {
+  if (kind === 'shelf') {
+    const count = state.notes.filter(
+      (note) => note.workspace === target || note.path.startsWith(`${target}/`),
+    ).length;
+    const ok = await confirmDialog(
+      `Mover a estante ${target} para a lixeira, com ${count} nota(s)?`,
+      { confirmLabel: 'Mover', label: 'Mover estante' },
+    );
+    if (!ok) return false;
+  }
+  if (!(await forgetOpenEntry(target, kind))) return false;
+  await tool('entry.trash', { path: target });
+  state.canvasGalleryLoaded = false;
+  await refreshLibrary();
+  paintTree();
+  paintTabs();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+  toast('Movido para a lixeira.', 'ok', {
+    label: 'Desfazer',
+    onClick: () => undoLastAction('Item restaurado da lixeira.'),
+  });
+  return true;
+}
+
+async function deleteForever(target, kind) {
+  const label = kind === 'shelf' ? target : baseName(target);
+  const ok = await confirmDialog(
+    `Excluir “${label}” permanentemente? O item não vai para a lixeira e não dá para desfazer.`,
+    { danger: true, confirmLabel: 'Excluir permanentemente', label: 'Excluir permanentemente' },
+  );
+  if (!ok) return false;
+  if (!(await forgetOpenEntry(target, kind))) return false;
+  await tool('note.deletePermanent', { path: target });
+  state.canvasGalleryLoaded = false;
+  await refreshLibrary();
+  paintTree();
+  paintTabs();
+  paintCenter();
+  paintLinks();
+  paintStatus();
+  toast('Excluído permanentemente.');
+  return true;
 }
 
 async function showReview() {
@@ -4943,17 +5372,22 @@ function openTreeMenu(event, kind, target) {
   const items =
     kind === 'shelf'
       ? [
-          ['nota', 'Nova nota aqui'],
-          ['cor', 'Cor e ícone…'],
-          ['renomear', 'Renomear'],
-          ['lixo', 'Mover para a lixeira'],
+          ['nota', 'Nova nota aqui', ''],
+          ['cor', 'Cor e ícone…', ''],
+          ['renomear', 'Renomear', ''],
+          ['lixo', 'Mover para a lixeira', 'lixeira'],
+          ['apagar', 'Excluir permanentemente…', 'apagar'],
         ]
       : [
-          ['renomear', 'Renomear'],
-          ['lixo', 'Mover para a lixeira'],
+          ['renomear', 'Renomear', ''],
+          ['lixo', 'Mover para a lixeira', 'lixeira'],
+          ['apagar', 'Excluir permanentemente…', 'apagar'],
         ];
   menu.innerHTML = items
-    .map(([id, label]) => `<button type="button" class="menu__item" role="menuitem" data-arvore="${id}">${label}</button>`)
+    .map(([id, label, glyph]) => {
+      const danger = id === 'apagar' ? ' menu__item--perigo' : '';
+      return `<button type="button" class="menu__item${danger}" role="menuitem" data-arvore="${id}">${glyph ? icon(glyph) : ''}${label}</button>`;
+    })
     .join('');
   document.body.append(menu);
   menu.style.position = 'fixed';
@@ -4978,39 +5412,13 @@ function openTreeMenu(event, kind, target) {
       closeMenus();
       openShelfStyle(target);
     };
-  menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
+  menu.querySelector('[data-arvore="lixo"]').onclick = () => {
     closeMenus();
-    try {
-      if (kind === 'shelf') {
-        const count = state.notes.filter((note) => note.workspace === target || note.path.startsWith(`${target}/`)).length;
-        const overlay = $('#overlay');
-        overlay.hidden = false;
-        overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Mover estante"><p>Mover a estante ${escapeHtml(target)} para a lixeira, com ${count} nota(s)?</p><button type="button" id="confirma-sim">Mover</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
-        const ok = await new Promise((resolve) => {
-          $('#confirma-nao').onclick = () => { overlay.hidden = true; resolve(false); };
-          $('#confirma-sim').onclick = () => { overlay.hidden = true; resolve(true); };
-        });
-        if (!ok) return;
-      }
-      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(`${target}/`)))
-        if (!(await flushNote())) return;
-      await tool('entry.trash', { path: target });
-      const prefix = kind === 'shelf' ? `${target}/` : target;
-      state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));
-      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(prefix))) {
-        state.active = null;
-        state.doc = null;
-        state.view = 'home';
-        state.nav = 'inicio';
-      }
-      await refreshLibrary();
-      paintTree();
-      paintTabs();
-      paintCenter();
-      toast('Movido para a lixeira.');
-    } catch (error) {
-      toast(error.message, 'erro');
-    }
+    trashPath(target, kind).catch((error) => toast(error.message, 'erro'));
+  };
+  menu.querySelector('[data-arvore="apagar"]').onclick = () => {
+    closeMenus();
+    deleteForever(target, kind).catch((error) => toast(error.message, 'erro'));
   };
 }
 
@@ -5793,6 +6201,7 @@ document.addEventListener('mousedown', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (onTrashKey(event)) return;
   if (event.key === 'Escape') {
     closeMenus();
     const overlay = $('#overlay');
