@@ -261,7 +261,9 @@ test('links quebram na exclusão e voltam a resolver; .sophy fica fora do índic
     nodes: Array<{ path: string }>;
     edges: Array<{ from: string; to: string }>;
   };
-  assert.deepEqual(restoredGraph.edges, [{ from: 'Fonte.md', to: 'Alvo.md', format: 'wiki' }]);
+  assert.deepEqual(restoredGraph.edges, [
+    { from: 'Fonte.md', to: 'Alvo.md', format: 'wiki', weight: 1 },
+  ]);
   assert.equal(restoredGraph.nodes.some((node) => node.path.includes('.sophy')), false);
 });
 
