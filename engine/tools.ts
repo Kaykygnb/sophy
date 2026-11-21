@@ -38,6 +38,15 @@ import {
   watchLibrary,
 } from './links.ts';
 import {
+  deletePermanent,
+  emptyTrash,
+  listTrash,
+  purgeTrash,
+  restoreTrash,
+  TRASH_ID,
+  trashEntry,
+} from './lixeira.ts';
+import {
   createDirectory,
   createNote,
   createWorkspace,
@@ -49,7 +58,6 @@ import {
   openLibrary,
   readAttachmentDataUrl,
   readNote,
-  trashEntry,
   writeNote,
   type Library,
 } from './library.ts';
@@ -257,11 +265,44 @@ export const tools = [
   ),
   define(
     'entry.trash',
-    'Move um arquivo ou pasta para a lixeira. Não apaga de forma permanente.',
+    'Move um arquivo ou pasta para .sophy/lixeira, dentro da biblioteca. Não apaga de forma permanente.',
     z.object({ libraryPath, path: relativePath, origin }),
     ({ libraryPath: folder, path, origin: source }) =>
       tracked(folder, source, 'entry.trash', `Lixeira ${path}`, (library) =>
         trashEntry(library, path),
+      ),
+  ),
+  define(
+    'trash.list',
+    'Lista a lixeira da biblioteca, da exclusão mais recente para a mais antiga.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listTrash(openLibrary(folder)),
+  ),
+  define(
+    'trash.restore',
+    'Devolve um item da lixeira ao caminho original. Se o caminho estiver ocupado, usa o sufixo “ (restaurado)”.',
+    z.object({ libraryPath, id: z.string().regex(TRASH_ID, 'Identificador de lixeira inválido.'), origin }),
+    ({ libraryPath: folder, id }) => restoreTrash(openLibrary(folder), id),
+  ),
+  define(
+    'trash.purge',
+    'Apaga de vez um item da lixeira. O original não volta.',
+    z.object({ libraryPath, id: z.string().regex(TRASH_ID, 'Identificador de lixeira inválido.'), origin }),
+    ({ libraryPath: folder, id }) => purgeTrash(openLibrary(folder), id),
+  ),
+  define(
+    'trash.empty',
+    'Esvazia a lixeira da biblioteca. Não mexe na lixeira do sistema nem no resto de .sophy.',
+    z.object({ libraryPath, origin }),
+    ({ libraryPath: folder }) => emptyTrash(openLibrary(folder)),
+  ),
+  define(
+    'note.deletePermanent',
+    'Apaga de vez um arquivo ou pasta, sem passar pela lixeira. Vale para nota, canvas, anexo ou pasta.',
+    z.object({ libraryPath, path: relativePath, origin }),
+    ({ libraryPath: folder, path, origin: source }) =>
+      tracked(folder, source, 'note.deletePermanent', `Apagar ${path}`, (library) =>
+        deletePermanent(library, path),
       ),
   ),
   define(
@@ -659,6 +700,10 @@ const MUTATIONS = new Set([
   'note.write',
   'entry.move',
   'entry.trash',
+  'trash.restore',
+  'trash.purge',
+  'trash.empty',
+  'note.deletePermanent',
   'history.undo',
   'shelf.style.set',
   'mention.link',

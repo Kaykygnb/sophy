@@ -361,6 +361,32 @@ test('biblioteca por --biblioteca, SOPHY_LIBRARY e pasta .sophy acima', () => {
   assert.equal(byWalk.status, 0, byWalk.stderr);
 });
 
+test('atalhos da lixeira listam, restauram e apagam sem ir para a lixeira do sistema', () => {
+  const root = library();
+  const created = run(['nova', 'Nota', '--texto', 'voltar', '--biblioteca', root]);
+  assert.equal(created.status, 0, created.stderr);
+  const trashed = run(['lixeira', 'Nota.md', '--biblioteca', root]);
+  assert.equal(trashed.status, 0, trashed.stderr);
+  assert.match(trashed.stdout, /Na lixeira: Nota.md/);
+  assert.equal(fs.existsSync(path.join(root, 'Nota.md')), false);
+  const listed = run(['lixeira-listar', '--json', '--biblioteca', root]);
+  assert.equal(listed.status, 0, listed.stderr);
+  const items = JSON.parse(listed.stdout) as Array<{ id: string; originalPath: string }>;
+  assert.equal(items[0].originalPath, 'Nota.md');
+  const restored = run(['restaurar', items[0].id, '--biblioteca', root]);
+  assert.equal(restored.status, 0, restored.stderr);
+  assert.match(restored.stdout, /Restaurado em Nota.md/);
+  assert.match(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), /voltar/);
+  const removed = run(['apagar', 'Nota.md', '--biblioteca', root]);
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(fs.existsSync(path.join(root, 'Nota.md')), false);
+  const again = JSON.parse(run(['lixeira-listar', '--json', '--biblioteca', root]).stdout) as unknown[];
+  assert.equal(again.length, 0);
+  const help = run([]);
+  assert.match(help.stdout, /sophy restaurar/);
+  assert.match(help.stdout, /sophy esvaziar-lixeira/);
+});
+
 test('rodar de dentro da biblioteca não é recusado', () => {
   const root = library();
   const inside = run(['estantes'], { cwd: root });

@@ -90,7 +90,11 @@ Toda tool que altera arquivo pede `origin`: `ui`, `cli`, `mcp` ou `agent` (Agent
 
 A gravação usa arquivo temporário, `fsync` e `rename`. O caminho relativo não pode sair da biblioteca (`..`, absoluto, barra invertida, nome oculto). Nota acima de 8 MB é recusada. A árvore para em 20 mil itens ou 40 níveis.
 
-A lixeira segue o layout do Freedesktop (`files/` e `info/`). Se o movimento falha, o original fica onde está. Não há exclusão permanente.
+Excluir (`entry.trash`) move o item para `.sophy/lixeira/<id>/` dentro da biblioteca, com `.meta.json` (`id`, `originalPath`, `title`, `kind`, `deletedAt`, `size`). Pasta inteira é um item só. `trash.restore` devolve ao caminho original — com sufixo ` (restaurado)` se o lugar estiver ocupado — e recria pastas que faltarem. `trash.purge` e `trash.empty` apagam só essa lixeira. `note.deletePermanent` apaga de vez, sem cópia. Se o movimento para a lixeira falha, o original fica no lugar.
+
+`engine/trash.ts` (`moveToTrash`) continua sendo a lixeira do sistema no layout Freedesktop (`files/` e `info/`). O excluir da biblioteca não usa mais essa função. Itens que já estão em `~/.local/share/Trash` permanecem lá.
+
+Desfazer um `entry.trash` regrava o snapshot do histórico e remove a cópia mais recente da lixeira com aquele `originalPath`. Restaurar, purgar e esvaziar não entram no histórico: a recuperação desses passos é a própria lixeira. Desfazer um `note.deletePermanent` regrava o snapshot, porque não há cópia.
 
 Ao abrir a biblioteca, o motor recusa a própria home, um ancestral da home e diretórios protegidos (`.ssh`, `.config`, `.local`, `.gnupg`, `.codex`). A pasta de trabalho pode ficar dentro da biblioteca, que é o uso normal da CLI. A pasta da biblioteca não precisa estar dentro da home: o chamador entrega o caminho. Isso permite testes em diretório temporário e uma pasta escolhida fora do perfil.
 
@@ -108,6 +112,11 @@ sophy links Estudos/Ideia
 sophy backlinks Estudos/Ideia
 sophy mover Estudos/Ideia.md Livro/Ideia.md
 sophy lixeira Livro/Ideia.md
+sophy lixeira-listar
+sophy restaurar <id>
+sophy purgar <id>
+sophy esvaziar-lixeira
+sophy apagar Livro/Ideia.md
 sophy grafo --json
 sophy historico
 sophy desfazer

@@ -284,6 +284,12 @@ export function linkGeneration(root: string) {
   return generations.get(root) ?? 0;
 }
 
+/** `.sophy` e qualquer segmento oculto não invalidam o índice do watcher. */
+export function ignoredByWatch(filename: string) {
+  const relative = String(filename).split(path.sep).join('/');
+  return relative.split('/').some((part) => part.startsWith('.'));
+}
+
 export function watchLibrary(library: Library, enabled: boolean) {
   const current = watchers.get(library.root);
   if (!enabled) {
@@ -294,9 +300,8 @@ export function watchLibrary(library: Library, enabled: boolean) {
   if (current) return { watching: true };
   syncLinks(library);
   const watcher = fs.watch(library.root, { recursive: true }, (_event, filename) => {
-    if (!filename) return;
+    if (!filename || ignoredByWatch(String(filename))) return;
     const relative = String(filename).split(path.sep).join('/');
-    if (relative.split('/').some((part) => part.startsWith('.'))) return;
     const lower = relative.toLowerCase();
     if (!lower.endsWith('.md') && !lower.endsWith('.canvas')) return;
     caches.get(library.root)?.delete(relative);

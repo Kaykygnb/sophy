@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld(
     boot: () => ipcRenderer.invoke('sophy:boot'),
     tool: (name, input) => ipcRenderer.invoke('sophy:tool', name, input),
     chooseFolder: () => ipcRenderer.invoke('sophy:choose-folder'),
+    chooseFiles: () => ipcRenderer.invoke('sophy:choose-files'),
+    openExternal: (url) => ipcRenderer.invoke('sophy:open-external', url),
     createLibrary: (folder) => ipcRenderer.invoke('sophy:create-library', folder),
     switchLibrary: (folder) => ipcRenderer.invoke('sophy:switch-library', folder),
     forgetLibrary: (folder) => ipcRenderer.invoke('sophy:forget-library', folder),
