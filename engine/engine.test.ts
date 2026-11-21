@@ -14,9 +14,9 @@ import {
   moveEntry,
   openLibrary,
   readNote,
-  trashEntry,
   writeNote,
 } from './library.ts';
+import { trashEntry } from './lixeira.ts';
 import { splitMarkdown } from './markdown.ts';
 import { callTool, listTools } from './tools.ts';
 
@@ -24,8 +24,7 @@ function fixture() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-home-'));
   const root = path.join(home, 'biblioteca');
   fs.mkdirSync(root);
-  const trashRoot = path.join(home, 'Trash');
-  return { home, root, trashRoot };
+  return { home, root };
 }
 
 test('abrir a pasta lista estantes sem cadastro e ignora ocultos, .notas1 e links', () => {
@@ -207,7 +206,7 @@ test('caminho preso à biblioteca, link simbólico e tamanho são recusados', ()
 });
 
 test('criar, mover e lixeira não apagam o original se a lixeira não recebe o item', () => {
-  const { home, root, trashRoot } = fixture();
+  const { home, root } = fixture();
   const library = openLibrary(root, { home, cwd: home });
   createWorkspace(library, 'Estudos');
   createNote(library, 'Estudos/Nota.md', '[[\n');
@@ -224,15 +223,15 @@ test('criar, mover e lixeira não apagam o original se a lixeira não recebe o i
   fs.writeFileSync(outside, 'permanece');
   fs.mkdirSync(path.join(root, 'Caixa'));
   fs.symlinkSync(outside, path.join(root, 'Caixa', 'atalho'));
-  const trashed = trashEntry(library, 'Caixa', { trashRoot });
+  const trashed = trashEntry(library, 'Caixa');
   assert.equal(trashed.trashed, true);
   assert.equal(fs.existsSync(path.join(root, 'Caixa')), false);
   assert.equal(fs.readFileSync(outside, 'utf8'), 'permanece');
-  const info = fs.readFileSync(
-    trashed.trashPath.replace('/files/', '/info/') + '.trashinfo',
-    'utf8',
-  );
-  assert.match(info, /^\[Trash Info\]/);
+  const meta = JSON.parse(
+    fs.readFileSync(path.join(path.dirname(trashed.trashPath), '.meta.json'), 'utf8'),
+  ) as { kind: string; originalPath: string };
+  assert.equal(meta.kind, 'folder');
+  assert.equal(meta.originalPath, 'Caixa');
   assert.equal(fs.existsSync(outside), true);
 });
 
@@ -299,7 +298,9 @@ test('a tool grava [[ sem escape e preserva o frontmatter quando ele é omitido'
     });
     callTool('entry.trash', { libraryPath: root, path: 'Estudos/Amanha.md', origin: 'mcp' });
     assert.equal(fs.existsSync(path.join(root, 'Estudos', 'Amanha.md')), false);
-    assert.equal(fs.readdirSync(path.join(xdg, 'Trash', 'files')).length, 1);
+    assert.equal(fs.existsSync(path.join(xdg, 'Trash', 'files')), false);
+    const kept = fs.readdirSync(path.join(root, '.sophy', 'lixeira'));
+    assert.equal(kept.length, 1);
   } finally {
     if (previous === undefined) delete process.env.XDG_DATA_HOME;
     else process.env.XDG_DATA_HOME = previous;

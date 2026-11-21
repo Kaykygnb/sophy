@@ -5,7 +5,6 @@ import { EngineError } from './errors.ts';
 import { MAX_NOTE_BYTES, MAX_TREE_DEPTH, MAX_TREE_ENTRIES } from './limits.ts';
 import { assertBody, composeMarkdown, prefixFromFrontmatter, splitMarkdown } from './markdown.ts';
 import { openLibraryRoot, resolveInside, validateSegment, type OpenOptions } from './paths.ts';
-import { moveToTrash, type TrashOptions } from './trash.ts';
 
 /**
  * Motor da biblioteca.
@@ -40,6 +39,21 @@ export function classifyName(name: string): StoredFileKind {
   if (lower.endsWith('.md')) return 'note';
   if (lower.endsWith('.canvas')) return 'canvas';
   return 'attachment';
+}
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+};
+
+/** PNG, JPG, WebP, GIF e SVG. A prévia da interface usa o mesmo conjunto. */
+export function isImageName(name: string) {
+  if (typeof name !== 'string') return false;
+  return Object.prototype.hasOwnProperty.call(IMAGE_MIME, path.extname(name).toLowerCase());
 }
 
 export type NoteDocument = NoteInfo & {
@@ -98,6 +112,11 @@ export function listNotes(library: Library, workspace?: string): NoteInfo[] {
 /** Canvas e anexos. O conteúdo não é interpretado: `.canvas` continua JSON Canvas; o resto são bytes. */
 export function listFiles(library: Library, workspace?: string): FileInfo[] {
   return walkFiles(library, workspace).filter((file): file is FileInfo => file.kind !== 'note');
+}
+
+/** Notas, canvas e anexos visíveis. Pastas ocultas, inclusive `.sophy`, ficam de fora. */
+export function listEntries(library: Library, workspace?: string) {
+  return walkFiles(library, workspace);
 }
 
 export function listDirectories(library: Library): string[] {
@@ -222,16 +241,95 @@ export function moveEntry(library: Library, source: string, target: string) {
   return { from: source, path: target };
 }
 
-export function trashEntry(library: Library, relative: string, options?: TrashOptions) {
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+export function importAttachmentFromPath(library: Library, source: string, folder = '') {
+  if (typeof source !== 'string' || !source)
+    throw new EngineError('invalid-path', 'Informe o arquivo do anexo.');
+  let listed: fs.Stats;
+  try {
+    listed = fs.lstatSync(source);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
+      throw new EngineError('not-found', 'Arquivo do anexo não encontrado.');
+    throw error;
+  }
+  if (listed.isSymbolicLink() || !listed.isFile())
+    throw new EngineError('invalid-path', 'O anexo precisa ser um arquivo.');
+  if (listed.size > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo passa de 20 MB.');
+  return writeAttachment(library, folder, path.basename(source), (full) => {
+    fs.copyFileSync(source, full, fs.constants.COPYFILE_EXCL);
+  });
+}
+
+export function importAttachmentBytes(
+  library: Library,
+  name: string,
+  bytes: Buffer,
+  folder = '',
+) {
+  if (!Buffer.isBuffer(bytes))
+    throw new EngineError('invalid-path', 'Os bytes do anexo são inválidos.');
+  if (bytes.length > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo passa de 20 MB.');
+  return writeAttachment(library, folder, name, (full) => {
+    fs.writeFileSync(full, bytes, { flag: 'wx' });
+  });
+}
+
+export function readAttachmentDataUrl(library: Library, relative: string) {
+  if (!isImageName(relative))
+    throw new EngineError('invalid-path', 'Somente imagens podem ser lidas como anexo.');
   const full = resolveInside(library.root, relative);
-  const before = fs.lstatSync(full);
-  if (before.isSymbolicLink())
-    throw new EngineError('symlink', 'Links simbólicos não são permitidos.');
-  const again = fs.lstatSync(full);
-  if (again.dev !== before.dev || again.ino !== before.ino)
-    throw new EngineError('conflict', 'O item mudou durante a operação.');
-  const trashed = moveToTrash(full, options);
-  return { path: relative, trashed: true, trashPath: trashed.trashPath };
+  const stat = fs.lstatSync(full);
+  if (stat.isSymbolicLink() || !stat.isFile())
+    throw new EngineError('invalid-path', 'O anexo precisa ser um arquivo.');
+  if (stat.size > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo passa de 20 MB.');
+  const mime = IMAGE_MIME[path.extname(relative).toLowerCase()];
+  return {
+    path: relative,
+    dataUrl: `data:${mime};base64,${fs.readFileSync(full).toString('base64')}`,
+  };
+}
+
+function writeAttachment(
+  library: Library,
+  folder: string,
+  name: string,
+  write: (full: string) => void,
+) {
+  if (name !== path.basename(name) || name.includes('/') || name.includes('\\'))
+    throw new EngineError('invalid-path', 'Nome de anexo inválido.');
+  validateSegment(name, 'entry');
+  const dir = folder.trim().replace(/\/+$/, '');
+  if (dir) {
+    assertRelativeParts(dir);
+    createDirectory(library, dir);
+  }
+  const relative = freeAttachment(library, dir, name);
+  write(resolveInside(library.root, relative, { allowMissing: true }));
+  const stat = fs.statSync(resolveInside(library.root, relative));
+  return {
+    path: relative,
+    name: relative.split('/').pop() ?? name,
+    size: stat.size,
+    kind: classifyName(name),
+  };
+}
+
+function freeAttachment(library: Library, folder: string, name: string) {
+  const extension = path.extname(name);
+  const stem = name.slice(0, name.length - extension.length) || 'anexo';
+  let candidate = name;
+  for (let index = 2; index < 10_000; index += 1) {
+    const relative = folder ? `${folder}/${candidate}` : candidate;
+    if (!fs.existsSync(resolveInside(library.root, relative, { allowMissing: true })))
+      return relative;
+    candidate = `${stem} ${index}${extension}`;
+  }
+  throw new EngineError('exists', 'Já existe um item com esse nome.');
 }
 
 function atomicWrite(
@@ -348,7 +446,7 @@ function assertMarkdown(relative: string) {
     throw new EngineError('invalid-note', 'Somente arquivos Markdown podem ser editados.');
 }
 
-function assertRelativeParts(relative: string) {
+export function assertRelativeParts(relative: string) {
   if (
     typeof relative !== 'string' ||
     !relative ||
