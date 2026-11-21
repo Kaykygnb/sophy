@@ -229,6 +229,14 @@ html.motion-reduce .lateral,
   cursor: pointer;
 }
 .aba-fechar .icon { width: 14px; height: 14px; }
+.estante-icones {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+.estante-icones .btn { justify-content: flex-start; }
 .conexoes {
   width: 280px;
   flex: none;
