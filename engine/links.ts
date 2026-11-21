@@ -2,9 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 import { parseCanvas, serializeCanvas } from './canvas.ts';
-import { listFiles, listNotes, moveEntry, readText, writeText, type Library } from './library.ts';
+import { listEntries, listFiles, listNotes, moveEntry, readText, type Library } from './library.ts';
 import { splitMarkdown } from './markdown.ts';
-import { rewriteLinks } from './rewrite.ts';
+import { resolveInside } from './paths.ts';
+import { buildRewriteIndexes, rewriteLinks } from './rewrite.ts';
+import { fold, rankByFuzzy } from './fuzzy.ts';
 import {
   anchorExists,
   blockIdsOf,
@@ -32,10 +34,32 @@ export type OutgoingLink = {
   candidates: string[];
 };
 
+export type Backlink = {
+  from: string;
+  raw: string;
+  alias: string | null;
+  anchor: string;
+  display: string;
+  format: LinkFormat;
+  snippet: string;
+};
+
+export type CatalogNote = {
+  path: string;
+  workspace: string | null;
+  title: string;
+  aliases: string[];
+  headings: string[];
+  blockIds: string[];
+  modifiedAt: number;
+  plain: string;
+};
+
 type CachedNote = {
   path: string;
   workspace: string | null;
   title: string;
+  aliases: string[];
   tags: string[];
   headings: string[];
   blockIds: string[];
@@ -44,17 +68,22 @@ type CachedNote = {
   mtime: number;
   size: number;
   scanned: ScannedLink[];
+  linkSnippets: Map<string, string>;
 };
 
 const caches = new Map<string, Map<string, CachedNote>>();
 const watchers = new Map<string, fs.FSWatcher>();
 const generations = new Map<string, number>();
+const bundleByCache = new WeakMap<Map<string, CachedNote>, ReturnType<typeof buildBundle>>();
+const fileInventories = new Map<string, string[]>();
 
 export function syncLinks(library: Library) {
   const cache = caches.get(library.root) ?? new Map<string, CachedNote>();
   caches.set(library.root, cache);
-  const notes = listNotes(library);
-  const canvases = listFiles(library).filter((file) => file.kind === 'canvas');
+  const entries = listEntries(library);
+  const notes = entries.filter((file) => file.kind === 'note');
+  const canvases = entries.filter((file) => file.kind === 'canvas');
+  fileInventories.set(library.root, entries.filter((file) => file.kind !== 'note').map((file) => file.path));
   const seen = new Set<string>();
   for (const note of notes) {
     seen.add(note.path);
@@ -85,6 +114,7 @@ export function syncLinks(library: Library) {
     }
   }
   for (const cached of cache.keys()) if (!seen.has(cached)) cache.delete(cached);
+  bundleByCache.delete(cache);
   return cache;
 }
 
@@ -102,10 +132,10 @@ export function readOutgoing(
   return decorate(note, cache, library);
 }
 
-export function backlinks(library: Library, relative: string) {
+export function backlinks(library: Library, relative: string): Backlink[] {
   const cache = syncLinks(library);
   if (!cache.has(relative)) throw new EngineError('not-found', 'Nota não encontrada.');
-  const found = [];
+  const found: Backlink[] = [];
   for (const note of cache.values()) {
     for (const link of decorate(note, cache, library)) {
       if (link.status === 'resolved' && link.path === relative)
@@ -116,10 +146,55 @@ export function backlinks(library: Library, relative: string) {
           anchor: link.anchor,
           display: link.display,
           format: link.format,
+          snippet: note.linkSnippets.get(link.raw) || link.display,
         });
     }
   }
   return found.sort((a, b) => a.from.localeCompare(b.from, 'pt-BR'));
+}
+
+export function catalogNotes(library: Library): CatalogNote[] {
+  return [...syncLinks(library).values()]
+    .filter((note) => note.path.toLowerCase().endsWith('.md'))
+    .map((note) => ({
+      path: note.path,
+      workspace: note.workspace,
+      title: note.title || basename(note.path),
+      aliases: note.aliases,
+      headings: note.headings,
+      blockIds: note.blockIds,
+      modifiedAt: note.mtime,
+      plain: note.plain.slice(0, 400),
+    }));
+}
+
+export function suggestNotes(
+  library: Library,
+  query: string,
+  options: { limit?: number; source?: string } = {},
+) {
+  const limit = options.limit ?? 12;
+  const sourceShelf = options.source?.includes('/')
+    ? options.source.slice(0, options.source.indexOf('/'))
+    : null;
+  const notes = catalogNotes(library);
+  const ranked = rankByFuzzy(
+    notes,
+    query,
+    (note) => [note.title, basename(note.path), note.path, ...note.aliases],
+    {
+      limit: limit + 4,
+      recent: (note) => note.modifiedAt,
+    },
+  );
+  return ranked
+    .sort((a, b) => {
+      const aNear = sourceShelf && a.workspace === sourceShelf ? 0 : 1;
+      const bNear = sourceShelf && b.workspace === sourceShelf ? 0 : 1;
+      if (aNear !== bNear) return aNear - bNear;
+      return b.modifiedAt - a.modifiedAt;
+    })
+    .slice(0, limit);
 }
 
 export function brokenLinks(library: Library) {
@@ -152,23 +227,48 @@ export function relocate(library: Library, source: string, target: string) {
       ? target + filePath.slice(source.length)
       : filePath;
   const updated: string[] = [];
+  const skipped: Array<{ path: string; reason: string }> = [];
+  const indexes = buildRewriteIndexes(notePaths, files, mapPath);
+  const needles = rewriteNeedles(source);
+  const uniqueBase =
+    notePaths.filter((file) => basename(file) === basename(source)).length === 1;
   for (const note of notes) {
-    const doc = readText(library, note.path);
-    const next = rewriteLinks(doc.content, note.path, notePaths, files, mapPath);
-    if (next === doc.content) continue;
-    const written = writeText(library, note.path, next, doc.revision);
-    if (written.conflict)
-      throw new EngineError('conflict', 'O arquivo mudou durante a reescrita dos links.');
-    updated.push(mapPath(note.path));
+    try {
+      if (
+        writeRewritten(library, note.path, (content) => {
+          if (!mayNeedRewrite(content, needles)) return content;
+          if (uniqueBase) {
+            const quick = rewriteUniqueWiki(content, source, target);
+            if (quick !== null) return quick;
+          }
+          return rewriteLinks(content, note.path, notePaths, files, mapPath, indexes);
+        })
+      )
+        updated.push(mapPath(note.path));
+    } catch (error) {
+      if (error instanceof EngineError && error.code === 'conflict') throw error;
+      skipped.push({
+        path: note.path,
+        reason: error instanceof Error ? error.message : 'falha ao reescrever',
+      });
+    }
   }
   for (const canvas of listFiles(library).filter((file) => file.kind === 'canvas')) {
-    const doc = readText(library, canvas.path);
-    const next = rewriteCanvas(doc.content, canvas.path, notePaths, files, mapPath);
-    if (next === doc.content) continue;
-    const written = writeText(library, canvas.path, next, doc.revision);
-    if (written.conflict)
-      throw new EngineError('conflict', 'O arquivo mudou durante a reescrita dos links.');
-    updated.push(mapPath(canvas.path));
+    try {
+      if (
+        writeRewritten(library, canvas.path, (content) => {
+          if (!mayNeedRewrite(content, needles)) return content;
+          return rewriteCanvas(content, canvas.path, notePaths, files, mapPath, indexes);
+        })
+      )
+        updated.push(mapPath(canvas.path));
+    } catch (error) {
+      if (error instanceof EngineError && error.code === 'conflict') throw error;
+      skipped.push({
+        path: canvas.path,
+        reason: error instanceof Error ? error.message : 'falha ao reescrever',
+      });
+    }
   }
   const moved = moveEntry(library, source, target);
   const cache = caches.get(library.root);
@@ -177,7 +277,7 @@ export function relocate(library: Library, source: string, target: string) {
       if (filePath === source || filePath.startsWith(source + '/')) cache.delete(filePath);
     }
   }
-  return { ...moved, updated };
+  return { ...moved, updated, skipped, linksUpdated: updated.length };
 }
 
 export function linkGeneration(root: string) {
@@ -216,10 +316,12 @@ function loadNote(
   const content = readText(library, relative).content;
   const parts = splitMarkdown(content);
   const headings = headingsOf(parts.body);
+  const scanned = scan(content);
   return {
     path: relative,
     workspace,
     title: headings[0] || basename(relative),
+    aliases: aliasesOf(parts.frontmatter),
     tags: tagsOf(parts.frontmatter),
     headings,
     blockIds: blockIdsOf(parts.body),
@@ -227,7 +329,8 @@ function loadNote(
     frontmatterText: frontmatterText(parts.frontmatter),
     mtime,
     size,
-    scanned: scan(content),
+    scanned,
+    linkSnippets: snippetsFor(content, scanned),
   };
 }
 
@@ -243,18 +346,26 @@ const sharedIndexes = new Map<
 >();
 
 function sharedBundle(library: Library, cache: Map<string, CachedNote>) {
-  const stamp = [...cache.values()].map((note) => `${note.path}:${note.mtime}:${note.size}`).join('|');
+  const prepared = bundleByCache.get(cache);
+  if (prepared) return prepared;
+  const files = fileInventories.get(library.root) || [];
+  const stamp = [...cache.values()].map((note) => `${note.path}:${note.mtime}:${note.size}`).join('|') + JSON.stringify(files);
   const current = sharedIndexes.get(library.root);
-  if (current && current.stamp === stamp) return current;
+  const bundle = current && current.stamp === stamp ? current : buildBundle(cache, stamp, files);
+  sharedIndexes.set(library.root, bundle);
+  bundleByCache.set(cache, bundle);
+  return bundle;
+}
+
+function buildBundle(cache: Map<string, CachedNote>, stamp: string, files: string[]) {
   const paths = [...cache.keys()];
   const bundle = {
     stamp,
     index: indexPaths(paths),
     paths,
-    files: listFiles(library).map((file) => file.path),
+    files,
     outgoing: new Map<string, OutgoingLink[]>(),
   };
-  sharedIndexes.set(library.root, bundle);
   return bundle;
 }
 
@@ -309,6 +420,38 @@ function tagsOf(frontmatter: Record<string, unknown> | null) {
   return [];
 }
 
+function aliasesOf(frontmatter: Record<string, unknown> | null) {
+  if (!frontmatter) return [];
+  const raw = frontmatter.aliases ?? frontmatter.alias;
+  if (typeof raw === 'string') return [raw];
+  if (Array.isArray(raw)) return raw.filter((item): item is string => typeof item === 'string');
+  return [];
+}
+
+function snippetAround(body: string, raw: string) {
+  const source = String(body || '');
+  const at = source.indexOf(raw);
+  if (at < 0) {
+    const line = source.split(/\r?\n/).find((row) => row.includes(raw.replace(/^!?\[\[|\]\]$/g, '')));
+    return clipSnippet(line || source.slice(0, 120));
+  }
+  const start = Math.max(0, source.lastIndexOf('\n', at - 1) + 1);
+  const end = source.indexOf('\n', at + raw.length);
+  return clipSnippet(source.slice(start, end < 0 ? undefined : end));
+}
+
+function clipSnippet(line: string) {
+  const clean = line
+    .replace(/!?\[\[[^\[\]\n]+\]\]/g, (match) => labelOf(match.replace(/^!?\[\[|\]\]$/g, '')))
+    .replace(/[*_`#>-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (clean.length <= 140) return clean;
+  return `${clean.slice(0, 137)}…`;
+}
+
+export { fold };
+
 function frontmatterText(frontmatter: Record<string, unknown> | null) {
   if (!frontmatter) return '';
   const values: string[] = [];
@@ -345,6 +488,7 @@ function loadCanvas(
     path: relative,
     workspace,
     title: basename(relative),
+    aliases: [],
     tags: [],
     headings: [],
     blockIds: [],
@@ -353,6 +497,7 @@ function loadCanvas(
     mtime,
     size,
     scanned,
+    linkSnippets: snippetsFor(texts.join('\n'), scanned),
   };
 }
 
@@ -378,6 +523,7 @@ function rewriteCanvas(
   notePaths: string[],
   filePaths: string[],
   mapPath: (filePath: string) => string,
+  indexes?: ReturnType<typeof buildRewriteIndexes>,
 ) {
   let file;
   try {
@@ -388,7 +534,7 @@ function rewriteCanvas(
   let changed = false;
   for (const node of file.nodes) {
     if (node.type === 'text' && typeof node.text === 'string') {
-      const next = rewriteLinks(node.text, source, notePaths, filePaths, mapPath);
+      const next = rewriteLinks(node.text, source, notePaths, filePaths, mapPath, indexes);
       if (next !== node.text) {
         node.text = next;
         changed = true;
@@ -403,6 +549,46 @@ function rewriteCanvas(
     }
   }
   return changed ? serializeCanvas(file) : content;
+}
+
+function rewriteNeedles(source: string) {
+  const base = basename(source);
+  const stem = source.replace(/\.md$/i, '').replace(/\.canvas$/i, '');
+  return [source, stem, base, `[[${base}`, `[[${stem}`, `/${base}`, `"${source}"`, `"${stem}"`];
+}
+
+function mayNeedRewrite(content: string, needles: string[]) {
+  return needles.some((needle) => content.includes(needle));
+}
+
+/** Uma leitura + escrita direta, sem triplo SHA-256 do writeText. */
+function writeRewritten(library: Library, relative: string, transform: (content: string) => string) {
+  const full = resolveInside(library.root, relative);
+  const before = fs.statSync(full);
+  const original = fs.readFileSync(full, 'utf8');
+  const next = transform(original);
+  if (next === original) return false;
+  const after = fs.statSync(full);
+  if (after.mtimeMs !== before.mtimeMs || after.size !== before.size)
+    throw new EngineError('conflict', 'O arquivo mudou durante a reescrita dos links.');
+  fs.writeFileSync(full, next);
+  return true;
+}
+
+function snippetsFor(content: string, scanned: ScannedLink[]) {
+  const map = new Map<string, string>();
+  for (const link of scanned) map.set(link.raw, snippetAround(content, link.raw));
+  return map;
+}
+
+/** Atalho seguro só para notas: nome-base único, respeitando código via scan. */
+function rewriteUniqueWiki(content: string, source: string, target: string) {
+  const fromStem = source.replace(/\.md$/i, '');
+  const toStem = target.replace(/\.md$/i, '');
+  if (!fromStem || fromStem === toStem) return null;
+  return rewriteLinks(content, source, [source], [], (filePath) =>
+    filePath === source ? target : filePath,
+  );
 }
 
 function rewriteFileRef(

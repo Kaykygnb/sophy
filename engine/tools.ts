@@ -28,15 +28,26 @@ import {
 } from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
-import { backlinks, brokenLinks, outgoingLinks, relocate, watchLibrary } from './links.ts';
+import {
+  backlinks,
+  brokenLinks,
+  catalogNotes,
+  outgoingLinks,
+  relocate,
+  suggestNotes,
+  watchLibrary,
+} from './links.ts';
 import {
   createDirectory,
   createNote,
   createWorkspace,
+  importAttachmentBytes,
+  importAttachmentFromPath,
   listFiles,
   listNotes,
   listWorkspaces,
   openLibrary,
+  readAttachmentDataUrl,
   readNote,
   trashEntry,
   writeNote,
@@ -158,6 +169,47 @@ export const tools = [
     ({ libraryPath: folder, workspace }) => listFiles(openLibrary(folder), workspace),
   ),
   define(
+    'attachment.import',
+    'Copia arquivos ou bytes para a biblioteca como anexos (imagens e outros).',
+    z.object({
+      libraryPath,
+      origin,
+      folder: z.string().optional(),
+      files: z
+        .array(
+          z.object({
+            name: z.string().min(1).optional(),
+            path: z.string().min(1).optional(),
+            dataBase64: z.string().min(1).optional(),
+          }),
+        )
+        .min(1)
+        .max(40),
+    }),
+    ({ libraryPath: folder, origin: source, folder: dest, files }) =>
+      tracked(folder, source, 'attachment.import', `Importar ${files.length} anexo(s)`, (library) => {
+        const added = [];
+        for (const file of files) {
+          if (file.path) {
+            added.push(importAttachmentFromPath(library, file.path, dest || ''));
+            continue;
+          }
+          if (!file.dataBase64 || !file.name)
+            throw new EngineError('invalid-path', 'Informe o caminho ou os bytes do anexo.');
+          added.push(
+            importAttachmentBytes(library, file.name, Buffer.from(file.dataBase64, 'base64'), dest || ''),
+          );
+        }
+        return added;
+      }),
+  ),
+  define(
+    'attachment.read',
+    'Lê um anexo de imagem como data URL para exibir na interface.',
+    z.object({ libraryPath, path: relativePath }),
+    ({ libraryPath: folder, path }) => readAttachmentDataUrl(openLibrary(folder), path),
+  ),
+  define(
     'note.read',
     'Lê uma nota. O corpo é o Markdown exato. A revisão precisa ser reenviada na escrita.',
     z.object({ libraryPath, path: relativePath }),
@@ -220,9 +272,27 @@ export const tools = [
   ),
   define(
     'links.backlinks',
-    'Lista as notas que apontam para esta.',
+    'Lista as notas que apontam para esta, com o trecho onde o link aparece.',
     z.object({ libraryPath, path: relativePath }),
     ({ libraryPath: folder, path }) => backlinks(openLibrary(folder), path),
+  ),
+  define(
+    'links.catalog',
+    'Catálogo de notas para o menu [[: título, apelidos, seções e blocos.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => catalogNotes(openLibrary(folder)),
+  ),
+  define(
+    'links.suggest',
+    'Sugere notas para o autocompletar [[ com busca aproximada e apelidos.',
+    z.object({
+      libraryPath,
+      query: z.string(),
+      source: relativePath.optional(),
+      limit: z.number().int().min(1).max(40).optional(),
+    }),
+    ({ libraryPath: folder, query, source, limit }) =>
+      suggestNotes(openLibrary(folder), query, { source, limit }),
   ),
   define(
     'links.broken',
@@ -552,6 +622,22 @@ export const tools = [
     z.object({ theme: z.enum(['light', 'dark']) }),
     ({ theme }) => requestUi({ type: 'setTheme', theme }),
   ),
+  define(
+    'ui.window',
+    'Mostra, oculta, minimiza ou maximiza a janela do Sophy em segundo plano. Ocultar resolve edições pendentes.',
+    z.object({ action: z.enum(['show', 'hide', 'minimize', 'maximize']) }),
+    ({ action }) => requestUi({ type: 'window', action }),
+  ),
+  define(
+    'ui.setLayout',
+    'Controla a seção, lateral, conexões, Sofi e foco da interface. Funciona com a janela oculta.',
+    z.object({ libraryPath, section: z.enum(['inicio', 'tarefas', 'calendario', 'grafo', 'canvas', 'config', 'cartas', 'versoes', 'visoes', 'mencoes']).optional(),
+      sidebar: z.boolean().optional(), connections: z.boolean().optional(), agent: z.boolean().optional(), focus: z.boolean().optional() }),
+    ({ libraryPath: folder, ...layout }) => {
+      openLibrary(folder);
+      return requestUi({ type: 'setLayout', libraryPath: folder, ...layout });
+    },
+  ),
 ] as const;
 
 export function listTools() {
@@ -583,6 +669,7 @@ const MUTATIONS = new Set([
   'canvas.node.remove',
   'canvas.edge.put',
   'canvas.edge.remove',
+  'attachment.import',
 ]);
 
 export function toolMutates(name: string) {

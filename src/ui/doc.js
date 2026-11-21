@@ -120,8 +120,13 @@
         index += 1;
         continue;
       }
-      blocks.push({ type: 'paragraph', raw: line.endsWith('\n') ? line : `${line}\n` });
+      const paragraph = [line];
       index += 1;
+      while (index < lines.length && /(?: {2}|\\)$/.test(lineText(paragraph[paragraph.length - 1])) && !isBlank(lines[index])) {
+        paragraph.push(lines[index++]);
+      }
+      const raw = paragraph.join('');
+      blocks.push({ type: 'paragraph', raw: raw.endsWith('\n') ? raw : `${raw}\n` });
     }
     return blocks;
   }
@@ -166,7 +171,8 @@
 
   function parseBody(markdown) {
     const text = typeof markdown === 'string' ? markdown : '';
-    return { bom: '', prefix: null, body: text, blocks: parseBlocks(text) };
+    const blocks = parseBlocks(text);
+    return { bom: '', prefix: null, body: text, blocks: blocks.length ? blocks : [{ type: 'paragraph', raw: '\n' }] };
   }
 
   function codeParts(raw) {
@@ -242,7 +248,7 @@
 
   function tableRaw(rows, align) {
     const width = Math.max(align?.length || 0, ...rows.map((row) => row.length), 1);
-    const fit = (row) => Array.from({ length: width }, (_, index) => row[index] || '');
+    const fit = (row) => Array.from({ length: width }, (_, index) => escapeCell(row[index] || ''));
     const aligned = align ? fit(align) : fit(rows[0] || []).map(() => '---');
     const body = (rows.length ? rows : [['']]).map(fit);
     const lines = [
@@ -251,6 +257,17 @@
       ...body.slice(1).map((row) => `| ${row.join(' | ')} |`),
     ];
     return `${lines.join('\n')}\n`;
+  }
+
+  function escapeCell(value) {
+    let output = '', wiki = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      if (value[index] === '\\' && index + 1 < value.length) { output += value[index] + value[++index]; continue; }
+      if (value.slice(index, index + 2) === '[[') wiki += 1;
+      if (value.slice(index, index + 2) === ']]') wiki = Math.max(0, wiki - 1);
+      output += value[index] === '|' && !wiki ? '\\|' : value[index];
+    }
+    return output;
   }
 
   function serializeDocument(doc) {
@@ -437,20 +454,21 @@
 
   function renumberNumbered(doc) {
     const blocks = doc.blocks.slice();
-    let count = 0;
-    let run = false;
+    const counts = new Map();
     for (let index = 0; index < blocks.length; index += 1) {
       const match = blocks[index].type === 'item' && String(blocks[index].raw).match(/^(\s*)(\d+)\. ([\s\S]*)$/);
       if (!match) {
-        run = false;
-        count = 0;
+        if (!isListBlock(blocks[index])) counts.clear();
+        else {
+          const depth = (blocks[index].raw.match(/^ */) || [''])[0].length;
+          for (const key of counts.keys()) if (key >= depth) counts.delete(key);
+        }
         continue;
       }
-      if (!run) {
-        run = true;
-        count = 0;
-      }
-      count += 1;
+      const depth = match[1].length;
+      for (const key of counts.keys()) if (key > depth) counts.delete(key);
+      const count = (counts.get(depth) || 0) + 1;
+      counts.set(depth, count);
       if (Number(match[2]) !== count) blocks[index] = { ...blocks[index], raw: `${match[1]}${count}. ${match[3]}` };
     }
     return withBlocks(doc, blocks);
@@ -676,6 +694,8 @@
   }
 
   return {
+    renumberNumbered,
+    setVisible: (doc, index, text) => withBlocks(doc, doc.blocks.map((block, position) => position === index ? rewriteVisible(block, text) : block)),
     parseDocument,
     parseBody,
     codeParts,

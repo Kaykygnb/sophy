@@ -4,6 +4,7 @@
  * Na interface, `library` aparece como Biblioteca e `workspace` como Estante.
  */
 export { EngineError } from './errors.ts';
+export { resolveInside } from './paths.ts';
 export { MAX_NOTE_BYTES, MAX_TREE_DEPTH, MAX_TREE_ENTRIES } from './limits.ts';
 export { splitMarkdown, composeMarkdown, prefixFromFrontmatter } from './markdown.ts';
 export {
@@ -14,6 +15,10 @@ export {
   listNotes,
   listFiles,
   classifyName,
+  isImageName,
+  importAttachmentFromPath,
+  importAttachmentBytes,
+  readAttachmentDataUrl,
   readNote,
   createNote,
   writeNote,
@@ -21,7 +26,16 @@ export {
   trashEntry,
 } from './library.ts';
 export { scan, resolvePath, parseTarget } from './wikilinks.ts';
-export { outgoingLinks, backlinks, brokenLinks, watchLibrary } from './links.ts';
+export {
+  outgoingLinks,
+  backlinks,
+  brokenLinks,
+  catalogNotes,
+  suggestNotes,
+  relocate,
+  watchLibrary,
+} from './links.ts';
+export { fold, fuzzyScore, rankByFuzzy } from './fuzzy.ts';
 export { capture, diff, pushHistory } from './history.ts';
 export { searchLibrary } from './search.ts';
 export { queryGraph } from './graph.ts';

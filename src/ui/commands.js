@@ -21,6 +21,7 @@
     'canvas.node.remove',
     'canvas.edge.put',
     'canvas.edge.remove',
+    'attachment.import',
     'task.update',
     'shelf.style.set',
     'mention.link',
@@ -48,8 +49,47 @@
     const marker = before.lastIndexOf('[[');
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
-    if (/[\]\n|#*.]/.test(query)) return null;
+    if (/[\]\n]/.test(query)) return null;
     return { start: marker, query };
+  }
+
+  function foldText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toLocaleLowerCase();
+  }
+
+  function fuzzyScore(query, ...haystacks) {
+    const q = foldText(query).trim();
+    if (!q) return 1;
+    const hay = foldText(haystacks.filter(Boolean).join(' \n '));
+    if (!hay) return 0;
+    if (hay.includes(q)) return 100 + Math.max(0, 40 - hay.indexOf(q));
+    const tokens = q.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return 0;
+    const words = hay.split(/[^a-z0-9]+/).filter(Boolean);
+    let score = 0;
+    for (const token of tokens) {
+      const at = words.findIndex((word) => word.startsWith(token) || word.includes(token));
+      if (at < 0) return 0;
+      score += words[at].startsWith(token) ? 24 : 10;
+      score += Math.max(0, 8 - at);
+    }
+    return score;
+  }
+
+  function parseWikiDraft(query) {
+    const pipe = query.indexOf('|');
+    const destination = (pipe < 0 ? query : query.slice(0, pipe)).trim();
+    const hash = destination.indexOf('#');
+    return {
+      note: (hash < 0 ? destination : destination.slice(0, hash)).trim(),
+      anchor: hash < 0 ? '' : destination.slice(hash + 1),
+      alias: pipe < 0 ? null : query.slice(pipe + 1),
+      hasPipe: pipe >= 0,
+      hasHash: hash >= 0,
+    };
   }
 
   function createSlashSession() {
@@ -401,6 +441,10 @@
   const SLASH_ITEMS = [
     { group: 'Básicos', id: 'h1', label: 'Título 1', icon: 'titulo', hint: '#', insert: '# ' },
     { group: 'Básicos', id: 'h2', label: 'Título 2', icon: 'titulo', hint: '##', insert: '## ' },
+    { group: 'Básicos', id: 'h3', label: 'Título 3', icon: 'titulo', hint: '###', insert: '### ' },
+    { group: 'Básicos', id: 'h4', label: 'Título 4', icon: 'titulo', hint: '####', insert: '#### ' },
+    { group: 'Básicos', id: 'h5', label: 'Título 5', icon: 'titulo', hint: '#####', insert: '##### ' },
+    { group: 'Básicos', id: 'h6', label: 'Título 6', icon: 'titulo', hint: '######', insert: '###### ' },
     { group: 'Básicos', id: 'lista', label: 'Lista', icon: 'lista', hint: '-', insert: '- ' },
     {
       group: 'Básicos',
@@ -524,6 +568,9 @@
     SLASH_ITEMS,
     slashQuery,
     wikiQuery,
+    foldText,
+    fuzzyScore,
+    parseWikiDraft,
     createSlashSession,
     prepareCall,
     createClient,

@@ -126,6 +126,7 @@
   --heading: var(--ink);
   --muted: var(--ink-2);
   --faint: var(--ink-3);
+  --text-muted: var(--ink-3);
   --soft: var(--accent-soft);
   --accent-line: var(--accent);
 }

@@ -8,6 +8,10 @@
   else root.SophyCanvas = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const GRID = 20;
+  const MINI_W = 120;
+  const MINI_H = 80;
+  const SHAPES = ['text', 'rectangle', 'ellipse', 'diamond', 'triangle'];
+  const PALETTE = ['1', '2', '3', '4', '5', '6'];
 
   function snap(value, grid = GRID) {
     return Math.round(value / grid) * grid;
@@ -25,6 +29,10 @@
     const y = node.y;
     if (side === 'left') return { x, y: y + node.height / 2 };
     if (side === 'right') return { x: x + node.width, y: y + node.height / 2 };
+    if (side === 'top-left') return { x, y };
+    if (side === 'top-right') return { x: x + node.width, y };
+    if (side === 'bottom-left') return { x, y: y + node.height };
+    if (side === 'bottom-right') return { x: x + node.width, y: y + node.height };
     if (side === 'top') return { x: x + node.width / 2, y };
     return { x: x + node.width / 2, y: y + node.height };
   }
@@ -35,12 +43,23 @@
     return `M ${from.x} ${from.y} Q ${midX} ${from.y} ${midX} ${midY} T ${to.x} ${to.y}`;
   }
 
+  function paintVar(node) {
+    const fill = node.color ? `var(--shelf-${node.color})` : '';
+    const border = node.borderColor ? `var(--shelf-${node.borderColor})` : '';
+    const parts = [
+      fill ? `--cv-fill:${fill}` : '',
+      border ? `--cv-borda:${border}` : '',
+    ].filter(Boolean);
+    return parts.length ? `;${parts.join(';')}` : '';
+  }
+
   function mount(host, options) {
     const state = {
       camera: { x: 80, y: 48, zoom: 1 },
       selected: new Set(),
       tool: 'select',
       document: structuredClone(options.document),
+      peekTarget: '',
     };
     host.innerHTML = '';
     host.classList.add('canvas-app');
@@ -49,80 +68,113 @@
     area.innerHTML = `<div class="canvas-mundo"></div>
       <div class="cv-contador" hidden></div>
       <div class="cv-barra canvas-ferramentas" role="toolbar" aria-label="Ferramentas do canvas"></div>
+      <div class="cv-cores" hidden role="group" aria-label="Cores do card"></div>
+      <div class="cv-peek" hidden></div>
       <div class="canvas-zoom"></div>
-      <canvas class="canvas-mini" width="200" height="136" aria-label="Minimapa"></canvas>`;
+      <canvas class="canvas-mini" width="${MINI_W}" height="${MINI_H}" aria-label="Minimapa"></canvas>`;
     host.append(area);
     const world = area.querySelector('.canvas-mundo');
     const counter = area.querySelector('.cv-contador');
     const tools = area.querySelector('.canvas-ferramentas');
+    const colors = area.querySelector('.cv-cores');
+    const peek = area.querySelector('.cv-peek');
     const zoomBar = area.querySelector('.canvas-zoom');
     const mini = area.querySelector('.canvas-mini');
-    tools.innerHTML = [
-      ['select', 'Selecionar', 'V'],
-      ['text', 'Texto', 'T'],
-      ['group', 'Grupo', 'G'],
-      ['connect', 'Conector', 'C'],
-      ['align', 'Alinhar', ''],
-      ['undo', 'Desfazer', ''],
-      ['redo', 'Refazer', ''],
-    ]
-      .map(
-        ([id, label, key]) =>
-          `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ' ' + key : ''}">${options.icon(id === 'text' ? 'nota-adesiva' : id === 'group' ? 'agrupar' : id === 'connect' ? 'link' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : id === 'align' ? 'divisor' : 'selecionar')}<span class="sr-only">${label}</span></button>`,
-      )
-      .join('');
-    const covers = document.createElement('div');
-    covers.className = 'capa-opcoes';
-    const names = ['rede', 'estante', 'jardim', 'horizonte', 'cerrado', 'ondas'];
-    covers.innerHTML = names
-      .map(
-        (id) =>
-          `<button type="button" class="capa-opcao" data-capa="sophy:${id}" aria-label="Capa ${id}"><svg class="capa__arte" viewBox="0 0 1600 400"><use href="#capa-${id}"/></svg></button>`,
-      )
-      .join('');
-    tools.after(covers);
-    const paintCover = () => {
-      const capa = state.document.capa;
-      const id = typeof capa === 'string' && capa.startsWith('sophy:') ? capa.slice(6) : '';
-      const on = /^(rede|estante|jardim|horizonte|cerrado|ondas|[1-6])$/.test(id);
-      area.classList.toggle('tem-capa', on);
-      let art = area.querySelector('.capa-quadro');
-      if (!on) {
-        art?.remove();
-        return;
-      }
-      const name = { 1: 'rede', 2: 'estante', 3: 'jardim', 4: 'horizonte', 5: 'cerrado', 6: 'ondas' }[id] || id;
-      if (!art) {
-        art = document.createElement('div');
-        art.className = 'capa capa-quadro';
-        area.prepend(art);
-      }
-      art.innerHTML = `<div class="capa__recorte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice"><use href="#capa-${name}"/></svg></div>`;
+
+    const shapeIcons = {
+      rectangle: '<rect x="4" y="4" width="16" height="16" rx="2"/>',
+      ellipse: '<circle cx="12" cy="12" r="8"/>',
+      diamond: '<path d="M12 2 22 12 12 22 2 12Z"/>',
     };
-    paintCover();
-    covers.querySelectorAll('[data-capa]').forEach((button) => {
-      button.onclick = () => {
-        state.document.capa = button.dataset.capa;
-        paintCover();
-        options.onChange?.(state.document);
-      };
-    });
+    const toolIcon = (id) =>
+      shapeIcons[id]
+        ? `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${shapeIcons[id]}</svg>`
+        : options.icon(
+            id === 'connect' ? 'conector' : id === 'undo' ? 'desfazer' : id === 'redo' ? 'refazer' : 'selecionar',
+          );
+    const toolBtn = ([id, label, key]) =>
+      `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ` (${key})` : ''}">${toolIcon(id)}</button>`;
+    tools.innerHTML = [
+      toolBtn(['select', 'Selecionar', 'V']),
+      '<span class="cv-sep" aria-hidden="true"></span>',
+      toolBtn(['rectangle', 'Retângulo', 'R']),
+      toolBtn(['ellipse', 'Elipse', 'O']),
+      toolBtn(['diamond', 'Losango', 'D']),
+      toolBtn(['connect', 'Seta', 'C']),
+      '<span class="cv-sep" aria-hidden="true"></span>',
+      toolBtn(['undo', 'Desfazer', '']),
+      toolBtn(['redo', 'Refazer', '']),
+    ].join('');
+
+    const swatch = (kind, id) =>
+      `<button type="button" class="cv-cor${id ? '' : ' cv-cor--limpo'}" data-${kind}="${id}" aria-label="${kind === 'fill' ? 'Fundo' : 'Borda'} ${id || 'padrão'}" title="${kind === 'fill' ? 'Fundo' : 'Borda'} ${id || 'padrão'}"${id ? ` style="--amostra:var(--shelf-${id})"` : ''}></button>`;
+    colors.innerHTML = `<span class="cv-cores__rotulo">Fundo</span>${['', ...PALETTE].map((id) => swatch('fill', id)).join('')}<span class="cv-sep" aria-hidden="true"></span><span class="cv-cores__rotulo">Borda</span>${['', ...PALETTE].map((id) => swatch('border', id)).join('')}`;
+
     zoomBar.innerHTML = `<button type="button" class="btn btn--icone" data-zoom="out" aria-label="Afastar">−</button><span class="canvas-zoom__valor">100%</span><button type="button" class="btn btn--icone" data-zoom="in" aria-label="Aproximar">+</button><button type="button" class="btn btn--secundario" data-zoom="fit">Ajustar</button>`;
+
+    const applyCamera = () => {
+      const camera = state.camera;
+      world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`;
+      zoomBar.querySelector('.canvas-zoom__valor').textContent =
+        `${Math.round(camera.zoom * 100)}%`;
+    };
+
+    const applyNodeBox = (node) => {
+      const el = world.querySelector(`[data-node="${node.id}"]`);
+      if (!el) return;
+      el.style.left = `${node.x}px`;
+      el.style.top = `${node.y}px`;
+      el.style.width = `${node.width}px`;
+      el.style.height = `${node.height}px`;
+    };
+
+    /** Losango/elipse: texto útil é só uma fração da caixa; cresce 1:1 ao digitar. */
+    const fitLockedShape = (node, editor) => {
+      if (!node || (node.shape !== 'diamond' && node.shape !== 'ellipse')) return;
+      const usable = node.shape === 'diamond' ? 0.48 : 0.7;
+      const min = 200;
+      const max = 720;
+      const prev = {
+        maxHeight: editor.style.maxHeight,
+        height: editor.style.height,
+        overflow: editor.style.overflow,
+        width: editor.style.width,
+      };
+      editor.style.maxHeight = 'none';
+      editor.style.height = 'auto';
+      editor.style.width = '100%';
+      editor.style.overflow = 'hidden';
+      const need = Math.max(editor.scrollHeight, Math.ceil(editor.scrollWidth * 0.9), 48);
+      editor.style.maxHeight = prev.maxHeight;
+      editor.style.height = prev.height;
+      editor.style.overflow = prev.overflow;
+      editor.style.width = prev.width;
+      const size = Math.min(max, Math.max(min, Math.ceil(need / usable) + 12));
+      const current = Math.max(node.width || 0, node.height || 0);
+      if (size <= current) return;
+      node.width = size;
+      node.height = size;
+      applyNodeBox(node);
+    };
 
     const paint = () => {
       const empty = area.querySelector('.canvas-vazio');
       if (!state.document.nodes.length) {
         if (!empty) {
           const note = document.createElement('div');
-          note.className = 'canvas-vazio vazio-ensina';
-          note.innerHTML = '<h2>Quadro vazio</h2><p>Use Texto, Grupo ou Conector. Se a leitura falhar, o quadro mostra o erro em vez de um cartão.</p>';
+          note.className = 'canvas-vazio';
+          note.innerHTML =
+            '<div class="canvas-vazio__cartao"><p class="canvas-vazio__selo">Canvas</p><h2>Comece pelo primeiro card</h2><p>Escreva, use [[wikilinks]] e ligue as ideias com conexões.</p><div class="canvas-vazio__acoes"><button type="button" class="btn btn--primario" data-canvas-start>Adicionar card</button><button type="button" class="btn btn--secundario" data-canvas-diamond>Losango</button></div><p class="canvas-vazio__dica"><kbd class="kbd">R</kbd> retângulo · <kbd class="kbd">D</kbd> losango · <kbd class="kbd">E</kbd> elipse</p></div>';
+          note.querySelector('[data-canvas-start]').onclick = () => {
+            place('rectangle', 280, 160);
+          };
+          note.querySelector('[data-canvas-diamond]').onclick = () => {
+            place('diamond', 220, 220);
+          };
           area.append(note);
         }
       } else empty?.remove();
-      const camera = state.camera;
-      world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`;
-      zoomBar.querySelector('.canvas-zoom__valor').textContent =
-        `${Math.round(camera.zoom * 100)}%`;
+      applyCamera();
       tools.querySelectorAll('[data-tool]').forEach((button) => {
         button.setAttribute('aria-pressed', button.dataset.tool === state.tool ? 'true' : 'false');
       });
@@ -130,7 +182,26 @@
       counter.textContent = `${state.selected.size} selecionados`;
       world.innerHTML = `<svg class="cv-seta">${edgesMarkup()}</svg>${nodesMarkup()}`;
       bindNodes();
+      paintColors();
       paintMini();
+    };
+
+    const paintColors = () => {
+      const id = [...state.selected][0];
+      const node = state.document.nodes.find((item) => item.id === id);
+      const shape = node && SHAPES.includes(node.shape || (node.type === 'text' ? 'text' : ''));
+      const show = state.selected.size === 1 && shape && (node.shape || 'text') !== 'text';
+      colors.hidden = !show;
+      if (!show) return;
+      colors.querySelectorAll('[data-fill]').forEach((button) => {
+        button.setAttribute('aria-pressed', (node.color || '') === button.dataset.fill ? 'true' : 'false');
+      });
+      colors.querySelectorAll('[data-border]').forEach((button) => {
+        button.setAttribute(
+          'aria-pressed',
+          (node.borderColor || '') === button.dataset.border ? 'true' : 'false',
+        );
+      });
     };
 
     const edgesMarkup = () => {
@@ -141,8 +212,8 @@
             const from = byId.get(edge.fromNode);
             const to = byId.get(edge.toNode);
             if (!from || !to) return '';
-            const a = sidePoint(from, edge.fromSide || 'right');
-            const b = sidePoint(to, edge.toSide || 'left');
+            const a = sidePoint(from, edge.fromCorner || edge.fromSide || 'right');
+            const b = sidePoint(to, edge.toCorner || edge.toSide || 'left');
             const selected = state.selected.has(edge.id) ? ' is-selecionada' : '';
             const label = edge.label
               ? `<foreignObject x="${(a.x + b.x) / 2 - 40}" y="${(a.y + b.y) / 2 - 14}" width="80" height="24"><div class="cv-rotulo${selected ? ' is-selecionado' : ''}">${escape(edge.label)}</div></foreignObject>`
@@ -159,7 +230,7 @@
         .sort((a, b) => Number(a.type !== 'group') - Number(b.type !== 'group'))
         .map((node) => {
           const selected = state.selected.has(node.id) ? 'true' : 'false';
-          const style = `left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px`;
+          const style = `left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px${paintVar(node)}`;
           if (node.type === 'group') {
             return `<div class="cv-grupo" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}"><span class="cv-grupo__rotulo">${escape(node.label || 'Grupo')}</span></div>`;
           }
@@ -170,8 +241,8 @@
               path: node.file,
             };
             const shelf = options.shelf(preview.path || node.file);
-            const color = shelf?.color ? ` style="--estante-cor: var(--shelf-${shelf.color})"` : '';
-            return `<article class="cv-cartao" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}"${color}>
+            const tint = shelf?.color ? `;--estante-cor: var(--shelf-${shelf.color})` : '';
+            return `<article class="cv-cartao" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}${tint}">
               <div class="cv-cartao__titulo">${options.icon('nota')}<span>${escape(preview.title || node.file)}</span><button type="button" class="btn btn--icone" data-open="${escape(preview.path || node.file)}" aria-label="Abrir nota">${options.icon('externo')}</button></div>
               <div class="cv-cartao__texto">${preview.html || escape(preview.body || '')}</div>
               <div class="cv-cartao__caminho">${escape(preview.path || node.file || '')}</div>
@@ -179,26 +250,35 @@
             </article>`;
           }
           if (node.type === 'link') {
+            if (node.shape === 'image' && /^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(node.url || '')) {
+              return `<article class="cv-cartao cv-elemento cv-imagem" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}">
+                <img src="${escape(node.url)}" alt="${escape(node.label || 'Imagem do canvas')}">${ports()}
+              </article>`;
+            }
             return `<article class="cv-cartao cv-cartao--texto" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}">
               <div class="cv-cartao__titulo">${options.icon('externo')}<span>${escape(node.label || node.url || 'Link')}</span></div>
               <p class="cv-cartao__caminho">${escape(node.url || '')}</p>${ports()}
             </article>`;
           }
-          return `<article class="cv-cartao cv-cartao--texto" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}">
-            <div class="cv-texto" contenteditable="true" data-text="${escape(node.id)}">${inline(node.text || '')}</div>${ports()}
+          const shape = SHAPES.includes(node.shape) ? node.shape : 'rectangle';
+          return `<article class="cv-cartao cv-elemento cv-forma cv-forma--${shape}" data-node="${escape(node.id)}" aria-selected="${selected}" style="${style}">
+            <div class="cv-texto" contenteditable="true" data-text="${escape(node.id)}" data-placeholder="Escreva algo… use [[ para ligar">${inline(node.text || '')}</div>${ports()}
           </article>`;
         })
         .join('');
 
     const ports = () =>
-      ['top', 'right', 'bottom', 'left']
+      ['top', 'right', 'bottom', 'left', 'top-left', 'top-right', 'bottom-left', 'bottom-right']
         .map(
           (side) =>
-            `<span class="cv-porta cv-porta--${side[0] === 't' ? 'n' : side[0] === 'b' ? 's' : side[0] === 'l' ? 'l' : 'o'}" data-port="${side}"></span>`,
+            `<span class="cv-porta cv-porta--${side.includes('-') ? side : side[0] === 't' ? 'n' : side[0] === 'b' ? 's' : side[0] === 'l' ? 'l' : 'o'}" data-port="${side}" title="Arraste para conectar"></span>`,
         )
         .join('') +
       ['ne', 'no', 'se', 'so']
-        .map((corner) => `<span class="cv-alca cv-alca--${corner}"></span>`)
+        .map(
+          (corner) =>
+            `<span class="cv-alca cv-alca--${corner}" data-resize="${corner}" aria-hidden="true"></span>`,
+        )
         .join('');
 
     const bindNodes = () => {
@@ -212,15 +292,33 @@
         });
       });
       world.querySelectorAll('[data-text]').forEach((editor) => {
-        editor.addEventListener('pointerdown', (event) => event.stopPropagation());
-        editor.addEventListener('focus', () => {
-          const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
-          if (!node || editor.dataset.editing === '1') return;
-          editor.dataset.editing = '1';
-          editor.textContent = node.text || '';
+        editor.addEventListener('pointerdown', (event) => {
+          if ((event.ctrlKey || event.metaKey) && event.target.closest('[data-target]')) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          if (state.tool === 'connect') {
+            event.stopPropagation();
+            startConnect(event, editor.dataset.text, 'right');
+          }
         });
-        editor.addEventListener('input', () => offerWiki(editor));
-        editor.addEventListener('blur', () => commitText(editor));
+        editor.addEventListener('focus', () => {
+          editor.dataset.editing = '1';
+        });
+        const field = window.SophyWriting.bindField(editor, {
+          broken: (raw) => options.brokenLink?.(raw) || false,
+          onChange: (text) => {
+            const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
+            if (node) {
+              node.text = text;
+              fitLockedShape(node, editor);
+            }
+            offerWiki(editor, text, field.caret());
+          },
+          onBlur: () => commitText(editor),
+        });
+        editor._sophyField = field;
       });
       world.querySelectorAll('[data-edge]').forEach((path) => {
         path.style.pointerEvents = 'stroke';
@@ -239,35 +337,131 @@
     };
 
     const startNode = (event, id) => {
+      const resize = event.target.closest('[data-resize]');
+      if (resize) {
+        startResize(event, id, resize.dataset.resize || 'se');
+        return;
+      }
       if (event.target.closest('[data-port]')) {
         startConnect(event, id, event.target.dataset.port);
         return;
       }
-      if (event.target.closest('[contenteditable="true"], button')) {
+      if (state.tool === 'connect') {
+        startConnect(event, id, 'right');
+        return;
+      }
+      if (event.target.closest('button')) {
         select(id, event.shiftKey);
         paint();
         return;
       }
       event.stopPropagation();
+      event.preventDefault();
       select(id, event.shiftKey);
       const node = state.document.nodes.find((item) => item.id === id);
+      const fromText = !!event.target.closest('[contenteditable="true"]');
       const origin = { x: event.clientX, y: event.clientY, nx: node.x, ny: node.y };
+      let dragged = false;
       const move = (ev) => {
+        const dist = Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y);
+        if (!dragged && dist < 5) return;
+        dragged = true;
+        if (fromText && document.activeElement?.closest?.('[data-text]')) {
+          document.activeElement.blur();
+        }
         node.x = origin.nx + (ev.clientX - origin.x) / state.camera.zoom;
         node.y = origin.ny + (ev.clientY - origin.y) / state.camera.zoom;
-        paint();
+        applyNodeBox(node);
       };
       const up = () => {
-        node.x = snap(node.x);
-        node.y = snap(node.y);
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
+        if (!dragged) {
+          if (fromText) {
+            const editor = world.querySelector(`[data-text="${id}"]`);
+            editor?.focus();
+          }
+          paintColors();
+          return;
+        }
+        node.x = snap(node.x);
+        node.y = snap(node.y);
         paint();
         commit();
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
-      paint();
+      paintColors();
+      tools.querySelectorAll('[data-tool]').forEach((button) => {
+        button.setAttribute('aria-pressed', button.dataset.tool === state.tool ? 'true' : 'false');
+      });
+      world.querySelectorAll('[data-node]').forEach((el) => {
+        el.setAttribute('aria-selected', state.selected.has(el.dataset.node) ? 'true' : 'false');
+      });
+    };
+
+    const startResize = (event, id, corner) => {
+      event.stopPropagation();
+      select(id, false);
+      const node = state.document.nodes.find((item) => item.id === id);
+      if (!node) return;
+      world.querySelectorAll('[data-node]').forEach((el) => {
+        el.setAttribute('aria-selected', el.dataset.node === id ? 'true' : 'false');
+      });
+      paintColors();
+      const origin = {
+        x: event.clientX,
+        y: event.clientY,
+        ox: node.x,
+        oy: node.y,
+        width: node.width,
+        height: node.height,
+      };
+      const minW = 80;
+      const minH = 80;
+      const lock = node.shape === 'ellipse' || node.shape === 'diamond';
+      const move = (ev) => {
+        const dx = (ev.clientX - origin.x) / state.camera.zoom;
+        const dy = (ev.clientY - origin.y) / state.camera.zoom;
+        let width = origin.width;
+        let height = origin.height;
+        let x = origin.ox;
+        let y = origin.oy;
+        if (corner.includes('e')) width = Math.max(minW, origin.width + dx);
+        if (corner.includes('o')) {
+          width = Math.max(minW, origin.width - dx);
+          x = origin.ox + origin.width - width;
+        }
+        if (corner.includes('s')) height = Math.max(minH, origin.height + dy);
+        if (corner.includes('n')) {
+          height = Math.max(minH, origin.height - dy);
+          y = origin.oy + origin.height - height;
+        }
+        if (lock) {
+          const size = Math.max(width, height);
+          if (corner.includes('o')) x = origin.ox + origin.width - size;
+          if (corner.includes('n')) y = origin.oy + origin.height - size;
+          width = size;
+          height = size;
+        }
+        node.width = width;
+        node.height = height;
+        node.x = x;
+        node.y = y;
+        applyNodeBox(node);
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        node.width = snap(node.width);
+        node.height = snap(node.height);
+        node.x = snap(node.x);
+        node.y = snap(node.y);
+        paint();
+        commit();
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
     };
 
     const startConnect = (event, id, side) => {
@@ -279,7 +473,8 @@
         const edge = {
           id: options.nextId(),
           fromNode: id,
-          fromSide: side,
+          fromSide: side.includes('-') ? side.startsWith('top') ? 'top' : 'bottom' : side,
+          fromCorner: side.includes('-') ? side : undefined,
           toNode: target.dataset.node,
           toSide: 'left',
           toEnd: 'arrow',
@@ -291,10 +486,12 @@
       window.addEventListener('pointerup', up);
     };
 
-    const offerWiki = (editor) => {
-      const text = editor.textContent || '';
-      const caret = text.length;
-      const found = window.SophyCommands.wikiQuery(text, caret);
+    const offerWiki = (editor, source, caret) => {
+      const text =
+        source ??
+        (editor._sophyField ? editor._sophyField.read() : window.SophyWriting.markdown(editor));
+      const at = caret ?? (editor._sophyField ? editor._sophyField.caret() : text.length);
+      const found = window.SophyCommands.wikiQuery(text, at);
       document.querySelectorAll('.menu-flutuante').forEach((menu) => menu.remove());
       if (!found) return;
       const menu = document.createElement('div');
@@ -309,6 +506,7 @@
             `<button type="button" class="menu__item" data-insert="[[${escape(note.path.replace(/\.md$/i, ''))}]]">${escape(note.title || note.path)}</button>`,
         )
         .join('');
+      if (!notes.length) return;
       document.body.append(menu);
       const rect = editor.getBoundingClientRect();
       menu.style.left = `${rect.left}px`;
@@ -317,10 +515,12 @@
         button.onmousedown = (event) => {
           event.preventDefault();
           const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
-          node.text = `${(node.text || '').replace(/\[\[[^\n]*$/, '')}${button.dataset.insert}`;
+          const end = found.start + 2 + found.query.length;
+          node.text = `${text.slice(0, found.start)}${button.dataset.insert}${text.slice(end)}`;
           menu.remove();
           paint();
           commit();
+          setTimeout(() => world.querySelector(`[data-text="${node.id}"]`)?.focus(), 0);
         };
       });
     };
@@ -328,8 +528,17 @@
     const commitText = (editor) => {
       const node = state.document.nodes.find((item) => item.id === editor.dataset.text);
       if (!node) return;
-      const text = editor.dataset.editing === '1' ? editor.textContent || '' : readEditable(editor);
+      const text = editor._sophyField
+        ? editor._sophyField.read()
+        : window.SophyWriting.markdown(editor);
+      delete editor.dataset.editing;
       if (!text.trim()) {
+        if (node.shape && node.shape !== 'text') {
+          node.text = '';
+          commit();
+          paint();
+          return;
+        }
         state.document.nodes = state.document.nodes.filter((item) => item.id !== node.id);
         commit();
         paint();
@@ -342,24 +551,58 @@
 
     const commit = () => options.onChange(structuredClone(state.document));
 
-    const place = (type, x, y) => {
+    async function showPeek(target) {
+      const path = target.endsWith('.md') ? target : `${target}.md`;
+      if (state.peekTarget === path && !peek.hidden) return;
+      state.peekTarget = path;
+      peek.hidden = false;
+      peek.innerHTML = `<strong>${escape(path.replace(/\.md$/i, ''))}</strong><div class="cv-peek__corpo">Carregando…</div>`;
+      const cached = options.preview?.(path) || options.preview?.(target);
+      if (cached) {
+        peek.innerHTML = `<strong>${escape(cached.title || path)}</strong><div class="cv-peek__corpo">${cached.html || escape(cached.body || '')}</div>`;
+        return;
+      }
+      if (!options.peekNote) {
+        peek.innerHTML = `<strong>${escape(path.replace(/\.md$/i, ''))}</strong><div class="cv-peek__corpo">Nota não encontrada.</div>`;
+        return;
+      }
+      const note = await options.peekNote(path);
+      if (state.peekTarget !== path) return;
+      if (!note) {
+        peek.innerHTML = `<strong>${escape(path.replace(/\.md$/i, ''))}</strong><div class="cv-peek__corpo">Nota não encontrada.</div>`;
+        return;
+      }
+      peek.innerHTML = `<strong>${escape(note.title || path)}</strong><div class="cv-peek__corpo">${note.html || escape(note.body || '')}</div>`;
+    }
+
+    function hidePeek() {
+      state.peekTarget = '';
+      peek.hidden = true;
+      peek.innerHTML = '';
+    }
+
+    const place = (type, x, y, extra = {}) => {
       const id = options.nextId();
+      const isShape = SHAPES.includes(type);
       const node = {
         id,
-        type,
+        type: isShape ? 'text' : type,
         x: snap(x),
         y: snap(y),
-        width: type === 'group' ? 420 : 260,
-        height: type === 'group' ? 280 : type === 'text' ? 140 : 120,
+        width: type === 'ellipse' || type === 'diamond' ? 200 : 240,
+        height: type === 'ellipse' || type === 'diamond' ? 200 : 160,
+        ...extra,
       };
-      if (type === 'text') node.text = '';
-      if (type === 'group') node.label = 'Grupo';
+      if (isShape) {
+        node.text = '';
+        node.shape = type;
+      }
       state.document.nodes.push(node);
       state.selected = new Set([id]);
-      if (type === 'text') state.tool = 'select';
+      if (isShape) state.tool = 'select';
       paint();
       commit();
-      if (type === 'text') {
+      if (isShape) {
         const created = id;
         setTimeout(() => world.querySelector(`[data-text="${created}"]`)?.focus(), 0);
       }
@@ -368,10 +611,16 @@
     area.addEventListener('pointerdown', (event) => {
       if (event.target !== area && event.target !== world) return;
       const point = worldPoint(event);
-      if (state.tool === 'text') return place('text', point.x, point.y);
-      if (state.tool === 'group') return place('group', point.x, point.y);
+      if (['rectangle', 'ellipse', 'diamond'].includes(state.tool)) {
+        return place(state.tool, point.x, point.y);
+      }
       state.selected.clear();
       paint();
+    });
+    area.addEventListener('dblclick', (event) => {
+      if (event.target !== area && event.target !== world) return;
+      const point = worldPoint(event);
+      place('rectangle', point.x, point.y);
     });
     area.addEventListener(
       'wheel',
@@ -379,7 +628,7 @@
         event.preventDefault();
         const factor = event.deltaY > 0 ? 1 / 1.08 : 1.08;
         state.camera.zoom = Math.min(2.2, Math.max(0.35, state.camera.zoom * factor));
-        paint();
+        applyCamera();
       },
       { passive: false },
     );
@@ -392,30 +641,37 @@
       if (!pan) return;
       state.camera.x = pan.cx + event.clientX - pan.x;
       state.camera.y = pan.cy + event.clientY - pan.y;
-      paint();
+      applyCamera();
     });
     window.addEventListener('pointerup', () => {
+      if (pan) paintMini();
       pan = null;
     });
     tools.addEventListener('click', (event) => {
       const button = event.target.closest('[data-tool]');
       if (!button) return;
       const id = button.dataset.tool;
-      if (id === 'align') {
-        const chosen = state.document.nodes.filter((node) => state.selected.has(node.id));
-        const aligned = alignNodes(chosen, 'y');
-        for (const node of aligned) {
-          const current = state.document.nodes.find((item) => item.id === node.id);
-          current.y = node.y;
-        }
-        paint();
-        commit();
-        return;
-      }
       if (id === 'undo') return options.undo();
       if (id === 'redo') return options.redo();
       state.tool = id;
       paint();
+    });
+    colors.addEventListener('click', (event) => {
+      const fill = event.target.closest('[data-fill]');
+      const border = event.target.closest('[data-border]');
+      const id = [...state.selected][0];
+      const node = state.document.nodes.find((item) => item.id === id);
+      if (!node) return;
+      if (fill) {
+        if (fill.dataset.fill) node.color = fill.dataset.fill;
+        else delete node.color;
+      }
+      if (border) {
+        if (border.dataset.border) node.borderColor = border.dataset.border;
+        else delete node.borderColor;
+      }
+      paint();
+      commit();
     });
     zoomBar.addEventListener('click', (event) => {
       const button = event.target.closest('[data-zoom]');
@@ -447,8 +703,33 @@
       commit();
     });
     host.addEventListener('keydown', (event) => {
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       if (event.target.closest('[contenteditable="true"], input, textarea')) return;
+      const key = event.key.toLocaleLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === '0') {
+        event.preventDefault();
+        state.camera = { x: 80, y: 48, zoom: 1 };
+        paint();
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && ['v', 'r', 'o', 'd', 'c'].includes(key)) {
+        state.tool = {
+          v: 'select',
+          r: 'rectangle',
+          o: 'ellipse',
+          d: 'diamond',
+          c: 'connect',
+        }[key];
+        paint();
+        return;
+      }
+      if (event.key === 'Escape') {
+        state.tool = 'select';
+        state.selected.clear();
+        hidePeek();
+        paint();
+        return;
+      }
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       state.document.nodes = state.document.nodes.filter((node) => !state.selected.has(node.id));
       state.document.edges = (state.document.edges || []).filter(
         (edge) =>
@@ -471,39 +752,33 @@
 
     function paintMini() {
       const ctx = mini.getContext('2d');
-      ctx.clearRect(0, 0, 200, 136);
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg');
-      ctx.fillRect(0, 0, 200, 136);
+      ctx.clearRect(0, 0, MINI_W, MINI_H);
+      ctx.fillStyle =
+        getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f4f2ef';
+      ctx.fillRect(0, 0, MINI_W, MINI_H);
       const nodes = state.document.nodes;
       if (!nodes.length) return;
       const minX = Math.min(...nodes.map((node) => node.x));
       const minY = Math.min(...nodes.map((node) => node.y));
       const maxX = Math.max(...nodes.map((node) => node.x + node.width));
       const maxY = Math.max(...nodes.map((node) => node.y + node.height));
-      const scale = Math.min(180 / Math.max(maxX - minX, 1), 110 / Math.max(maxY - minY, 1));
+      const scale = Math.min(
+        (MINI_W - 16) / Math.max(maxX - minX, 1),
+        (MINI_H - 16) / Math.max(maxY - minY, 1),
+      );
       for (const node of nodes) {
         ctx.fillStyle = node.type === 'group' ? 'rgba(110,114,176,0.28)' : '#918DA6';
         ctx.fillRect(
           (node.x - minX) * scale + 8,
           (node.y - minY) * scale + 8,
-          Math.max(4, node.width * scale),
-          Math.max(4, node.height * scale),
+          Math.max(3, node.width * scale),
+          Math.max(3, node.height * scale),
         );
       }
     }
 
     function inline(text) {
-      return window.SophyDoc.parseInlines(text)
-        .map((part) => {
-          if (part.type === 'text') return escape(part.text);
-          if (part.type === 'bold') return `<strong>${escape(part.text)}</strong>`;
-          if (part.type === 'italic') return `<em>${escape(part.text)}</em>`;
-          if (part.type === 'strike') return `<s>${escape(part.text)}</s>`;
-          if (part.type === 'highlight') return `<mark>${escape(part.text)}</mark>`;
-          if (part.type === 'code') return `<code>${escape(part.text)}</code>`;
-          return `<a href="#" class="wikilink" contenteditable="false" data-raw="${escape(part.raw || '')}" data-target="${escape(part.target || '')}">${escape(part.label || part.text || '')}</a>`;
-        })
-        .join('');
+      return window.SophyWriting.inlineHtml(text || '', (raw) => options.brokenLink?.(raw) || false);
     }
 
     world.addEventListener('click', (event) => {
@@ -516,6 +791,22 @@
       );
     });
 
+    world.addEventListener('pointerover', (event) => {
+      const link = event.target.closest('[data-target]');
+      if (!link || !(event.ctrlKey || event.metaKey)) return;
+      showPeek(link.dataset.target);
+    });
+    world.addEventListener('pointerout', (event) => {
+      const link = event.target.closest('[data-target]');
+      if (!link) return;
+      const next = event.relatedTarget?.closest?.('[data-target]');
+      if (next && next.dataset.target === link.dataset.target) return;
+      hidePeek();
+    });
+    window.addEventListener('keyup', (event) => {
+      if (event.key === 'Control' || event.key === 'Meta') hidePeek();
+    });
+
     paint();
     return {
       select(id) {
@@ -523,6 +814,7 @@
         paint();
       },
       destroy() {
+        hidePeek();
         host.innerHTML = '';
       },
     };
@@ -533,16 +825,6 @@
       /[&<>"']/g,
       (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
     );
-  }
-
-  function readEditable(element) {
-    let text = '';
-    for (const node of element.childNodes) {
-      if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
-      else if (node.dataset && node.dataset.raw) text += node.dataset.raw;
-      else text += node.textContent;
-    }
-    return text;
   }
 
   return { GRID, snap, alignNodes, sidePoint, curve, mount };

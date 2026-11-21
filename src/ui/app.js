@@ -20,10 +20,14 @@ const state = {
   frontmatter: null,
   outgoing: [],
   backlinks: [],
+  linkCatalog: [],
+  unlinkedMentions: [],
+  recentNotes: [],
   conflict: false,
   graphWorkspace: '',
   graphTag: '',
   graphCamera: { x: 0, y: 0, zoom: 1 },
+  graphAnimation: 0,
   step: 1,
   folderMode: 'criar',
   folder: '',
@@ -35,6 +39,8 @@ const state = {
   openSeq: 0,
   dirty: false,
   warnedUnsafe: false,
+  propertyTemplates: null,
+  connectionsOpen: false,
 };
 
 const slash = Cmd.createSlashSession();
@@ -43,6 +49,24 @@ let saveJob = Promise.resolve();
 let lottiePromise = null;
 
 const $ = (sel, root = document) => root.querySelector(sel);
+const Writing = SophyWriting.create({
+  getDoc: () => state.doc,
+  isWriting: () => state.view === 'note',
+  setDoc: (doc) => { state.doc = doc; },
+  checkpoint,
+  paint: () => { state.caret = null; paintCenter(); },
+  save: scheduleSave,
+  applying: (on) => { state.richApplying = on; },
+  blockSelection: () => state.blockRange && state.blockRange.anchor !== state.blockRange.end,
+  sync: (el) => {
+    if (el.dataset.cell != null) syncTable(el.closest('table'));
+    else {
+      const index = Number(el.dataset.block);
+      state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
+    }
+  },
+});
+
 function icon(name, extra = '') {
   return `<svg class="icon ${extra}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 }
@@ -122,14 +146,33 @@ async function tool(name, input) {
   return response.value;
 }
 
-function toast(message, kind = 'ok') {
+function toast(message, kind = 'ok', action = null) {
   const el = document.createElement('div');
   el.className = `toast ${kind === 'erro' ? 'toast--erro' : 'toast--ok'}`;
   el.setAttribute('role', kind === 'erro' ? 'alert' : 'status');
   el.innerHTML = `${icon(kind === 'erro' ? 'erro' : 'salvo', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
+  if (action?.label && typeof action.onClick === 'function') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast__acao';
+    button.textContent = action.label;
+    button.onclick = async () => {
+      el.remove();
+      await action.onClick();
+    };
+    el.append(button);
+  }
   $('#toasts').append(el);
   if (kind !== 'erro') setTimeout(() => el.remove(), 5000);
   else el.addEventListener('click', () => el.remove());
+}
+
+async function undoLastAction(message = 'Ação desfeita.') {
+  await tool('history.undo', {});
+  await refreshLibrary();
+  if (state.active) await openNote(state.active, { force: true });
+  else paintTree();
+  toast(message);
 }
 
 function loadLottie() {
@@ -386,6 +429,10 @@ async function nextStep() {
               return { ok: true, value: response.value };
             })();
       if (!opened.ok) throw new Error(opened.error);
+      if (state.folderMode === 'criar') {
+        const selected = await sophy.switchLibrary(opened.value.root);
+        if (!selected.ok) throw new Error(selected.error);
+      }
       state.libraryPath = opened.value.root;
       state.libraryName = opened.value.root.split(/[/\\]/).pop();
     } catch (error) {
@@ -436,9 +483,11 @@ function openDrawer(opener) {
 function closeDrawer() {
   $('#lateral')?.classList.remove('is-aberta');
   $('#sofi-gaveta')?.classList.remove('is-aberta');
+  if ($('#conexoes')?.classList.contains('is-gaveta')) state.connectionsOpen = false;
   $('#conexoes')?.classList.remove('is-gaveta', 'is-aberta');
   if (drawerNarrow()) state.sofiOpen = false;
   $('#gaveta-veu')?.remove();
+  syncConnectionsPanel();
   const opener = state.drawerOpener || $('#abrir-lateral');
   opener?.focus();
 }
@@ -468,6 +517,7 @@ function paintShell() {
         <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
         <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
         <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
+        <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('painel-direito')}</button>
         <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
         ${windowButtons()}
       </div>
@@ -503,7 +553,7 @@ function paintShell() {
         <div id="arvore"></div>
       </aside>
       <main class="centro" id="centro"></main>
-      <aside class="conexoes painel" id="conexoes"></aside>
+      <aside class="conexoes painel is-oculta" id="conexoes"></aside>
     </div>
     <footer class="status">
       <span id="st-caminho"></span>
@@ -513,6 +563,7 @@ function paintShell() {
     </footer>`;
   $('#busca').onclick = () => openPalette();
   $('#ver-grafo').onclick = () => showGraph();
+  $('#abrir-conexoes').onclick = () => toggleConnections();
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
@@ -547,12 +598,18 @@ async function refreshLibrary() {
   state.libraryName = opened.root.split(/[/\\]/).pop();
   state.workspaces = opened.workspaces || [];
   state.notes = await tool('note.list', {});
+  state.propertyTemplates = null;
   const files = await tool('file.list', {});
   state.canvases = files.filter((file) => file.kind === 'canvas');
   try {
     state.shelfStyles = await tool('shelf.style.list', {});
   } catch {
     state.shelfStyles = {};
+  }
+  try {
+    state.linkCatalog = await tool('links.catalog', {});
+  } catch {
+    state.linkCatalog = [];
   }
 }
 
@@ -619,12 +676,17 @@ function paintTree() {
         ${icon('nota')}<span class="arvore__nome">${escapeHtml(baseName(note.path))}</span></button></li>`,
     )
     .join('');
+  const looseBoards = state.canvases
+    .filter((file) => file.workspace === null)
+    .filter((file) => !filter || file.path.toLocaleLowerCase().includes(filter))
+    .map((file) => `<li role="treeitem"><button type="button" class="arvore__linha" data-canvas="${escapeHtml(file.path)}" aria-selected="${Cmd.treeMarked('canvas', file.path, state)}">${icon('canvas')}<span class="arvore__nome">${escapeHtml(baseName(file.path))}</span></button></li>`)
+    .join('');
   const draft = state.namingShelf
     ? `<li role="treeitem"><div class="arvore__linha">${icon('estante')}<input class="arvore__renomear" id="nome-estante" aria-label="Nome da estante" /></div></li>`
     : '';
   const name = host.parentElement?.querySelector('.biblioteca-seletor__nome');
   if (name) name.textContent = state.libraryName || 'Biblioteca';
-  host.innerHTML = `<ul class="arvore" role="tree">${shelves}${loose}${draft}</ul>`;
+  host.innerHTML = `<ul class="arvore" role="tree">${shelves}${loose}${looseBoards}${draft}</ul>`;
   const unsafeCount = state.notes.filter((note) => note.unsafe).length + state.workspaces.filter((workspace) => workspace.unsafe).length;
   if (unsafeCount && !state.warnedUnsafe) {
     state.warnedUnsafe = true;
@@ -665,6 +727,7 @@ function paintTree() {
       state.selectedShelf = name;
       await refreshLibrary();
       paintTree();
+      paintCenter();
     },
     () => {
       state.namingShelf = false;
@@ -680,15 +743,25 @@ function paintTree() {
           toast('O nome não pode conter /.', 'erro');
           return;
         }
+        if (!(await flushNote())) return;
         const from = state.renaming.path;
         const folder = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : '';
         state.renaming = null;
         const to = `${folder}${name}.md`;
         try {
-          if (to !== from) await tool('entry.move', { from, to });
+          let moved = null;
+          if (to !== from) moved = await tool('entry.move', { from, to });
+          if (state.active === from) state.active = to;
           state.tabs = state.tabs.map((tab) => (tab === from ? to : tab));
           await refreshLibrary();
           await openNote(to);
+          const count = moved?.linksUpdated ?? moved?.updated?.length ?? 0;
+          if (count > 0) {
+            toast(`${count} link${count === 1 ? '' : 's'} atualizado${count === 1 ? '' : 's'}`, 'ok', {
+              label: 'Desfazer',
+              onClick: () => undoLastAction('Nome e links restaurados.'),
+            });
+          }
         } catch (error) {
           toast(error.message, 'erro');
         }
@@ -706,9 +779,10 @@ function paintTree() {
       async (name) => {
         const from = state.renaming.name;
         state.renaming = null;
+        let moved = null;
         if (name !== from) {
-          await flushNote();
-          await tool('entry.move', { from, to: name });
+          if (!(await flushNote())) return;
+          moved = await tool('entry.move', { from, to: name });
           const remap = (tab) => (tab === from || tab.startsWith(`${from}/`) ? `${name}${tab.slice(from.length)}` : tab);
           state.tabs = state.tabs.map(remap);
           if (state.active?.startsWith(`${from}/`) || state.active === from)
@@ -722,6 +796,13 @@ function paintTree() {
         paintTree();
         if (state.active) await openNote(state.active, { force: true });
         else paintLinks();
+        const count = moved?.linksUpdated ?? moved?.updated?.length ?? 0;
+        if (count > 0) {
+          toast(`${count} link${count === 1 ? '' : 's'} atualizado${count === 1 ? '' : 's'}`, 'ok', {
+            label: 'Desfazer',
+            onClick: () => undoLastAction('Nome e links restaurados.'),
+          });
+        }
       },
       () => {
         state.renaming = null;
@@ -779,7 +860,7 @@ function paintTabs() {
 }
 
 async function closeTab(file) {
-  if (state.active === file) await flushNote();
+  if ((state.active === file || state.canvasPath === file) && !(await flushNote())) return;
   state.tabs = state.tabs.filter((tab) => tab !== file);
   if (state.active !== file && state.canvasPath !== file) {
     paintTabs();
@@ -801,20 +882,212 @@ async function closeTab(file) {
 function setFocusMode(on) {
   state.focusMode = !!on;
   document.querySelector('#shell')?.classList.toggle('is-foco', state.focusMode);
-  const button = $('#modo-foco');
-  if (button) button.textContent = state.focusMode ? 'Sair do foco' : 'Foco';
+  document.querySelectorAll('[data-focus-toggle]').forEach((button) => {
+    button.textContent = state.focusMode ? 'Sair do foco' : 'Modo foco';
+    button.setAttribute('aria-pressed', String(state.focusMode));
+  });
+}
+
+const PROPERTY_TYPES = {
+  text: 'Texto',
+  number: 'Número',
+  select: 'Seleção',
+  multi: 'Múltipla seleção',
+  date: 'Data',
+  checkbox: 'Checkbox',
+  url: 'URL',
+};
+
+function noteLayout() {
+  const layout = state.frontmatter?.layout;
+  return {
+    font: ['default', 'serif', 'sans', 'mono'].includes(layout?.font) ? layout.font : 'default',
+    small: layout?.small === true,
+    wide: layout?.wide === true,
+  };
+}
+
+function noteProperties() {
+  return Array.isArray(state.frontmatter?.properties)
+    ? state.frontmatter.properties.filter((item) => item && PROPERTY_TYPES[item.type])
+    : [];
+}
+
+async function loadPropertyTemplates() {
+  if (state.propertyTemplates) return state.propertyTemplates;
+  const found = new Map();
+  const notes = await Promise.all(
+    (state.notes || []).slice(0, 500).map((note) =>
+      note.path === state.active
+        ? Promise.resolve({ frontmatter: state.frontmatter })
+        : tool('note.read', { path: note.path }).catch(() => null),
+    ),
+  );
+  for (const note of notes) {
+    const properties = Array.isArray(note?.frontmatter?.properties) ? note.frontmatter.properties : [];
+    for (const property of properties) {
+      if (!property?.name || !PROPERTY_TYPES[property.type]) continue;
+      const key = property.name.trim().toLocaleLowerCase();
+      if (!found.has(key)) found.set(key, { name: property.name.trim(), type: property.type, options: new Set(), uses: 0 });
+      const template = found.get(key);
+      template.uses += 1;
+      for (const option of property.options || []) if (String(option).trim()) template.options.add(String(option).trim());
+      const values = Array.isArray(property.value) ? property.value : [property.value];
+      if (property.type === 'select' || property.type === 'multi') {
+        for (const value of values) if (String(value || '').trim()) template.options.add(String(value).trim());
+      }
+    }
+  }
+  state.propertyTemplates = [...found.values()]
+    .map((template) => ({ ...template, options: [...template.options] }))
+    .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name, 'pt-BR'));
+  return state.propertyTemplates;
+}
+
+async function writeNoteFrontmatter(frontmatter) {
+  if (!state.active || !state.doc) return false;
+  const result = await tool('note.write', {
+    path: state.active,
+    body: Doc.serializeBlocks(state.doc.blocks),
+    frontmatter,
+    expectedRevision: state.revision,
+  });
+  if (result.conflict) {
+    state.conflict = true;
+    paintCenter();
+    return false;
+  }
+  state.revision = result.note.revision;
+  state.frontmatter = result.note.frontmatter;
+  state.dirty = false;
+  paintStatus();
+  return true;
+}
+
+function applyNoteLayoutClasses() {
+  const column = $('#coluna');
+  if (!column) return;
+  const layout = noteLayout();
+  column.classList.remove(
+    'nota--font-default',
+    'nota--font-serif',
+    'nota--font-sans',
+    'nota--font-mono',
+    'nota--small',
+    'nota--wide',
+  );
+  column.classList.add(`nota--font-${layout.font}`);
+  if (layout.small) column.classList.add('nota--small');
+  if (layout.wide) column.classList.add('nota--wide');
+}
+
+async function setNoteLayout(patch) {
+  const frontmatter = { ...(state.frontmatter || {}) };
+  frontmatter.layout = { ...noteLayout(), ...patch };
+  if (!(await writeNoteFrontmatter(frontmatter))) return;
+  applyNoteLayoutClasses();
+  const menu = document.querySelector('.nota-menu');
+  if (menu) {
+    const layout = noteLayout();
+    menu.querySelectorAll('[data-note-font]').forEach((button) => {
+      button.classList.toggle('is-escolhida', button.dataset.noteFont === layout.font);
+    });
+    menu.querySelectorAll('[data-note-toggle]').forEach((button) => {
+      const on = !!layout[button.dataset.noteToggle];
+      button.setAttribute('aria-pressed', String(on));
+      const mark = button.querySelector('span:last-child');
+      if (mark && button.dataset.noteToggle === 'small') mark.textContent = on ? 'Ativo' : '';
+      if (mark && button.dataset.noteToggle === 'wide') mark.textContent = on ? 'Ativa' : '';
+    });
+  }
+}
+
+async function syncNoteNameFromTitle() {
+  if (!state.active || !state.doc || state.conflict || state.renaming) return;
+  const first = state.doc.blocks[0];
+  if (!first || first.type !== 'heading' || (first.level || 1) !== 1) return;
+  const title = Doc.visibleOf(first).replace(/\n/g, ' ').trim();
+  if (!title) return;
+  const safe = title.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+  if (!safe || safe.includes('/') || safe.includes('\\')) return;
+  const from = state.active;
+  const current = baseName(from);
+  if (safe === current) return;
+  if (!(await flushNote())) return;
+  const folder = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : '';
+  const taken = state.notes.filter((note) => note.path !== from).map((note) => baseName(note.path));
+  const name = Cmd.uniqueTitle(taken, safe);
+  const to = `${folder}${name}.md`;
+  if (to === from) return;
+  try {
+    await tool('entry.move', { from, to });
+    state.active = to;
+    state.tabs = state.tabs.map((tab) => (tab === from ? to : tab));
+    await refreshLibrary();
+    paintTabs();
+    paintTree();
+    paintStatus();
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+async function setNoteProperties(properties, repaint = true) {
+  const frontmatter = { ...(state.frontmatter || {}), properties };
+  if (!properties.length) delete frontmatter.properties;
+  if (await writeNoteFrontmatter(frontmatter)) {
+    state.propertyTemplates = null;
+    if (repaint) paintCenter();
+  }
+}
+
+function syncConnectionsPanel() {
+  const panel = $('#conexoes');
+  const button = $('#abrir-conexoes');
+  if (!panel) return;
+  const forceHide = state.view === 'tasks' || state.view === 'cards';
+  const show =
+    !forceHide && (state.connectionsOpen || (state.sofiOpen && !drawerNarrow()));
+  panel.classList.toggle('is-oculta', !show);
+  if (button) {
+    button.setAttribute('aria-pressed', show ? 'true' : 'false');
+    button.title = show ? 'Ocultar conexões' : 'Conexões';
+  }
 }
 
 function openConnections() {
   const panel = $('#conexoes');
   if (!panel) return;
-  if (window.innerWidth > 1024) return;
   state.sofiOpen = false;
+  state.connectionsOpen = true;
   paintLinks();
-  panel.classList.add('is-gaveta');
-  requestAnimationFrame(() => panel.classList.add('is-aberta'));
-  ensureVeil();
+  syncConnectionsPanel();
+  if (drawerNarrow()) {
+    panel.classList.add('is-gaveta');
+    requestAnimationFrame(() => panel.classList.add('is-aberta'));
+    ensureVeil();
+  } else {
+    panel.classList.remove('is-gaveta', 'is-aberta');
+  }
   state.drawerOpener = $('#abrir-conexoes');
+}
+
+function closeConnections() {
+  state.connectionsOpen = false;
+  const panel = $('#conexoes');
+  panel?.classList.remove('is-gaveta', 'is-aberta');
+  syncConnectionsPanel();
+  if (
+    !$('#lateral')?.classList.contains('is-aberta') &&
+    !$('#sofi-gaveta')?.classList.contains('is-aberta')
+  ) {
+    $('#gaveta-veu')?.remove();
+  }
+}
+
+function toggleConnections() {
+  if (state.connectionsOpen && !$('#conexoes')?.classList.contains('is-oculta')) closeConnections();
+  else openConnections();
 }
 
 const SHELF_COLOR_NAMES = ['Índigo', 'Azul', 'Verde-água', 'Oliva', 'Ocre', 'Terracota', 'Lavanda', 'Grafite'];
@@ -957,6 +1230,180 @@ async function setCover(capa, y) {
   state.revision = result.note.revision;
   state.frontmatter = result.note.frontmatter;
   paintCenter();
+}
+
+function propertyValueHtml(property) {
+  const value = property.value;
+  if (property.type === 'checkbox')
+    return `<label class="propriedade__check"><input type="checkbox" data-property-value="${escapeHtml(property.id)}" ${value ? 'checked' : ''}><span>${value ? 'Sim' : 'Não'}</span></label>`;
+  if (property.type === 'select') {
+    return `<button type="button" class="propriedade__seletor ${value ? '' : 'is-empty'}" data-property-picker="${escapeHtml(property.id)}">${escapeHtml(value || 'Escolher ou criar…')}</button>`;
+  }
+  if (property.type === 'multi') {
+    const selected = Array.isArray(value) ? value : [];
+    return `<button type="button" class="propriedade__seletor propriedade__seletor--multi ${selected.length ? '' : 'is-empty'}" data-property-picker="${escapeHtml(property.id)}">${selected.length ? selected.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join('') : 'Escolher ou criar…'}</button>`;
+  }
+  const type = property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : property.type === 'url' ? 'url' : 'text';
+  return `<input type="${type}" data-property-value="${escapeHtml(property.id)}" value="${escapeHtml(value ?? '')}" placeholder="Vazio">`;
+}
+
+function notePropertiesHtml() {
+  const properties = noteProperties();
+  const rows = properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
+  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button></div></details>`;
+}
+
+function openPropertyValuePicker(propertyId, anchor) {
+  closeMenus();
+  const properties = noteProperties().map((item) => ({
+    ...item,
+    options: [...(item.options || [])],
+    value: Array.isArray(item.value) ? [...item.value] : item.value,
+  }));
+  const property = properties.find((item) => item.id === propertyId);
+  if (!property) return;
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante propriedade-picker';
+  menu.setAttribute('role', 'dialog');
+  menu.setAttribute('aria-label', `Preencher ${property.name}`);
+  const paint = () => {
+    const selected = Array.isArray(property.value) ? property.value : [property.value].filter(Boolean);
+    menu.innerHTML = `<div class="propriedade-picker__topo"><strong>${escapeHtml(property.name)}</strong><span>${property.type === 'multi' ? 'Escolha um ou mais valores' : 'Escolha um valor'}</span></div><div class="propriedade-picker__opcoes">${property.options.map((option) => `<button type="button" class="menu__item ${selected.includes(option) ? 'is-ativa' : ''}" data-property-option="${escapeHtml(option)}"><span>${escapeHtml(option)}</span>${selected.includes(option) ? '<span>✓</span>' : ''}</button>`).join('') || '<p class="nota-privacidade">Nenhum valor usado ainda.</p>'}</div><div class="propriedade-picker__novo"><input id="property-new-value" maxlength="80" placeholder="Criar um novo valor…"><button type="button" class="btn btn--primario" id="property-create-value">Criar</button></div>${property.type === 'multi' ? '<button type="button" class="btn btn--fantasma propriedade-picker__done" id="property-picker-done">Concluído</button>' : ''}`;
+    menu.querySelectorAll('[data-property-option]').forEach((button) => {
+      button.onclick = async () => {
+        const value = button.dataset.propertyOption;
+        if (property.type === 'multi') {
+          property.value = selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
+          await setNoteProperties(properties, false);
+          paint();
+        } else {
+          property.value = value;
+          menu.remove();
+          await setNoteProperties(properties);
+        }
+      };
+    });
+    const input = menu.querySelector('#property-new-value');
+    const create = async () => {
+      const value = input.value.trim();
+      if (!value) return;
+      const known = property.options.find((option) => option.toLocaleLowerCase() === value.toLocaleLowerCase());
+      const finalValue = known || value;
+      if (!known) property.options.push(finalValue);
+      if (property.type === 'multi') {
+        property.value = [...new Set([...(Array.isArray(property.value) ? property.value : []), finalValue])];
+      } else property.value = finalValue;
+      state.propertyTemplates = null;
+      menu.remove();
+      await setNoteProperties(properties);
+    };
+    menu.querySelector('#property-create-value').onclick = create;
+    menu.querySelector('#property-picker-done')?.addEventListener('click', () => { menu.remove(); paintCenter(); });
+    input.onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); create(); } };
+  };
+  paint();
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 328))}px`;
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 300)}px`;
+  menu.querySelector('#property-new-value')?.focus();
+}
+
+async function openPropertyEditor(existingId) {
+  closeMenus();
+  const properties = noteProperties().map((item) => ({ ...item, options: [...(item.options || [])], value: Array.isArray(item.value) ? [...item.value] : item.value }));
+  const existing = properties.find((item) => item.id === existingId);
+  const templates = existing ? [] : await loadPropertyTemplates();
+  let selectedTemplate = null;
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  const templateSection = templates.length
+    ? `<section class="propriedade-modelos"><div><strong>Usar uma propriedade existente</strong><span>Tipo e valores conhecidos vêm juntos.</span></div><div class="propriedade-modelos__lista" id="property-templates">${templates.map((template, index) => `<button type="button" class="opcao-cartao" data-property-template="${index}"><b>${escapeHtml(template.name)}</b><small>${escapeHtml(PROPERTY_TYPES[template.type])}${template.uses > 1 ? ` · usada em ${template.uses} notas` : ''}</small></button>`).join('')}</div></section>`
+    : '';
+  overlay.innerHTML = `<div class="propriedade-editor" role="dialog" aria-modal="true" aria-labelledby="property-title"><header class="propriedade-editor__topo"><div><h3 id="property-title">${existing ? 'Editar' : 'Nova'} propriedade</h3><p>${existing ? 'Altere o nome desta propriedade.' : 'Reutilize uma propriedade da biblioteca ou crie uma nova.'}</p></div><button type="button" class="btn btn--icone" id="property-close" aria-label="Fechar">×</button></header><div class="propriedade-editor__corpo">${templateSection}<label class="propriedade-editor__campo"><span>Nome</span><input id="property-name" maxlength="80" value="${escapeHtml(existing?.name || '')}" placeholder="Ex.: Época, Status ou Prazo"><small>Ao usar esse nome novamente, o Sophy oferecerá este modelo.</small></label><label class="propriedade-editor__campo"><span>Tipo</span><select id="property-type" ${existing ? 'disabled' : ''}>${Object.entries(PROPERTY_TYPES).map(([value, label]) => `<option value="${value}" ${value === (existing?.type || 'text') ? 'selected' : ''}>${label}</option>`).join('')}</select><small>${existing ? 'O tipo não pode ser alterado depois da criação.' : 'Os valores de seleção serão criados quando você preencher a propriedade.'}</small></label><p class="propriedade-editor__erro" id="property-error" role="alert"></p></div><footer class="propriedade-editor__acoes"><button type="button" class="btn btn--fantasma" id="property-cancel">Cancelar</button><button type="button" class="btn btn--primario" id="property-save">${existing ? 'Salvar alterações' : 'Adicionar propriedade'}</button></footer></div>`;
+  const type = $('#property-type');
+  overlay.querySelectorAll('[data-property-template]').forEach((button) => {
+    button.onclick = () => {
+      selectedTemplate = templates[Number(button.dataset.propertyTemplate)];
+      $('#property-name').value = selectedTemplate.name;
+      type.value = selectedTemplate.type;
+      overlay.querySelectorAll('[data-property-template]').forEach((item) => item.classList.toggle('is-escolhida', item === button));
+    };
+  });
+  $('#property-cancel').onclick = () => closePalette();
+  $('#property-close').onclick = () => closePalette();
+  overlay.onclick = (event) => { if (event.target === overlay) closePalette(); };
+  $('#property-save').onclick = async () => {
+    const name = $('#property-name').value.trim();
+    const options = [...(existing?.options || selectedTemplate?.options || [])];
+    if (!name) return ($('#property-error').textContent = 'Informe um nome.');
+    if (properties.some((item) => item.id !== existingId && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return ($('#property-error').textContent = 'Já existe uma propriedade com esse nome.');
+    if (existing) {
+      existing.name = name;
+      existing.options = options;
+    } else {
+      properties.push({
+        id: `prop-${Date.now().toString(36)}`,
+        name,
+        type: type.value,
+        options,
+        value: type.value === 'checkbox' ? false : type.value === 'multi' ? [] : '',
+      });
+    }
+    closePalette();
+    await setNoteProperties(properties);
+  };
+  $('#property-name').focus();
+}
+
+function openNoteMenu(anchor) {
+  closeMenus();
+  const layout = noteLayout();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante nota-menu';
+  menu.setAttribute('role', 'dialog');
+  menu.setAttribute('aria-label', 'Opções da nota');
+  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button>`;
+  document.body.append(menu);
+  anchor.setAttribute('aria-expanded', 'true');
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 8)}px`;
+  menu.addEventListener('mousedown', (event) => event.stopPropagation());
+  menu.querySelectorAll('[data-note-font]').forEach((button) => {
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setNoteLayout({ font: button.dataset.noteFont });
+    };
+  });
+  menu.querySelectorAll('[data-note-toggle]').forEach((button) => {
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const current = noteLayout();
+      setNoteLayout({ [button.dataset.noteToggle]: !current[button.dataset.noteToggle] });
+    };
+  });
+  menu.querySelector('#menu-properties').onclick = () => {
+    menu.remove();
+    anchor.removeAttribute('aria-expanded');
+    document.querySelector('.nota-propriedades')?.setAttribute('open', '');
+    document.querySelector('.nota-propriedades')?.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'center' });
+  };
+  menu.querySelector('#menu-cover').onclick = () => {
+    menu.remove();
+    anchor.removeAttribute('aria-expanded');
+    openCoverPicker();
+  };
+  menu.querySelector('[data-focus-toggle]').onclick = () => {
+    menu.remove();
+    anchor.removeAttribute('aria-expanded');
+    setFocusMode(!state.focusMode);
+    paintCenter();
+  };
 }
 
 function paintHome(center) {
@@ -1132,7 +1579,7 @@ function paintCenter() {
   syncNav();
   bindBlockDrag();
   syncWeekly();
-  $('#conexoes')?.classList.toggle('is-oculta', state.view === 'tasks' || state.view === 'cards');
+  syncConnectionsPanel();
 }
 
 function bindBlockDrag() {
@@ -1165,30 +1612,138 @@ function bindBlockDrag() {
 
 function canvasCardPreview(document) {
   const nodes = document?.nodes || [];
-  const text = nodes.find((node) => node.type === 'text' && node.text);
-  if (text) return Cmd.notePreviewHtml(text.text);
+  const plain = (value) =>
+    String(value || '')
+      .replace(/\[\[([^\]|#]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) => {
+        const label = (alias || target.split(/[/#]/).pop() || target).trim();
+        return label;
+      })
+      .replace(/\[\[[^\]]*$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const texts = nodes
+    .map((node) => plain(node.text))
+    .filter(Boolean);
+  if (texts.length) return `<p>${escapeHtml(texts.join(' · ').slice(0, 140))}</p>`;
   const files = nodes.filter((node) => node.type === 'file' && node.file).slice(0, 3);
-  if (!files.length) return '<p class="nota-privacidade">Quadro vazio</p>';
-  return `<p>${files.map((node) => escapeHtml(baseName(node.file))).join(' · ')}</p>`;
+  if (files.length) {
+    return `<p>${files.map((node) => escapeHtml(baseName(node.file))).join(' · ')}</p>`;
+  }
+  const count = nodes.filter((node) => node.type !== 'group').length;
+  if (count) return `<p class="nota-privacidade">${count} elemento${count === 1 ? '' : 's'}</p>`;
+  return '<p class="nota-privacidade">Quadro vazio</p>';
+}
+
+function canvasCoverId(raw) {
+  const resolved = Cmd.resolveCover({ capa: raw });
+  return resolved?.kind === 'arte' ? resolved.id : '';
+}
+
+function canvasGalleryMeta(file, document) {
+  const mark = markFor(file.workspace);
+  const tinted = (document?.nodes || []).find((node) => node.color || node.borderColor);
+  const color = tinted?.color || tinted?.borderColor || mark?.color || '';
+  return { html: canvasCardPreview(document), color, capa: canvasCoverId(document?.capa) };
+}
+
+async function setCanvasCover(file, name) {
+  const current = await tool('canvas.read', { path: file });
+  const capa = name ? `sophy:${name}` : '';
+  await tool('canvas.update', {
+    path: file,
+    document: { ...current.document, capa },
+    expectedRevision: current.revision,
+  });
+  state.canvasGalleryLoaded = false;
+  paintCenter();
+}
+
+function openCanvasCoverPicker(file, anchor) {
+  closeMenus();
+  const entry = state.canvasGallery?.[file.path];
+  const current = typeof entry === 'object' ? entry.capa || '' : '';
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante canvas-capa-menu';
+  menu.setAttribute('role', 'dialog');
+  menu.setAttribute('aria-label', 'Capa do canvas');
+  const arts = Cmd.COVER_IDS.map(
+    (id) =>
+      `<button type="button" class="capa-opcao${current === id ? ' is-escolhida' : ''}" data-cover-name="${escapeHtml(id)}"><span class="capa-opcao__arte"><svg class="capa__arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${id}"/></svg></span><span class="capa-opcao__nome">${escapeHtml(Cmd.COVER_NAMES[id] || id)}</span></button>`,
+  ).join('');
+  menu.innerHTML = `<div class="canvas-capa-menu__topo"><strong>Escolher capa</strong><button type="button" class="btn btn--fantasma" data-fechar aria-label="Fechar">×</button></div><div class="canvas-capa-menu__grade">${arts}</div><button type="button" class="menu__item" data-cover-name="">Remover capa</button>`;
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 368))}px`;
+  const top = rect.bottom + 6;
+  menu.style.top = `${top + 420 > window.innerHeight ? Math.max(8, rect.top - 420) : top}px`;
+  menu.addEventListener('mousedown', (event) => event.stopPropagation());
+  menu.querySelector('[data-fechar]').onclick = () => closeMenus();
+  menu.querySelectorAll('[data-cover-name]').forEach((button) => {
+    button.onclick = async () => {
+      closeMenus();
+      try {
+        await setCanvasCover(file, button.dataset.coverName || '');
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
+    };
+  });
 }
 
 function paintCanvasGallery(center) {
   const boards = state.canvases || [];
+  const count = boards.length;
   const cards = boards
     .map((file) => {
-      const preview = state.canvasGallery?.[file.path] || '<p class="nota-privacidade">…</p>';
-      return `<button type="button" class="canvas-cartao" data-abrir-canvas="${escapeHtml(file.path)}"><span class="canvas-cartao__previa">${preview}</span><strong>${escapeHtml(baseName(file.path))}</strong><span>${escapeHtml(file.workspace || '')}</span></button>`;
+      const entry = state.canvasGallery?.[file.path];
+      const preview =
+        typeof entry === 'string'
+          ? { html: entry || '<p class="nota-privacidade">Quadro vazio</p>', color: markFor(file.workspace)?.color || '', capa: '' }
+          : entry || { html: '<p class="nota-privacidade">…</p>', color: markFor(file.workspace)?.color || '', capa: '' };
+      const tint = preview.color ? `--cartao-cor: var(--shelf-${preview.color})` : '';
+      const capa = preview.capa
+        ? `<span class="canvas-cartao__capa" aria-hidden="true"><svg class="canvas-cartao__capa-arte" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice"><use href="#capa-${escapeHtml(preview.capa)}"/></svg></span>`
+        : '';
+      return `<article class="canvas-galeria-item"><button type="button" class="canvas-cartao${preview.capa ? ' canvas-cartao--com-capa' : ''}${preview.color ? ' canvas-cartao--com-cor' : ''}" data-abrir-canvas="${escapeHtml(file.path)}"${tint ? ` style="${tint}"` : ''}><span class="canvas-cartao__previa">${capa}${preview.html || '<p class="nota-privacidade">…</p>'}</span><span class="canvas-cartao__meta"><strong>${escapeHtml(baseName(file.path))}</strong><span>${escapeHtml(file.workspace || 'Biblioteca')}</span></span></button><div class="canvas-galeria-acoes"><button type="button" class="btn btn--secundario btn--pequeno" data-cover data-file="${escapeHtml(file.path)}">Capa</button><button type="button" class="btn btn--secundario btn--pequeno" data-trash data-file="${escapeHtml(file.path)}">Excluir</button></div></article>`;
     })
     .join('');
-  center.innerHTML = `<div class="canvas-grade"><h2>Canvas</h2>${cards || '<p>Nenhum canvas ainda.</p>'}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas">${icon('canvas')} Novo canvas</button></div>`;
+  const empty = count
+    ? ''
+    : `<div class="canvas-grade__vazio"><strong>Nenhum canvas ainda</strong><p>Crie um quadro para ligar notas, formas e ideias.</p></div>`;
+  center.innerHTML = `<div class="canvas-grade"><header class="canvas-grade__topo"><div><h2>Canvas</h2><p>${count ? `${count} quadro${count === 1 ? '' : 's'} · capas, formas e wikilinks` : 'Quadros livres para ligar ideias, notas e formas.'}</p></div><button type="button" class="btn btn--primario" id="atalho-novo-canvas">${icon('canvas')} Novo canvas</button></header>${empty}${cards}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas-card">${icon('canvas')}<strong>Novo canvas</strong><span>Começar um quadro em branco</span></button></div>`;
   center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
     button.onclick = () => openCanvas(button.dataset.abrirCanvas);
   });
-  const create = $('#atalho-novo-canvas');
-  if (create)
-    create.onclick = () => {
-      runCommand('novo-canvas');
+  center.querySelectorAll('[data-cover]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      openCanvasCoverPicker(button.dataset.file, button);
     };
+  });
+  center.querySelectorAll('[data-trash]').forEach((button) => {
+    button.onclick = async (event) => {
+      event.stopPropagation();
+      const file = button.dataset.file;
+      if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`))) return;
+      $('#overlay').hidden = true;
+      try {
+        await tool('entry.trash', { path: file });
+        state.tabs = state.tabs.filter((tab) => tab !== file);
+        state.canvasGalleryLoaded = false;
+        await refreshLibrary();
+        paintTree();
+        paintTabs();
+        paintCenter();
+        toast('Canvas movido para a lixeira.');
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
+    };
+  });
+  const create = () => runCommand('novo-canvas');
+  $('#atalho-novo-canvas')?.addEventListener('click', create);
+  $('#atalho-novo-canvas-card')?.addEventListener('click', create);
   if (!state.canvasGalleryLoaded) loadCanvasGallery();
 }
 
@@ -1198,9 +1753,13 @@ async function loadCanvasGallery() {
   for (const file of state.canvases || []) {
     try {
       const canvas = await tool('canvas.read', { path: file.path });
-      gallery[file.path] = canvasCardPreview(canvas.document);
+      gallery[file.path] = canvasGalleryMeta(file, canvas.document);
     } catch {
-      gallery[file.path] = '';
+      gallery[file.path] = {
+        html: '',
+        color: markFor(file.workspace)?.color || '',
+        capa: '',
+      };
     }
   }
   state.canvasGallery = gallery;
@@ -1283,6 +1842,25 @@ function paintCenterBody(center) {
       notes: state.notes.map((note) => ({ path: note.path, title: baseName(note.path) })),
       preview: (file) =>
         state.canvasPreviews[file] || state.canvasPreviews[file?.replace(/\.md$/i, '')],
+      peekNote: async (file) => {
+        const path = file.endsWith('.md') ? file : `${file}.md`;
+        const cached =
+          state.canvasPreviews[path] || state.canvasPreviews[path.replace(/\.md$/i, '')];
+        if (cached) return cached;
+        try {
+          const note = await tool('note.read', { path });
+          const preview = {
+            title: baseName(note.path || path),
+            body: note.body || '',
+            html: Cmd.notePreviewHtml(note.body || ''),
+            path: note.path || path,
+          };
+          state.canvasPreviews[path] = preview;
+          return preview;
+        } catch {
+          return null;
+        }
+      },
       shelf: (file) => {
         const parts = String(file || '').split('/');
         return parts.length > 1 ? markFor(parts[0]) : null;
@@ -1290,6 +1868,20 @@ function paintCenterBody(center) {
       icon,
       nextId: () => Math.random().toString(16).slice(2, 10),
       openNote: (file) => openNote(file).catch((error) => toast(error.message, 'erro')),
+      notify: (message) => toast(message),
+      brokenLink: (raw) => {
+        const inner = String(raw || '')
+          .replace(/^!?\[\[/, '')
+          .replace(/\]\]$/, '');
+        const target = Doc.linkTarget(inner);
+        const path = target.toLowerCase().endsWith('.md') ? target : `${target}.md`;
+        return !state.notes.some(
+          (note) =>
+            note.path === path ||
+            note.path.replace(/\.md$/i, '') === target ||
+            baseName(note.path).toLocaleLowerCase() === target.toLocaleLowerCase(),
+        );
+      },
       onChange: (document) => saveCanvas(document),
       undo: () => undoCanvas(),
       redo: () => redoCanvas(),
@@ -1319,8 +1911,10 @@ function paintCenterBody(center) {
     .join('');
   const cover = coverBand();
   const strip = dailyStrip(state.active);
-  const capas = cover ? '' : coverActions();
-  center.innerHTML = `${conflict}<article class="coluna" id="coluna">${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}<button type="button" class="btn btn--fantasma" id="abrir-conexoes">Conexões</button><button type="button" class="btn btn--fantasma" id="modo-foco">${state.focusMode ? 'Sair do foco' : 'Foco'}</button></div>${capas}${blocks}</article>`;
+  const layout = noteLayout();
+  const layoutClasses = [`nota--font-${layout.font}`, layout.small ? 'nota--small' : '', layout.wide ? 'nota--wide' : ''].filter(Boolean).join(' ');
+  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" aria-haspopup="true">•••</button></div>`;
+  center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}</article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   const changeCover = $('#trocar-capa');
@@ -1329,9 +1923,41 @@ function paintCenterBody(center) {
     button.onclick = () => openDailyOn(button.dataset.dia);
   });
   const focusMode = $('#modo-foco');
-  if (focusMode) focusMode.onclick = () => setFocusMode(!state.focusMode);
-  const openLinks = $('#abrir-conexoes');
-  if (openLinks) openLinks.onclick = () => openConnections();
+  if (focusMode) focusMode.onclick = () => { setFocusMode(!state.focusMode); paintCenter(); };
+  const noteMore = $('#nota-mais');
+  if (noteMore) noteMore.onclick = () => openNoteMenu(noteMore);
+  $('#adicionar-propriedade')?.addEventListener('click', () => openPropertyEditor());
+  $('#coluna').querySelectorAll('[data-property-edit]').forEach((button) => {
+    button.onclick = () => openPropertyEditor(button.dataset.propertyEdit);
+  });
+  $('#coluna').querySelectorAll('[data-property-value]').forEach((input) => {
+    input.onchange = async () => {
+      const properties = noteProperties().map((item) => ({ ...item }));
+      const property = properties.find((item) => item.id === input.dataset.propertyValue);
+      if (!property) return;
+      property.value = property.type === 'checkbox' ? input.checked : input.value;
+      await setNoteProperties(properties);
+    };
+  });
+  $('#coluna').querySelectorAll('[data-property-picker]').forEach((button) => {
+    button.onclick = () => openPropertyValuePicker(button.dataset.propertyPicker, button);
+  });
+  $('#coluna').querySelectorAll('[data-property-multi]').forEach((input) => {
+    input.onchange = async () => {
+      const properties = noteProperties().map((item) => ({ ...item, value: Array.isArray(item.value) ? [...item.value] : item.value }));
+      const property = properties.find((item) => item.id === input.dataset.propertyMulti);
+      if (!property) return;
+      property.value = [...document.querySelectorAll(`[data-property-multi="${CSS.escape(property.id)}"]:checked`)].map((item) => item.value);
+      await setNoteProperties(properties);
+    };
+  });
+  $('#coluna').querySelectorAll('[data-property-remove]').forEach((button) => {
+    button.onclick = async () => {
+      const property = noteProperties().find((item) => item.id === button.dataset.propertyRemove);
+      if (!property || !window.confirm(`Remover a propriedade “${property.name}”?`)) return;
+      await setNoteProperties(noteProperties().filter((item) => item.id !== property.id));
+    };
+  });
   $('#coluna')
     .querySelectorAll('[data-block]:not(table)')
     .forEach((el) => bindBlock(el));
@@ -1354,9 +1980,19 @@ function paintCenterBody(center) {
     ?.querySelectorAll('[data-block]')
     .forEach((block) => {
       block.addEventListener('dragover', (event) => {
-        if (event.dataTransfer.types.includes('application/x-sophy-block')) event.preventDefault();
+        if (
+          event.dataTransfer.types.includes('application/x-sophy-block') ||
+          [...event.dataTransfer.types].includes('Files')
+        )
+          event.preventDefault();
       });
       block.addEventListener('drop', (event) => {
+        if (event.dataTransfer.files?.length) {
+          event.preventDefault();
+          event.stopPropagation();
+          ingestImageBlobs(event.dataTransfer.files).catch((error) => toast(error.message, 'erro'));
+          return;
+        }
         const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
         const to = Number(block.dataset.block);
         if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
@@ -1368,14 +2004,17 @@ function paintCenterBody(center) {
         scheduleSave();
       });
     });
-  $('#coluna')
-    .querySelectorAll('[data-target]')
-    .forEach((link) => {
-      link.addEventListener('click', (event) => {
-        event.preventDefault();
-        followLink(link.dataset.target);
-      });
+  $('#coluna').addEventListener('click', (event) => {
+    const link = event.target.closest('a[data-target]');
+    if (!link) return;
+    event.preventDefault();
+    const create = link.classList.contains('wikilink--quebrado');
+    followLink(link.dataset.target, {
+      create,
+      newTab: event.ctrlKey || event.metaKey,
     });
+  });
+  bindWikiPreview($('#coluna'));
   $('#coluna')
     .querySelectorAll('[data-task]')
     .forEach((button) => {
@@ -1390,14 +2029,7 @@ function paintCenterBody(center) {
   if (state.selectTitle) {
     state.selectTitle = false;
     const title = $('#coluna .bloco--titulo');
-    if (title) {
-      title.focus();
-      const range = document.createRange();
-      range.selectNodeContents(title);
-      const selection = getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
+    if (title) placeCaret(title, 0);
   }
 }
 
@@ -1471,37 +2103,67 @@ function renderBlock(block, index) {
   }
   const text = block.raw.replace(/\n$/, '');
     const empty = text.trim() === '';
-    const hint = empty ? ' data-dica="1" data-placeholder="Digite / para comandos ou [[ para ligar uma nota"' : '';
+    const hint = empty ? ' data-dica="1" data-placeholder="Digite / para comandos"' : '';
     return `<div class="bloco-linha"><div class="bloco-alca"><button type="button" class="bloco-alca__btn bloco__mais" data-mais="${index}" aria-label="Inserir bloco abaixo">${icon('mais')}</button><button type="button" class="bloco-alca__btn bloco-alca__btn--arrastar" data-menu="${index}" aria-label="Mover ou abrir o menu do bloco">${icon('arrastar')}</button></div><p class="bloco bloco--texto" data-block="${index}"${hint} contenteditable="true">${inlineHtml(text) || '<br>'}</p></div>`;
 }
 
 function inlineHtml(text) {
-  return Doc.parseInlines(text)
-    .map((part) => {
-      if (part.type === 'bold') return `<strong>${escapeHtml(part.text)}</strong>`;
-      if (part.type === 'italic') return `<em>${escapeHtml(part.text)}</em>`;
-      if (part.type === 'strike') return `<s>${escapeHtml(part.text)}</s>`;
-      if (part.type === 'highlight') return `<mark class="marca">${escapeHtml(part.text)}</mark>`;
-      if (part.type === 'code') return `<code>${escapeHtml(part.text)}</code>`;
-      if (part.type === 'text') return escapeHtml(part.text);
-      const broken = state.outgoing.some(
-        (link) =>
-          link.raw === part.raw && (link.status === 'broken' || link.status === 'ambiguous'),
-      );
-      const cls =
-        part.type === 'wikilink' ? `wikilink${broken ? ' wikilink--quebrado' : ''}` : 'wikilink';
-      return `<a href="#" class="${cls}" contenteditable="false" data-raw="${escapeHtml(part.raw)}" data-target="${escapeHtml(part.target)}">${escapeHtml(part.label)}</a>`;
-    })
-    .join('');
+  const html = SophyWriting.inlineHtml(text, (raw) =>
+    state.outgoing.some(
+      (link) => link.raw === raw && (link.status === 'broken' || link.status === 'ambiguous'),
+    ),
+  );
+  return html.replace(/<a href="#" class="wikilink([^"]*)"([^>]*)>/g, (all, cls, attrs) => {
+    const targetMatch = attrs.match(/data-target="([^"]*)"/);
+    const target = targetMatch
+      ? targetMatch[1]
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+      : '';
+    const note = Cmd.parseWikiDraft(target).note;
+    const resolved =
+      state.outgoing.find((link) => link.path && (link.raw.includes(target) || foldText(link.path) === foldText(`${note}.md`)))
+        ?.path ||
+      state.notes.find(
+        (item) =>
+          foldText(item.path.replace(/\.md$/i, '')) === foldText(note) ||
+          foldText(baseName(item.path)) === foldText(note),
+      )?.path;
+    const shelf = resolved?.includes('/') ? resolved.split('/')[0] : null;
+    const mark = shelf ? markFor(shelf) : null;
+    const tint = mark?.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+    return `<a href="#" class="wikilink${cls}"${attrs}><span class="chip__ponto wikilink__ponto" aria-hidden="true"${tint}></span>`;
+  });
 }
 
 function bindBlock(el) {
-  el.addEventListener('input', () => onBlockInput(el));
+  el.addEventListener('compositionstart', () => { state.composing = true; });
+  el.addEventListener('compositionend', () => { state.composing = false; onBlockInput(el); });
+  el.addEventListener('input', (event) => { if (!event.isComposing && !state.composing) onBlockInput(el); });
   el.addEventListener('beforeinput', (event) => {
     if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') event.preventDefault();
+    if (event.inputType?.startsWith('insert')) {
+      el.dataset.hasContent = '1';
+      delete el.dataset.dica;
+      el.removeAttribute('data-placeholder');
+    }
   });
   el.addEventListener('keydown', (event) => onBlockKey(event, el));
   el.addEventListener('paste', (event) => onBlockPaste(event, el));
+  el.addEventListener('focus', () => {
+    if (!markdownFromDom(el).trim()) {
+      requestAnimationFrame(() => {
+        if (document.activeElement === el && !markdownFromDom(el).trim()) placeCaret(el, 0);
+      });
+    }
+  });
+  el.addEventListener('blur', () => {
+    if (el.matches('.bloco--titulo') && Number(el.dataset.block) === 0) {
+      syncNoteNameFromTitle();
+    }
+  });
   el.addEventListener('mousedown', (event) => {
     if (!event.shiftKey) state.blockRange = null;
     else {
@@ -1514,27 +2176,7 @@ function bindBlock(el) {
 }
 
 function markdownFromDom(el) {
-  if (!el) return '';
-  const walk = (node) => {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/\u200b/g, '');
-    if (node.nodeType !== Node.ELEMENT_NODE) return '';
-    if (node.dataset?.raw) return node.dataset.raw;
-    const tag = node.tagName;
-    if (tag === 'BR') return '\n';
-    const inner = [...node.childNodes].map(walk).join('');
-    if (tag === 'STRONG' || tag === 'B') return `**${inner}**`;
-    if (tag === 'EM' || tag === 'I') return `*${inner}*`;
-    if (tag === 'S' || tag === 'DEL') return `~~${inner}~~`;
-    if (tag === 'MARK') return `==${inner}==`;
-    if (tag === 'CODE') return `\`${inner}\``;
-    if (tag === 'A') {
-      const href = node.getAttribute('href') || '';
-      return `[${inner}](${href})`;
-    }
-    if (tag === 'DIV' || tag === 'P') return `\n${inner}`;
-    return inner;
-  };
-  return walk(el).replace(/^\n/, '');
+  return el ? SophyWriting.markdown(el) : '';
 }
 
 function rawFromEditor(el, block) {
@@ -1545,7 +2187,7 @@ function rawFromEditor(el, block) {
   }
   if (block.type === 'code') {
     const parts = Doc.codeParts(block.raw);
-    return Doc.codeRaw(parts.fence, parts.info, el.textContent.replace(/\n$/, ''));
+    return Doc.codeRaw(parts.fence, parts.info, el.textContent);
   }
   if (block.type === 'task' && block.task) {
     const task = { ...block.task, title: markdownFromDom(el).replace(/\n/g, ' ').trim() };
@@ -1583,19 +2225,29 @@ function wrapWidth(node) {
 }
 
 function onBlockInput(el) {
-  if (state.conflict || !state.doc || state.restoring || state.painting) return;
+  if (state.conflict || !state.doc || state.restoring || state.painting || state.richApplying || state.composing) return;
   checkpoint();
   if (el.dataset.cell != null) {
     syncTable(el.closest('table'));
     return;
   }
   const block = state.doc.blocks[Number(el.dataset.block)];
+  SophyWriting.normalizeInline(el);
   if (block && block.type !== 'code') renderClosedMarks(el);
   if (promoteBlock(el)) return;
   const index = Number(el.dataset.block);
   state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
   const cursor = modelOffset(el);
   const text = readEditable(el);
+  if (text.trim()) {
+    el.dataset.hasContent = '1';
+    delete el.dataset.dica;
+    el.removeAttribute('data-placeholder');
+  } else if (el.matches('.bloco--texto')) {
+    delete el.dataset.hasContent;
+    el.dataset.dica = '1';
+    el.dataset.placeholder = 'Digite / para comandos';
+  }
   const found = slash.offer(text, cursor);
   const wiki = Cmd.wikiQuery(text, cursor);
   if (found) showSlash(el, found);
@@ -1783,6 +2435,7 @@ function applyEditorSnap(snap) {
 
 function undoDoc() {
   if (!state.doc) return;
+  clearTimeout(state.undoTimer);
   state.editorPast = state.editorPast || [];
   state.editorFuture = state.editorFuture || [];
   const current = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
@@ -1795,6 +2448,7 @@ function undoDoc() {
 }
 
 function redoDoc() {
+  clearTimeout(state.undoTimer);
   const snap = state.editorFuture?.pop();
   if (!snap || !state.doc) return;
   const current = JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })));
@@ -1827,6 +2481,7 @@ function paintBlockSelection() {
 }
 
 function onBlockKey(event, el) {
+  if (Writing.key(event, el)) return;
   const menu = $('.menu-flutuante');
   if (event.key === 'Escape') {
     const text = readEditable(el);
@@ -1886,7 +2541,7 @@ function onBlockKey(event, el) {
     scheduleSave();
     return;
   }
-  if (menu && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter')) {
+  if (menu && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === 'Tab')) {
     const items = [...menu.querySelectorAll('[role="option"], .menu__item')];
     const current = items.findIndex((item) => item.getAttribute('aria-selected') === 'true');
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -1899,7 +2554,7 @@ function onBlockKey(event, el) {
         ),
       );
     }
-    if (event.key === 'Enter' && current >= 0) {
+    if ((event.key === 'Enter' || event.key === 'Tab') && current >= 0) {
       event.preventDefault();
       items[current].click();
     }
@@ -2021,14 +2676,29 @@ function onBlockKey(event, el) {
     scheduleSave();
     return;
   }
-  if (event.key === 'Delete' && !event.metaKey && !event.ctrlKey && modelOffset(el) >= markdownFromDom(el).length) {
-    event.preventDefault();
-    checkpoint(true);
-    const result = Doc.joinForward(state.doc, index);
-    state.doc = result.doc;
-    state.caret = result.caret;
-    paintCenter();
-    scheduleSave();
+  if (event.key === 'Delete' && !event.metaKey && !event.ctrlKey) {
+    const text = markdownFromDom(el);
+    const offset = modelOffset(el);
+    if (!text.trim() && offset === 0) {
+      event.preventDefault();
+      if (index <= 0) return;
+      checkpoint(true);
+      const result = Doc.joinBlocks(state.doc, index);
+      state.doc = result.doc;
+      state.caret = result.caret;
+      paintCenter();
+      scheduleSave();
+      return;
+    }
+    if (offset >= text.length) {
+      event.preventDefault();
+      checkpoint(true);
+      const result = Doc.joinForward(state.doc, index);
+      state.doc = result.doc;
+      state.caret = result.caret;
+      paintCenter();
+      scheduleSave();
+    }
   }
 }
 
@@ -2048,9 +2718,25 @@ function spliceParsed(doc, index, offset, text) {
 }
 
 function onBlockPaste(event, el) {
+  const files = event.clipboardData?.files;
+  if (files?.length) {
+    event.preventDefault();
+    ingestImageBlobs(files).catch((error) => toast(error.message, 'erro'));
+    return;
+  }
+  const items = [...(event.clipboardData?.items || [])].filter((item) => item.type.startsWith('image/'));
+  if (items.length) {
+    event.preventDefault();
+    const blobs = items.map((item) => item.getAsFile()).filter(Boolean);
+    ingestImageBlobs(blobs).catch((error) => toast(error.message, 'erro'));
+    return;
+  }
+  if (Writing.paste(event, el)) return;
   const text = event.clipboardData?.getData('text/plain');
   if (text == null) return;
   event.preventDefault();
+  if (Writing.replaceAcross(text)) return;
+  el = document.activeElement?.matches('[data-block][contenteditable="true"]') ? document.activeElement : el;
   const index = Number(el.dataset.block);
   const range = selectionOffsets(el);
   const start = Math.min(range.start, range.end);
@@ -2078,6 +2764,8 @@ function onBlockPaste(event, el) {
 }
 
 function formatBlock(el, prefix, suffix) {
+  if (Writing.format(prefix)) return;
+  if (prefix === '[') { editWritingLink(el); return; }
   const index = Number(el.dataset.block);
   checkpoint(true);
   const range = selectionOffsets(el);
@@ -2085,6 +2773,7 @@ function formatBlock(el, prefix, suffix) {
   state.wrapping = true;
   state.doc = result.doc;
   state.caret = result.caret;
+  scheduleSave();
   setTimeout(() => {
     paintCenter();
     saveNow();
@@ -2185,6 +2874,12 @@ function placeCaret(el, offset) {
       return false;
     }
     if (current.tagName === 'BR') {
+      if (left <= 0) {
+        range.setStartBefore(current);
+        range.collapse(true);
+        left = -1;
+        return true;
+      }
       left -= 1;
       if (left <= 0) {
         range.setStartAfter(current);
@@ -2219,6 +2914,11 @@ function placeCaret(el, offset) {
 function showSlash(el, found) {
   const items = Cmd.filterSlash(Cmd.SLASH_ITEMS, found.query);
   openMenu(el, 'menu menu--blocos menu-flutuante', renderSlash(items), (item) => {
+    if (item.id === 'imagem') {
+      insertAt(el, found.start, found.start + 1 + found.query.length, '');
+      pickAndInsertImages().catch((error) => toast(error.message, 'erro'));
+      return;
+    }
     insertAt(
       el,
       found.start,
@@ -2240,23 +2940,98 @@ function renderSlash(items) {
 }
 
 function showWiki(el, found) {
-  const needle = found.query.toLocaleLowerCase();
-  const matches = state.notes
-    .filter(
+  const draft = Cmd.parseWikiDraft(found.query);
+  const catalog = state.linkCatalog.length ? state.linkCatalog : state.notes.map((note) => ({
+    path: note.path,
+    title: baseName(note.path),
+    aliases: [],
+    headings: [],
+    blockIds: [],
+    workspace: note.workspace,
+    modifiedAt: note.modifiedAt || 0,
+  }));
+  const shelf = state.active?.includes('/') ? state.active.slice(0, state.active.indexOf('/')) : null;
+  const recent = new Set(state.recentNotes || []);
+
+  if (draft.hasHash && draft.note) {
+    const target = catalog.find(
       (note) =>
-        !needle ||
-        foldText(note.path).includes(foldText(needle)) ||
-        foldText(baseName(note.path)).includes(foldText(needle)),
-    )
-    .slice(0, 8);
-  const rows = matches
+        foldText(note.path.replace(/\.md$/i, '')) === foldText(draft.note) ||
+        foldText(baseName(note.path)) === foldText(draft.note),
+    );
+    const anchorNeedle = foldText(draft.anchor.replace(/^\^/, ''));
+    const sectionRows = (target?.headings || [])
+      .filter((heading) => !anchorNeedle || foldText(heading).includes(anchorNeedle))
+      .slice(0, 10)
+      .map(
+        (heading) =>
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#${escapeHtml(heading)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">${highlight(heading, draft.anchor)}</span><span class="menu__caminho">Seção</span></span></button>`,
+      );
+    const blockRows = (target?.blockIds || [])
+      .filter((id) => !draft.anchor || draft.anchor.startsWith('^') ? foldText(id).includes(anchorNeedle) : foldText(id).includes(anchorNeedle))
+      .slice(0, 8)
+      .map(
+        (id) =>
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#^${escapeHtml(id)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">^${escapeHtml(id)}</span><span class="menu__caminho">Bloco</span></span></button>`,
+      );
+    const aliasHint = draft.hasPipe
+      ? ''
+      : `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}${draft.anchor ? `#${escapeHtml(draft.anchor)}` : ''}|]]">${icon('link')}<span><span class="menu__titulo">Definir texto do link</span><span class="menu__caminho">Adiciona |apelido</span></span></button>`;
+    const hashHtml = sectionRows.join('') + blockRows.join('') + aliasHint;
+    openMenu(
+      el,
+      'menu menu--wiki menu-flutuante',
+      hashHtml || '<p class="menu__nota">Nenhuma seção nesta nota.</p>',
+      (button) => {
+        insertAt(el, found.start, found.start + 2 + found.query.length, button.dataset.insert);
+      },
+    );
+    return;
+  }
+
+  if (draft.hasPipe && draft.note && !draft.hasHash) {
+    const label = draft.alias || '';
+    openMenu(
+      el,
+      'menu menu--wiki menu-flutuante',
+      `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}|${escapeHtml(label)}]]">${icon('link')}<span><span class="menu__titulo">${escapeHtml(label || 'Texto do link')}</span><span class="menu__caminho">[[${escapeHtml(draft.note)}|…]]</span></span></button>`,
+      (button) => insertAt(el, found.start, found.start + 2 + found.query.length, button.dataset.insert),
+    );
+    return;
+  }
+
+  const needle = draft.note;
+  const scored = catalog
     .map((note) => {
-      const title = highlight(baseName(note.path), found.query);
-      return `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(note.path.replace(/\.md$/i, ''))}]]">
-        ${icon('nota')}<span><span class="menu__titulo">${title}</span><span class="menu__caminho">${escapeHtml(note.workspace || 'Biblioteca')}</span></span></button>`;
+      const title = note.title || baseName(note.path);
+      const score = Cmd.fuzzyScore(needle, title, baseName(note.path), note.path, ...(note.aliases || []));
+      const near = shelf && note.workspace === shelf ? 40 : 0;
+      const recentBoost = recent.has(note.path) ? 30 : 0;
+      return { note, title, score: score + near + recentBoost, recent: recent.has(note.path) };
+    })
+    .filter((row) => !needle || row.score > 0)
+    .sort((a, b) => b.score - a.score || (b.note.modifiedAt || 0) - (a.note.modifiedAt || 0))
+    .slice(0, 10);
+
+  const rows = scored
+    .map((row) => {
+      const mark = row.note.workspace ? markFor(row.note.workspace) : null;
+      const tint = mark?.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+      const alias = (row.note.aliases || []).find((item) => Cmd.fuzzyScore(needle, item) > 0);
+      const target = row.note.path.replace(/\.md$/i, '');
+      const insert = draft.alias != null ? `[[${target}|${draft.alias}]]` : `[[${target}]]`;
+      return `<button type="button" class="menu__item" role="option" data-insert="${escapeHtml(insert)}">
+        <span class="chip__ponto" aria-hidden="true"${tint}></span>
+        <span><span class="menu__titulo">${highlight(row.title, needle)}</span>
+        <span class="menu__caminho">${escapeHtml(row.note.workspace || 'Biblioteca')}${alias ? ` · ${escapeHtml(alias)}` : ''} · ${escapeHtml(target)}</span></span>
+        ${row.recent ? '<span class="menu__quando">recente</span>' : ''}</button>`;
     })
     .join('');
-  const create = `<button type="button" class="menu__item" role="option" data-create="${escapeHtml(found.query)}">${icon('nota-nova')} Criar nota “${escapeHtml(found.query || 'sem título')}”</button>`;
+  const createLabel = needle || 'sem título';
+  const create = needle
+    ? `<button type="button" class="menu__item" role="option" data-create="${escapeHtml(needle)}">${icon('nota-nova')} Criar nota “${escapeHtml(createLabel)}”</button>
+       <div class="menu__rodape"><span><kbd class="kbd">#</kbd> seção</span><span><kbd class="kbd">|</kbd> texto do link</span></div>`
+    : `<div class="menu__rodape"><span><kbd class="kbd">#</kbd> seção</span><span><kbd class="kbd">|</kbd> texto do link</span></div>`;
   openMenu(el, 'menu menu--wiki menu-flutuante', rows + create, (button) => {
     if (button.dataset.create != null) {
       createFromWiki(el, found, button.dataset.create);
@@ -2281,6 +3056,38 @@ function highlight(text, query) {
   return `${escapeHtml(text.slice(0, at))}<mark>${escapeHtml(text.slice(at, at + query.length))}</mark>${escapeHtml(text.slice(at + query.length))}`;
 }
 
+function caretClientRect(anchor) {
+  const selection = getSelection();
+  if (selection?.rangeCount && anchor.contains?.(selection.anchorNode)) {
+    const range = selection.getRangeAt(0).cloneRange();
+    range.collapse(true);
+    const rects = range.getClientRects();
+    if (rects.length) return rects[0];
+    const box = range.getBoundingClientRect();
+    if (box.width || box.height || box.top || box.left) return box;
+  }
+  return anchor.getBoundingClientRect();
+}
+
+function placeFloatingMenu(menu, anchorRect) {
+  menu.style.position = 'fixed';
+  menu.style.zIndex = '46';
+  const pad = 10;
+  const width = menu.offsetWidth || 320;
+  const height = menu.offsetHeight || 200;
+  const left = Math.min(Math.max(pad, anchorRect.left), Math.max(pad, window.innerWidth - width - pad));
+  const gap = 8;
+  const below = anchorRect.bottom + gap;
+  const above = anchorRect.top - height - gap;
+  const fitsBelow = below + height <= window.innerHeight - pad;
+  const fitsAbove = above >= pad;
+  let top = fitsBelow ? below : fitsAbove ? above : Math.max(pad, window.innerHeight - height - pad);
+  if (top + height > window.innerHeight - pad) top = Math.max(pad, window.innerHeight - height - pad);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.dataset.placement = fitsBelow || !fitsAbove ? 'below' : 'above';
+}
+
 function openMenu(anchor, className, html, onPick) {
   closeMenus();
   if (!html) return;
@@ -2289,9 +3096,7 @@ function openMenu(anchor, className, html, onPick) {
   menu.setAttribute('role', 'listbox');
   menu.innerHTML = html;
   document.body.append(menu);
-  const rect = anchor.getBoundingClientRect();
-  menu.style.left = `${Math.min(rect.left, window.innerWidth - menu.offsetWidth - 12)}px`;
-  menu.style.top = `${rect.bottom + 8}px`;
+  placeFloatingMenu(menu, caretClientRect(anchor));
   const first = menu.querySelector('.menu__item');
   if (first) first.setAttribute('aria-selected', 'true');
   menu.querySelectorAll('.menu__item').forEach((button) => {
@@ -2303,7 +3108,12 @@ function openMenu(anchor, className, html, onPick) {
 }
 
 function closeMenus() {
-  document.querySelectorAll('.menu-flutuante, .seletor-capa').forEach((menu) => menu.remove());
+  document.querySelectorAll('#nota-mais[aria-expanded="true"]').forEach((button) => {
+    button.removeAttribute('aria-expanded');
+  });
+  document.querySelectorAll('.menu-flutuante, .seletor-capa').forEach((menu) => {
+    if (menu.getAttribute('aria-label') !== 'Conflito') menu.remove();
+  });
 }
 
 function insertAt(el, start, end, text) {
@@ -2388,22 +3198,169 @@ function cycleTask(index) {
   scheduleSave();
 }
 
-async function followLink(target) {
+async function followLink(target, options = {}) {
   if (!target) return;
-  const resolved = state.outgoing.find(
-    (link) => link.status === 'resolved' && (link.raw || '').includes(target),
+  if (/^(https?:\/\/|mailto:)/i.test(target)) {
+    const response = await sophy.openExternal(target);
+    if (!response.ok) toast(response.error, 'erro');
+    return;
+  }
+  const draft = Cmd.parseWikiDraft(String(target).replace(/^!?\[\[|\]\]$/g, ''));
+  const clean = draft.note.replace(/\.md$/i, '').trim();
+  const needle = foldText(clean);
+  const outgoing = state.outgoing.find(
+    (link) =>
+      link.status === 'resolved' &&
+      (foldText(link.path || '') === `${needle}.md` ||
+        foldText(link.path || '') === needle ||
+        foldText(link.display || '') === needle ||
+        (link.raw || '').includes(target)),
   );
-  const path = resolved?.path || (target.endsWith('.md') ? target : `${target}.md`);
+  const shelf = state.active?.includes('/') ? state.active.slice(0, state.active.indexOf('/')) : null;
+  const byName = state.notes
+    .filter(
+      (note) =>
+        foldText(note.path.replace(/\.md$/i, '')) === needle ||
+        foldText(baseName(note.path)) === foldText(clean.split('/').pop()),
+    )
+    .sort((a, b) => {
+      const aNear = shelf && a.workspace === shelf ? 0 : 1;
+      const bNear = shelf && b.workspace === shelf ? 0 : 1;
+      return aNear - bNear;
+    });
+  let path = outgoing?.path || (byName.length === 1 ? byName[0].path : null) || (clean.includes('/') ? `${clean}.md` : null);
+  if (!path && options.create !== false && clean) {
+    const folder = shelf ? `${shelf}/` : '';
+    path = `${folder}${clean.split('/').pop()}.md`;
+    try {
+      await tool('note.create', { path, body: `# ${baseName(path)}\n\n` });
+      await refreshLibrary();
+      toast(`Nota “${baseName(path)}” criada.`);
+    } catch (error) {
+      if (!/já existe/i.test(error.message || '')) {
+        toast(error.message, 'erro');
+        return;
+      }
+    }
+  }
+  if (!path) {
+    toast('Não encontrei essa nota.', 'erro');
+    return;
+  }
   try {
+    if (options.newTab && state.active && !state.tabs.includes(path)) {
+      state.tabs = [...state.tabs, path];
+      paintTabs();
+    }
     await openNote(path);
+    rememberRecent(path);
   } catch {
     toast('Não encontrei essa nota.', 'erro');
   }
 }
 
+function rememberRecent(path) {
+  if (!path) return;
+  state.recentNotes = [path, ...(state.recentNotes || []).filter((item) => item !== path)].slice(0, 12);
+}
+
+let wikiPreviewTimer = 0;
+let wikiPreviewEl = null;
+let wikiPreviewLink = null;
+
+function closeWikiPreview() {
+  clearTimeout(wikiPreviewTimer);
+  wikiPreviewTimer = 0;
+  wikiPreviewLink = null;
+  wikiPreviewEl?.remove();
+  wikiPreviewEl = null;
+}
+
+function bindWikiPreview(host) {
+  if (!host || host.dataset.wikiPreviewBound) return;
+  host.dataset.wikiPreviewBound = '1';
+  host.addEventListener('pointerover', (event) => {
+    const link = event.target.closest('a.wikilink[data-target]');
+    if (!link || link.classList.contains('wikilink--quebrado')) return;
+    if (wikiPreviewLink === link) return;
+    closeWikiPreview();
+    wikiPreviewLink = link;
+    wikiPreviewTimer = setTimeout(() => showWikiPreview(link), 400);
+  });
+  host.addEventListener('pointerout', (event) => {
+    const link = event.target.closest('a.wikilink[data-target]');
+    if (!link || link !== wikiPreviewLink) return;
+    if (wikiPreviewEl?.contains(event.relatedTarget)) return;
+    closeWikiPreview();
+  });
+}
+
+async function showWikiPreview(link) {
+  if (!link?.isConnected) return;
+  const target = link.dataset.target || '';
+  const draft = Cmd.parseWikiDraft(target);
+  const notePath =
+    state.outgoing.find((item) => item.path && item.raw.includes(target))?.path ||
+    state.notes.find(
+      (note) =>
+        foldText(note.path.replace(/\.md$/i, '')) === foldText(draft.note) ||
+        foldText(baseName(note.path)) === foldText(draft.note),
+    )?.path;
+  if (!notePath) return;
+  let note;
+  try {
+    note = await tool('note.read', { path: notePath });
+  } catch {
+    return;
+  }
+  if (wikiPreviewLink !== link) return;
+  const cover = Cmd.resolveCover(note.frontmatter);
+  const lines = String(note.body || '')
+    .replace(/^\uFEFF?---[\s\S]*?---\r?\n/, '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/!?\[\[[^\[\]\n]+\]\]/g, (raw) => raw.replace(/^!?\[\[|\]\]$/g, '').split('|').pop()))
+    .filter((line) => line.trim() && !line.trim().startsWith('#'))
+    .slice(0, 4)
+    .map((line) => escapeHtml(line))
+    .join('<br>');
+  const card = document.createElement('section');
+  card.className = 'wiki-previa menu-flutuante';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', 'Prévia da nota');
+  const coverHtml = cover
+    ? cover.kind === 'cor'
+      ? `<div class="wiki-previa__capa wiki-previa__capa--cor" style="--capa-tinta:${cover.color === 'estante' ? noteShelfColor() : `var(--shelf-${cover.color})`}"></div>`
+      : cover.kind === 'arte'
+        ? `<div class="wiki-previa__capa"><svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${escapeHtml(cover.id)}"/></svg></div>`
+        : ''
+    : '';
+  card.innerHTML = `${coverHtml}<strong class="wiki-previa__titulo">${escapeHtml(baseName(notePath))}</strong><p class="wiki-previa__texto">${lines || 'Nota vazia.'}</p>`;
+  document.body.append(card);
+  wikiPreviewEl = card;
+  const rect = link.getBoundingClientRect();
+  const width = 320;
+  card.style.width = `${width}px`;
+  card.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`;
+  const top = rect.bottom + 8;
+  card.style.top = `${Math.max(12, Math.min(top, window.innerHeight - card.offsetHeight - 12))}px`;
+  card.addEventListener('pointerleave', closeWikiPreview);
+}
+
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.key === 'Escape' && wikiPreviewEl) {
+      event.preventDefault();
+      closeWikiPreview();
+    }
+  },
+  true,
+);
+
 function scheduleSave() {
   clearTimeout(saveTimer);
   state.dirty = true;
+  state.editSeq = (state.editSeq || 0) + 1;
   const status = $('#st-estado');
   if (status) status.textContent = 'Alterações locais';
   saveTimer = setTimeout(saveNow, 500);
@@ -2416,7 +3373,10 @@ async function saveNow() {
 }
 
 async function saveNowBody() {
-  if (!state.active || !state.doc || state.conflict) return;
+  if (!state.active || !state.doc) return true;
+  if (state.conflict) return false;
+  if (!state.dirty) return true;
+  const editSeq = state.editSeq;
   const path = state.active;
   const revision = state.revision;
   const body = Doc.serializeBlocks(state.doc.blocks);
@@ -2428,16 +3388,16 @@ async function saveNowBody() {
       body,
       expectedRevision: revision,
     });
-    if (state.active !== path) return;
+    if (state.active !== path) return false;
     if (result.conflict) {
       state.conflict = true;
       paintCenter();
       paintStatus();
-      return;
+      return false;
     }
     state.revision = result.note.revision;
     state.conflict = false;
-    if (!saveTimer) state.dirty = false;
+    if (state.editSeq === editSeq) state.dirty = false;
     const status = $('#st-estado');
     if (status) status.textContent = 'Salvo';
     state.notes = await tool('note.list', {});
@@ -2447,18 +3407,66 @@ async function saveNowBody() {
       state.linkSig = links;
       await loadLinks();
     }
+    return !state.dirty;
   } catch (error) {
     toast(error.message, 'erro');
+    return false;
   }
 }
 
+// Every transition checks this result before replacing the editor or session.
 async function flushNote() {
-  if (state.active && state.doc && !state.conflict) await saveNow();
   clearTimeout(saveTimer);
+  saveTimer = 0;
+  const canvasActive = !!state.canvasPath && !state.active;
+  if (canvasActive) {
+    await canvasJob;
+    if (!state.canvasDirty && !state.conflict) return true;
+    if (!state.conflict) return false;
+  } else {
+    if (!state.active || !state.doc) return true;
+    if (!state.conflict && await saveNow()) return true;
+    if (!state.conflict) return false;
+  }
+  const choice = await askConflict();
+  if (choice === 'ficar') return false;
+  try {
+    if (canvasActive) {
+      const disk = await tool('canvas.read', { path: state.canvasPath });
+      if (choice === 'manter') {
+        const result = await tool('canvas.update', { path: state.canvasPath, document: state.canvasDoc, expectedRevision: disk.revision });
+        if (result.conflict) return false;
+        state.canvasRevision = result.canvas.revision;
+      } else {
+        state.canvasDoc = disk.document;
+        state.canvasRevision = disk.revision;
+      }
+      state.canvasDirty = false;
+    } else {
+      const disk = await tool('note.read', { path: state.active });
+      if (choice === 'manter') {
+        const editSeq = state.editSeq;
+        const result = await tool('note.write', { path: state.active, body: Doc.serializeBlocks(state.doc.blocks), expectedRevision: disk.revision });
+        if (result.conflict || editSeq !== state.editSeq) return false;
+        state.revision = result.note.revision;
+      } else {
+        state.doc = Doc.parseBody(disk.body);
+        state.revision = disk.revision;
+      }
+    }
+    state.conflict = false;
+    state.dirty = false;
+    paintCenter();
+    paintStatus();
+    return true;
+  } catch (error) {
+    toast(error.message, 'erro');
+    return false;
+  }
 }
 
 async function openCanvas(file) {
-  await flushNote();
+  if (!(await flushNote())) return;
   let canvas;
   try {
     canvas = await tool('canvas.read', { path: file });
@@ -2503,24 +3511,42 @@ async function openCanvas(file) {
 
 let keepCanvasRedo = false;
 
+let canvasJob = Promise.resolve();
 async function saveCanvas(document) {
-  if (!state.canvasPath) return;
-  const result = await tool('canvas.update', {
-    path: state.canvasPath,
-    document,
-    expectedRevision: state.canvasRevision,
+  const canvasPath = state.canvasPath;
+  const editSeq = state.canvasEditSeq = (state.canvasEditSeq || 0) + 1;
+  state.canvasDoc = structuredClone(document);
+  state.canvasDirty = true;
+  const run = canvasJob.then(async () => {
+    if (!canvasPath || state.canvasPath !== canvasPath) return false;
+    try {
+      const result = await tool('canvas.update', {
+        path: canvasPath,
+        document,
+        expectedRevision: state.canvasRevision,
+      });
+      if (result.conflict) {
+        state.conflict = true;
+        toast('O canvas mudou desde a leitura. Nada foi gravado.', 'erro');
+        return false;
+      }
+      if (!keepCanvasRedo) state.canvasRedo = [];
+      state.conflict = false;
+      state.canvasRevision = result.canvas.revision;
+      if (state.canvasEditSeq === editSeq) {
+        state.canvasDoc = result.canvas.document;
+        state.canvasDirty = false;
+      }
+      const status = $('#st-estado');
+      if (status) status.textContent = 'Salvo';
+      return true;
+    } catch (error) {
+      toast(error.message, 'erro');
+      return false;
+    }
   });
-  if (result.conflict) {
-    state.conflict = true;
-    toast('O canvas mudou desde a leitura. Nada foi gravado.', 'erro');
-    return;
-  }
-  if (!keepCanvasRedo) state.canvasRedo = [];
-  state.conflict = false;
-  state.canvasRevision = result.canvas.revision;
-  state.canvasDoc = result.canvas.document;
-  const status = $('#st-estado');
-  if (status) status.textContent = 'Salvo';
+  canvasJob = run.catch(() => false);
+  return run;
 }
 
 async function undoCanvas() {
@@ -2546,12 +3572,16 @@ async function redoCanvas() {
   await openCanvas(state.canvasPath);
 }
 
+let conflictChoice = null;
 function askConflict() {
+  if (conflictChoice) return conflictChoice;
+  sophy.attention?.();
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Conflito"><p>Esta nota mudou fora do Sophy. Manter a minha versão grava o texto da tela por cima do arquivo.</p><button type="button" id="conflito-manter">Manter a minha</button><button type="button" id="conflito-descartar">Descartar a minha</button><button type="button" id="conflito-ficar">Ficar nesta nota</button></div>`;
-  return new Promise((resolve) => {
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Conflito"><p>Este arquivo mudou fora do Sophy. Manter grava a versão local por cima do arquivo.</p><button type="button" id="conflito-manter">Manter</button><button type="button" class="btn btn--perigo" id="conflito-descartar">Descartar</button><button type="button" id="conflito-ficar">Cancelar</button></div>`;
+  conflictChoice = new Promise((resolve) => {
     const done = (choice) => {
+      conflictChoice = null;
       document.removeEventListener('keydown', onKey, true);
       overlay.hidden = true;
       resolve(choice);
@@ -2566,39 +3596,18 @@ function askConflict() {
     $('#conflito-manter').onclick = () => done('manter');
     $('#conflito-descartar').onclick = () => done('descartar');
     $('#conflito-ficar').onclick = () => done('ficar');
+    $('#conflito-ficar').focus();
   });
+  return conflictChoice;
 }
 
 async function openNote(file, options = {}) {
   const token = ++state.openSeq;
   const same = state.active === file;
   const unsaved = !!saveTimer || state.dirty;
-  if (sophy.testing && window.__sophySlowOpen) {
-    const wait = window.__sophySlowOpen;
-    window.__sophySlowOpen = 0;
-    await new Promise((resolve) => setTimeout(resolve, wait));
-    if (token !== state.openSeq) return;
+  if ((state.canvasPath && state.view === 'canvas') || (state.active && state.doc && (!same || unsaved))) {
+    if (!(await flushNote())) return;
   }
-  if (state.conflict && state.active && state.active !== file && !options.force) {
-    const choice = await askConflict();
-    if (token !== state.openSeq) return;
-    if (choice === 'ficar') return;
-    if (choice === 'manter') {
-      const disk = await tool('note.read', { path: state.active });
-      const body = Doc.serializeBlocks(state.doc.blocks);
-      const kept = await tool('note.write', {
-        path: state.active,
-        body,
-        expectedRevision: disk.revision,
-      });
-      if (kept.conflict) return;
-    }
-    state.conflict = false;
-    state.dirty = false;
-    clearTimeout(saveTimer);
-    saveTimer = 0;
-  }
-  if (state.active && state.doc && !state.conflict && (!same || unsaved)) await saveNow();
   if (token !== state.openSeq) return;
   if (same && unsaved && !options.force && !state.conflict) return;
   if (state.dirty && !options.force) return;
@@ -2609,9 +3618,11 @@ async function openNote(file, options = {}) {
   if (state.dirty && !options.force) return;
   state.dirty = false;
   state.active = note.path;
+  state.canvasPath = null;
   state.treeFocus = 'note';
   state.view = 'note';
   state.doc = Doc.parseBody(note.body);
+  clearTimeout(state.undoTimer);
   state.editorPast = [JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })))];
   state.editorFuture = [];
   state.undoOpen = false;
@@ -2624,6 +3635,7 @@ async function openNote(file, options = {}) {
   }
   await loadLinks();
   if (token !== state.openSeq) return;
+  rememberRecent(note.path);
   paintTabs();
   paintTree();
   paintCenter();
@@ -2644,6 +3656,31 @@ async function loadLinks() {
   } catch {
     state.backlinks = [];
   }
+  try {
+    state.unlinkedMentions = await tool('mention.unlinked', {});
+  } catch {
+    state.unlinkedMentions = [];
+  }
+}
+
+function isImageEmbedTarget(target) {
+  return /\.(png|jpe?g|webp|gif|svg)$/i.test(String(target || '').split('|')[0].trim());
+}
+
+function attachmentFolderForActiveNote() {
+  if (!state.active || !state.active.includes('/')) return '';
+  return state.active.slice(0, state.active.lastIndexOf('/'));
+}
+
+function resolveEmbedPath(target) {
+  const clean = String(target || '')
+    .split('|')[0]
+    .trim()
+    .replace(/\\/g, '/');
+  if (!clean) return '';
+  if (clean.includes('/') || clean.startsWith('Anexos/')) return clean;
+  const folder = attachmentFolderForActiveNote();
+  return folder ? `${folder}/${clean}` : clean;
 }
 
 async function fillEmbeds() {
@@ -2651,14 +3688,90 @@ async function fillEmbeds() {
   if (!column) return;
   for (const figure of column.querySelectorAll('[data-embed]')) {
     const target = figure.dataset.embed;
+    const body = figure.querySelector('.embed__corpo');
+    if (!body) continue;
+    if (isImageEmbedTarget(target)) {
+      figure.classList.add('embed--imagem');
+      try {
+        const asset = await tool('attachment.read', { path: resolveEmbedPath(target) });
+        body.innerHTML = `<img class="embed__img" src="${asset.dataUrl}" alt="${escapeHtml(target.split('/').pop() || 'imagem')}">`;
+      } catch {
+        body.textContent = 'Imagem não encontrada.';
+      }
+      continue;
+    }
+    figure.classList.remove('embed--imagem');
     const path = target.endsWith('.md') ? target : `${target}.md`;
     try {
       const note = await tool('note.read', { path });
-      figure.querySelector('.embed__corpo').textContent = note.body.slice(0, 400);
+      body.textContent = note.body.slice(0, 400);
     } catch {
-      figure.querySelector('.embed__corpo').textContent = 'Anexo ou nota ainda não encontrada.';
+      body.textContent = 'Anexo ou nota ainda não encontrada.';
     }
   }
+}
+
+function insertEmbedBlocks(paths) {
+  if (!state.doc || !paths.length) return;
+  const active = document.activeElement?.closest?.('#coluna [data-block][contenteditable="true"]');
+  let index = active ? Number(active.dataset.block) : state.doc.blocks.length - 1;
+  if (!Number.isFinite(index) || index < 0) index = Math.max(0, state.doc.blocks.length - 1);
+  checkpoint(true);
+  const embeds = paths.map((file) => ({ type: 'paragraph', raw: `![[${file}]]\n` }));
+  const blocks = state.doc.blocks.slice();
+  const current = blocks[index];
+  const empty = current && (current.type === 'paragraph' || current.type === 'blank') && !Doc.visibleOf(current).trim();
+  if (empty) blocks.splice(index, 1, ...embeds, { type: 'paragraph', raw: '\n' });
+  else blocks.splice(index + 1, 0, ...embeds, { type: 'paragraph', raw: '\n' });
+  state.doc = { ...state.doc, blocks, body: Doc.serializeBlocks(blocks) };
+  state.caret = { index: empty ? index + embeds.length : index + 1 + embeds.length, offset: 0 };
+  paintCenter();
+  scheduleSave();
+  fillEmbeds();
+}
+
+async function importAttachmentFiles(files) {
+  if (!files.length) return [];
+  const folder = attachmentFolderForActiveNote();
+  const added = await tool('attachment.import', { folder, files });
+  await refreshLibrary();
+  return added.map((item) => item.path);
+}
+
+async function pickAndInsertImages() {
+  if (!state.active || !state.doc) {
+    toast('Abra uma nota para inserir imagens.', 'erro');
+    return;
+  }
+  const picked = await sophy.chooseFiles();
+  if (!picked?.ok) throw new Error(picked?.error || 'Não foi possível abrir o seletor.');
+  const paths = picked.value || [];
+  if (!paths.length) return;
+  const imported = await importAttachmentFiles(paths.map((path) => ({ path })));
+  insertEmbedBlocks(imported);
+}
+
+async function ingestImageBlobs(fileList) {
+  const images = [...fileList].filter((file) => /^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name || ''));
+  if (!images.length) return false;
+  if (!state.active || !state.doc) {
+    toast('Abra uma nota para inserir imagens.', 'erro');
+    return true;
+  }
+  const files = [];
+  for (const file of images) {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    files.push({
+      name: file.name || `imagem-${Date.now()}.png`,
+      dataBase64: btoa(binary),
+    });
+  }
+  const imported = await importAttachmentFiles(files);
+  insertEmbedBlocks(imported);
+  return true;
 }
 
 function paintLinks() {
@@ -2668,39 +3781,69 @@ function paintLinks() {
     paintSofi(host);
     return;
   }
+  const head =
+    '<div class="conexoes__topo"><h3>Conexões</h3><button type="button" class="btn btn--icone" id="fechar-conexoes" aria-label="Ocultar conexões">×</button></div>';
   if (!state.active) {
-    host.innerHTML =
-      '<h3>Conexões</h3><p class="nota-privacidade">Abra uma nota para ver os links.</p>';
+    host.innerHTML = `${head}<p class="nota-privacidade">Abra uma nota para ver os links.</p>`;
+    $('#fechar-conexoes').onclick = () => closeConnections();
     return;
   }
   const out =
     state.outgoing
-      .map(
-        (link) =>
-          `<button type="button" class="link ${link.status === 'resolved' ? '' : 'wikilink--quebrado'}" data-go="${escapeHtml(link.path || '')}">${escapeHtml(link.display || link.path || link.raw || 'link')}</button>`,
-      )
+      .map((link) => {
+        const mark = link.path?.includes('/') ? markFor(link.path.split('/')[0]) : null;
+        const tint = mark?.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+        const broken = link.status !== 'resolved';
+        return `<button type="button" class="link wikilink ${broken ? 'wikilink--quebrado' : ''}" data-go="${escapeHtml(link.path || '')}" data-create="${escapeHtml(Doc.linkTarget((link.raw || '').replace(/^!?\[\[|\]\]$/g, '')))}"><span class="chip__ponto" aria-hidden="true"${tint}></span>${escapeHtml(link.display || link.path || link.raw || 'link')}</button>`;
+      })
       .join('') || '<p class="nota-privacidade">Nenhum link de saída.</p>';
   const back =
     state.backlinks
       .map(
         (link) =>
-          `<button type="button" class="link" data-go="${escapeHtml(link.from)}">${escapeHtml(baseName(link.from))}</button>`,
+          `<button type="button" class="link conexao-back" data-go="${escapeHtml(link.from)}"><strong>${escapeHtml(baseName(link.from))}</strong><span class="conexao-back__trecho">${escapeHtml(link.snippet || link.display || link.raw || '')}</span></button>`,
       )
       .join('') || '<p class="nota-privacidade">Nenhuma nota aponta para cá.</p>';
-  host.innerHTML = `<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}
+  const title = baseName(state.active);
+  const mentions = (state.unlinkedMentions || [])
+    .filter((row) => foldText(row.title) === foldText(title) || row.hits?.some((hit) => hit.path === state.active))
+    .flatMap((row) =>
+      (row.hits || [])
+        .filter((hit) => hit.path !== state.active)
+        .map(
+          (hit) =>
+            `<div class="mencao"><div class="mencao__nota">${escapeHtml(baseName(hit.path))}</div><p class="mencao__trecho">Menção a <span class="mencao__termo">${escapeHtml(row.title)}</span></p><button type="button" class="btn btn--secundario btn--pequeno" data-ligar="${escapeHtml(row.title)}">Transformar em link</button></div>`,
+        ),
+    )
+    .join('');
+  const mentionBlock = `<h3 class="conexoes__titulo">Menções sem link</h3><div class="mencoes">${mentions || '<p class="nota-privacidade">Nenhuma menção solta.</p>'}</div>`;
+  host.innerHTML = `${head}<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}${mentionBlock}
     <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
+  $('#fechar-conexoes').onclick = () => closeConnections();
   host.querySelectorAll('[data-go]').forEach((button) => {
     button.onclick = () => {
       if (button.dataset.go) openNote(button.dataset.go);
+      else if (button.dataset.create) followLink(button.dataset.create, { create: true });
+    };
+  });
+  host.querySelectorAll('[data-ligar]').forEach((button) => {
+    button.onclick = async () => {
+      try {
+        await tool('mention.link', { title: button.dataset.ligar });
+        await refreshLibrary();
+        if (state.active) await openNote(state.active, { force: true });
+        toast('Menções ligadas.', 'ok', {
+          label: 'Desfazer',
+          onClick: () => undoLastAction(),
+        });
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
     };
   });
   $('#desfazer').onclick = async () => {
     try {
-      await tool('history.undo', {});
-      await refreshLibrary();
-      if (state.active) await openNote(state.active, { force: true });
-      else paintTree();
-      toast('A última ação foi desfeita.');
+      await undoLastAction('A última ação foi desfeita.');
     } catch (error) {
       toast(error.message, 'erro');
     }
@@ -2713,8 +3856,12 @@ function paintStatus() {
   const theme = $('#st-tema');
   if (path) path.textContent = state.active || state.libraryName;
   if (words && state.doc) {
-    const text = state.doc.blocks.map((block) => block.raw).join(' ');
-    const count = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const text = state.doc.blocks
+      .map((block) => Doc.visibleOf(block))
+      .join(' ')
+      .replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, '$1')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1');
+    const count = (text.match(/[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu) || []).length;
     words.textContent = `${count} palavras`;
   }
   if (theme) theme.textContent = themeName() === 'dark' ? 'Escuro' : 'Claro';
@@ -2873,6 +4020,11 @@ function taskCard(task) {
 function paintTasks(center) {
   const rows = state.taskRows || [];
   const filter = state.taskFilter || {};
+  const taskCounts = {
+    aberta: rows.filter((task) => task.status === 'aberta').length,
+    andamento: rows.filter((task) => task.status === 'andamento').length,
+    feita: rows.filter((task) => task.status === 'feita').length,
+  };
   const chips = (items, key) =>
     items
       .map(
@@ -2897,7 +4049,7 @@ function paintTasks(center) {
     .map((status) => {
       const label = status === 'aberta' ? 'A fazer' : status === 'andamento' ? 'Em andamento' : 'Concluídas';
       const cards = rows.filter((task) => task.status === status).map(taskCard).join('');
-      return `<section class="quadro__coluna" data-status="${status}"><h3>${label}</h3>${cards || '<p>Solte aqui</p>'}</section>`;
+      return `<section class="quadro__coluna" data-status="${status}"><h3>${label} <span>${taskCounts[status]}</span></h3>${cards || '<p>Solte aqui</p>'}</section>`;
     })
     .join('');
   const groups = ['Atrasadas', 'Hoje', 'Esta semana', 'Próximas', 'Sem prazo'];
@@ -2908,7 +4060,8 @@ function paintTasks(center) {
       return `<section class="tarefas__grupo"><h3>${name}</h3>${items.map(taskCard).join('')}</section>`;
     })
     .join('');
-  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><h2>Tarefas</h2><p>${rows.length} na biblioteca</p><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
+  const hasFilter = Object.values(filter).some(Boolean);
+  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} em andamento · ${taskCounts.feita} concluídas</p></div><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
   center.querySelectorAll('[data-filtro]').forEach((button) => {
     button.onclick = () => {
       state.taskFilter[button.dataset.filtro] = button.dataset.valor;
@@ -2924,12 +4077,31 @@ function paintTasks(center) {
   center.querySelectorAll('[data-open-task]').forEach((button) => {
     button.onclick = () => openNote(button.dataset.openTask);
   });
+  $('#limpar-filtros')?.addEventListener('click', () => {
+    state.taskFilter = {};
+    showTasks();
+  });
+  center.querySelectorAll('.kcard .check').forEach((check) => {
+    check.onclick = async () => {
+      const card = check.closest('.kcard');
+      const current = check.dataset.status;
+      const status = current === 'aberta' ? 'andamento' : current === 'andamento' ? 'feita' : 'aberta';
+      await tool('task.update', {
+        path: card.dataset.task,
+        line: Number(card.dataset.line),
+        expectedRevision: card.dataset.rev,
+        status,
+      });
+      await showTasks();
+    };
+  });
   bindTaskDrag(center);
 }
 
 function paintCalendar(center) {
   const cursor = state.calendarCursor || isoToday();
   const mode = state.calendarMode || 'mes';
+  if (!state.dayFocus) state.dayFocus = isoToday();
   const start = mode === 'semana' ? weekStart(cursor) : (() => {
     const [year, month] = cursor.split('-').map(Number);
     const first = new Date(year, month - 1, 1);
@@ -2946,16 +4118,17 @@ function paintCalendar(center) {
     .map((date) => {
       const mine = items.filter((item) => item.date === date);
       const marks = mine
-        .slice(0, 3)
+        .slice(0, mode === 'semana' ? 6 : 3)
         .map((item) => {
           if (item.kind === 'tarefa')
-            return `<button type="button" class="cal-item" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}" title="${escapeHtml(item.title)}">□</button>`;
+            return `<button type="button" class="cal-item cal-item--texto" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}" title="${escapeHtml(item.title)}">□ ${escapeHtml(item.title)}</button>`;
           const mark = item.kind === 'nota' ? '●' : '◆';
-          return `<span class="cal-item" title="${escapeHtml(calendarLabel(item.title))}">${mark}</span>`;
+          return `<button type="button" class="cal-item cal-item--texto" data-open-note="${escapeHtml(item.path)}" title="${escapeHtml(calendarLabel(item.title))}">${mark} ${escapeHtml(calendarLabel(item.title))}</button>`;
         })
         .join('');
       const outside = date.slice(0, 7) !== cursor.slice(0, 7) ? ' is-fora' : '';
-      return `<div class="cal-dia${date === isoToday() ? ' is-hoje' : ''}${outside}" data-date="${date}"><strong>${Number(date.slice(8))}</strong>${marks}</div>`;
+      const selected = date === state.dayFocus ? ' is-selecionado' : '';
+      return `<div class="cal-dia${date === isoToday() ? ' is-hoje' : ''}${outside}${selected}" data-date="${date}"><strong>${Number(date.slice(8))}</strong>${marks}${mine.length > 3 && mode !== 'semana' ? `<span class="cal-mais">+${mine.length - 3}</span>` : ''}</div>`;
     })
     .join('');
   const [year, month] = cursor.split('-').map(Number);
@@ -2969,13 +4142,17 @@ function paintCalendar(center) {
     .join('');
   const previous = mode === 'mes' ? 'Mês anterior' : 'Semana anterior';
   const next = mode === 'mes' ? 'Próximo mês' : 'Próxima semana';
-  if (!state.dayFocus) state.dayFocus = isoToday();
   const dayItems = (state.calendarItems || []).filter((item) => item.date === state.dayFocus);
   const dayPanel = `<aside class="painel-dia"><h3>${escapeHtml(readableDate(state.dayFocus))}</h3><p class="nota-privacidade">● nota · □ tarefa · ◆ data</p>${dayItems.map((item) => `<p>${item.kind === 'tarefa' ? '□' : item.kind === 'nota' ? '●' : '◆'} ${escapeHtml(calendarLabel(item.title))}</p>`).join('') || '<p>Nada neste dia.</p>'}</aside>`;
   const body = mode === 'agenda'
     ? `<div class="calendario__miolo"><ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}</div>`
     : `<div class="calendario__miolo"><div><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>${dayPanel}</div>`;
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
+  center.innerHTML = `<div class="calendario"><header class="tarefas__topo calendario__topo"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
+  $('#cal-hoje').onclick = () => {
+    state.calendarCursor = isoToday();
+    state.dayFocus = isoToday();
+    showCalendar();
+  };
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
       state.calendarMode = button.dataset.cal;
@@ -3039,8 +4216,8 @@ function bindTaskDrag(center) {
 
 function runCommand(id) {
   const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
-  if (leaving && state.view === 'note' && state.doc) {
-    flushNote().finally(() => runCommandNow(id));
+  if (leaving && ((state.view === 'note' && state.doc) || state.view === 'canvas')) {
+    flushNote().then((saved) => { if (saved) runCommandNow(id); });
     return;
   }
   runCommandNow(id);
@@ -3089,7 +4266,7 @@ function runCommandNow(id) {
     calendario: () => showCalendar(),
     sofi: () => openAgent(),
   };
-  runs[id]?.();
+  return runs[id]?.();
 }
 
 async function openDaily() {
@@ -3179,7 +4356,9 @@ function openAgent() {
   }
   $('#sofi-gaveta')?.classList.remove('is-aberta');
   state.sofiOpen = true;
+  state.connectionsOpen = true;
   paintSofi($('#conexoes'));
+  syncConnectionsPanel();
 }
 
 function openCapture() {
@@ -3333,7 +4512,7 @@ async function showMentions() {
 function confirmDialog(message) {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Ligar todas</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Confirmar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
   return new Promise((resolve) => {
     $('#confirma-sim').onclick = () => resolve(true);
     $('#confirma-nao').onclick = () => {
@@ -3646,16 +4825,27 @@ async function chooseLibrary(create) {
   await switchLibrary(chosen.value);
 }
 
-async function switchLibrary(folder) {
+let libraryJob = Promise.resolve();
+function switchLibrary(folder) {
+  const run = libraryJob.then(() => switchLibraryBody(folder));
+  libraryJob = run.catch(() => false);
+  return run;
+}
+
+async function switchLibraryBody(folder) {
+  if (!(await flushNote())) return false;
+  ++state.openSeq;
   const response = await sophy.switchLibrary(folder);
   if (!response.ok) {
     toast(response.error, 'erro');
     return;
   }
   await applyLibrary(response.value.root, response.value.libraries);
+  return true;
 }
 
 async function forgetLibrary() {
+  if (!(await flushNote())) return false;
   const response = await sophy.forgetLibrary(state.libraryPath);
   if (!response.ok) {
     toast(response.error, 'erro');
@@ -3672,6 +4862,17 @@ async function forgetLibrary() {
 }
 
 async function applyLibrary(root, libraries) {
+  clearTimeout(saveTimer);
+  clearTimeout(state.undoTimer);
+  saveTimer = 0;
+  state.dirty = false;
+  state.conflict = false;
+  state.canvasDirty = false;
+  state.canvasPath = null;
+  state.canvasDoc = null;
+  state.canvasRedo = [];
+  state.outgoing = [];
+  state.backlinks = [];
   state.libraryPath = root;
   state.libraryName = root.split(/[/\\]/).pop();
   state.settings.libraryPath = root;
@@ -3792,7 +4993,7 @@ function openTreeMenu(event, kind, target) {
         if (!ok) return;
       }
       if (state.active === target || (kind === 'shelf' && state.active?.startsWith(`${target}/`)))
-        await flushNote();
+        if (!(await flushNote())) return;
       await tool('entry.trash', { path: target });
       const prefix = kind === 'shelf' ? `${target}/` : target;
       state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));
@@ -3861,6 +5062,11 @@ function openSlashAt(index) {
   const el = document.querySelector(`[data-block="${index}"]`);
   if (!el) return;
   openMenu(el, 'menu menu--blocos menu-flutuante', renderSlash(Cmd.SLASH_ITEMS), (item) => {
+    if (item.id === 'imagem') {
+      closeMenus();
+      pickAndInsertImages().catch((error) => toast(error.message, 'erro'));
+      return;
+    }
     const insert = item.id === 'hoje' ? today() : item.insert;
     const text = readEditable(el).replace(/\n$/, '');
     const next = text.trim() ? `${insert}${text}` : insert;
@@ -3879,18 +5085,71 @@ function openSlashAt(index) {
 }
 
 function applyWrap(index, selected, prefix, suffix = '') {
+  if (Writing.format(prefix)) return;
+  const editable = document.querySelector(`[data-block="${index}"][contenteditable="true"]`);
+  if (prefix === '[') { editWritingLink(editable); return; }
+  if (['# ', '- ', '- [ ] ', '> '].includes(prefix)) {
+    checkpoint(true);
+    const text = Doc.visibleOf(state.doc.blocks[index]);
+    state.doc = Doc.replaceBlock(state.doc, index, prefix + text + '\n');
+    state.caret = { index, offset: text.length };
+    paintCenter();
+    scheduleSave();
+    return;
+  }
   const block = document.querySelector(`[data-block="${index}"]`);
   const text = block ? readEditable(block) : '';
   const at = text.indexOf(selected);
   if (!block || !selected || at < 0) return;
+  checkpoint(true);
   const next = text.slice(0, at) + prefix + selected + suffix + text.slice(at + selected.length);
   state.wrapping = true;
   state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(state.doc.blocks[index], next));
+  scheduleSave();
   setTimeout(() => {
     paintCenter();
     saveNow();
     state.wrapping = false;
   }, 0);
+}
+
+function editWritingLink(el) {
+  const selection = getSelection();
+  if (!el || !selection?.rangeCount) return;
+  const range = selection.getRangeAt(0).cloneRange();
+  const current = (range.startContainer.parentElement || el).closest('a');
+  const value = current?.dataset.href || '';
+  openMenu(el, 'menu menu-flutuante', `<input class="menu__busca" type="url" id="destino-link" aria-label="Endereço do link" placeholder="https://" value="${escapeHtml(value)}" /><button type="button" class="menu__item" id="salvar-link">Aplicar link</button>`, () => {});
+  const input = $('#destino-link');
+  const apply = () => {
+    const href = input.value.trim();
+    if (!/^(https?:\/\/[^\s]+|mailto:[^\s]+)$/i.test(href)) { toast('Informe um endereço http, https ou mailto válido.', 'erro'); return; }
+    checkpoint(true);
+    selection.removeAllRanges(); selection.addRange(range);
+    state.richApplying = true;
+    if (current && el.contains(current)) {
+      current.dataset.href = href; current.dataset.target = href;
+    } else {
+      const anchor = document.createElement('a');
+      anchor.className = 'wikilink'; anchor.href = '#'; anchor.dataset.href = href; anchor.dataset.target = href;
+      anchor.append(range.extractContents());
+      if (!anchor.textContent) anchor.textContent = href;
+      range.insertNode(anchor);
+      range.selectNodeContents(anchor); range.collapse(false);
+      selection.removeAllRanges(); selection.addRange(range);
+    }
+    state.richApplying = false;
+    const index = Number(el.dataset.block);
+    state.doc = Doc.withBlockRaw(state.doc, index, rawFromEditor(el, state.doc.blocks[index]));
+    closeMenus(); el.focus(); scheduleSave();
+  };
+  $('#salvar-link').onclick = apply;
+  input.onkeydown = (event) => {
+    event.stopPropagation();
+    if (event.key === 'Enter') { event.preventDefault(); apply(); }
+    if (event.key === 'Escape') { event.preventDefault(); closeMenus(); el.focus(); }
+  };
+  input.focus(); input.select();
 }
 
 function showFormatBar(range) {
@@ -4116,6 +5375,7 @@ async function paintGraph(center) {
 
 function drawGraph(graph) {
   if (!graph) return;
+  if (state.graphAnimation) cancelAnimationFrame(state.graphAnimation);
   const until = state.graphUntil ?? 1;
   const times = graph.nodes.map((node) => node.modifiedAt || 0).filter(Boolean).sort((a, b) => a - b);
   const cutoff = times.length ? times[Math.min(times.length - 1, Math.floor(until * (times.length - 1)))] : Infinity;
@@ -4149,10 +5409,19 @@ function drawGraph(graph) {
     degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
     degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
   }
-  const nodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height).map((node) => ({
-    ...node,
-    degree: degree.get(node.path) || 0,
-  }));
+  const targetNodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height);
+  const nodes = targetNodes.map((node, index) => {
+    const angle = (index / Math.max(targetNodes.length, 1)) * Math.PI * 2;
+    const startRadius = Math.min(canvas.width, canvas.height) * 0.08;
+    return {
+      ...node,
+      targetX: node.x,
+      targetY: node.y,
+      x: canvas.width / 2 + Math.cos(angle) * startRadius,
+      y: canvas.height / 2 + Math.sin(angle) * startRadius,
+      degree: degree.get(node.path) || 0,
+    };
+  });
   const byPath = new Map(nodes.map((node) => [node.path, node]));
   const styles = getComputedStyle(document.documentElement);
   const colorOf = (workspace) => {
@@ -4220,6 +5489,27 @@ function drawGraph(graph) {
   };
   state.graphRedraw = redraw;
   redraw();
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    for (const node of nodes) {
+      node.x = node.targetX;
+      node.y = node.targetY;
+    }
+    redraw();
+  } else {
+    const animationStart = performance.now();
+    const animateGraph = (now) => {
+      const elapsed = Math.min(1, (now - animationStart) / 720);
+      const eased = 1 - Math.pow(1 - elapsed, 3);
+      for (const node of nodes) {
+        node.x += (node.targetX - node.x) * Math.max(0.12, eased);
+        node.y += (node.targetY - node.y) * Math.max(0.12, eased);
+      }
+      redraw();
+      if (elapsed < 1) state.graphAnimation = requestAnimationFrame(animateGraph);
+      else state.graphAnimation = 0;
+    };
+    state.graphAnimation = requestAnimationFrame(animateGraph);
+  }
   const zoomBy = (factor) => {
     state.graphCamera.zoom = Math.min(2.4, Math.max(0.4, state.graphCamera.zoom * factor));
     redraw();
@@ -4456,11 +5746,30 @@ async function toggleTheme() {
   paintStatus();
 }
 
-function applyCommand(command) {
-  const next = Cmd.applyUiCommand(
-    { view: state.view, theme: state.settings.theme, path: state.active },
-    command,
-  );
+async function applyCommand(command) {
+  if (command.libraryPath && command.libraryPath !== state.libraryPath) {
+    if (!(await switchLibrary(command.libraryPath))) return;
+  }
+  if (command.type === 'setLayout') {
+    if (command.section) {
+      if (!(await flushNote())) return;
+      await runCommandNow(command.section);
+    }
+    if (command.sidebar !== undefined) {
+      if (drawerNarrow()) { if (command.sidebar) openDrawer(); else closeDrawer(); }
+      else $('#lateral')?.classList.toggle('is-fechada', !command.sidebar);
+    }
+    if (command.connections !== undefined) {
+      if (command.connections) openConnections();
+      else closeConnections();
+    }
+    if (command.agent !== undefined) {
+      if (command.agent) openAgent();
+      else { state.sofiOpen = false; $('#sofi-gaveta')?.classList.remove('is-aberta'); paintLinks(); }
+    }
+    if (command.focus !== undefined) setFocusMode(command.focus);
+    return;
+  }
   if (command.type === 'setTheme') {
     state.settings.theme = command.theme;
     applyTheme(command.theme);
@@ -4469,15 +5778,13 @@ function applyCommand(command) {
     return;
   }
   if (command.type === 'openNote') {
-    openNote(command.path).catch((error) => toast(error.message, 'erro'));
-    return;
+    return openNote(command.path);
   }
   if (command.type === 'showGraph') {
-    showGraph(command.workspace || '');
-    return;
+    return showGraph(command.workspace || '');
   }
   if (command.type === 'openCanvas') {
-    openCanvas(command.path).catch((error) => toast(error.message, 'erro'));
+    return openCanvas(command.path);
   }
 }
 
@@ -4530,9 +5837,7 @@ document.addEventListener('keydown', (event) => {
   }
   if ((event.ctrlKey || event.metaKey) && event.key === ',') {
     event.preventDefault();
-    state.view = 'settings';
-    state.nav = 'config';
-    paintCenter();
+    runCommand('config');
     return;
   }
   if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'd') {
@@ -4613,12 +5918,9 @@ async function boot() {
   host.hidden = true;
   host.innerHTML = covers;
   document.body.prepend(host);
-  sophy.onFlush?.(async () => {
-    try {
-      await flushNote();
-    } finally {
-      sophy.flushed?.();
-    }
+  sophy.onFlush?.(async (requestId) => {
+    const saved = await flushNote();
+    sophy.flushed?.(saved, requestId);
   });
   const started = await sophy.boot();
   if (!started.ok) {
@@ -4631,9 +5933,13 @@ async function boot() {
   syncMotion();
   if (state.settings.readingFont === 'literata' || state.settings.readingFont === 'inter')
     applyReadingFont(state.settings.readingFont);
-  sophy.onCommand(applyCommand);
+  let commandJob = Promise.resolve();
+  sophy.onCommand((command) => {
+    commandJob = commandJob.then(() => applyCommand(command)).catch((error) => toast(error.message, 'erro'));
+  });
   if (!state.settings.onboarded || !state.libraryPath) paintOnboarding();
   else await showShell();
+  sophy.ready?.();
 }
 
 boot().catch((error) => {
