@@ -99,4 +99,8 @@ test('a transição do ícone usa 180ms e respeita reduced motion', () => {
   assert.match(tokens, /--ease:\s*cubic-bezier\(\.2,\s*\.8,\s*\.2,\s*1\)/);
   assert.match(tokens, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*transition:\s*none/);
+  assert.match(
+    css,
+    /\.nav__item\[aria-current='page'\] \.icon:has\(\.icon__fill\) \.icon__regular,[\s\S]*?\{[^}]*opacity:\s*0/,
+  );
 });

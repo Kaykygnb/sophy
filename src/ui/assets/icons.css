@@ -31,6 +31,7 @@
 .menu__item[aria-pressed='true'] .icon,
 .btn--icone[aria-pressed='true']:not(.btn--primario):not(.btn--perigo) .icon,
 .opcao.is-escolhida .icon,
+[aria-expanded='true'] > .icon,
 .segmentado__opcao:has(input:checked) .icon {
   color: var(--accent);
 }
@@ -41,9 +42,6 @@
 .menu__item[aria-selected='true'] .icon:has(.icon__fill) .icon__regular,
 .menu__item[aria-pressed='true'] .icon:has(.icon__fill) .icon__regular,
 [aria-pressed='true'] > .icon:has(.icon__fill) .icon__regular,
-[aria-expanded='true'] > .icon:has(.icon__fill) {
-  color: var(--accent);
-}
 [aria-expanded='true'] > .icon:has(.icon__fill) .icon__regular,
 .opcao.is-escolhida .icon:has(.icon__fill) .icon__regular,
 .is-escolhida > .icon:has(.icon__fill) .icon__regular,
