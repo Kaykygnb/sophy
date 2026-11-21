@@ -14,6 +14,10 @@
     'note.write',
     'entry.move',
     'entry.trash',
+    'trash.restore',
+    'trash.purge',
+    'trash.empty',
+    'note.deletePermanent',
     'history.undo',
     'canvas.create',
     'canvas.update',
@@ -375,6 +379,7 @@
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
     { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
+    { id: 'lixeira', rotulo: 'Lixeira', grupo: 'Navegar', icone: 'lixeira', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
     { id: 'riscado', rotulo: 'Riscado', grupo: 'Editar', icone: 'tachado', atalho: 'Ctrl+Shift+X', quando: 'editor' },
@@ -532,6 +537,29 @@
     'sofi-noite': 'Sofi à noite', 'sofi-folhas': 'Sofi entre folhas',
   };
 
+  /** Aceita a lista crua do preload ou o envelope { ok, value } do IPC. */
+  function chosenFileList(result) {
+    if (Array.isArray(result)) return result.filter((item) => typeof item === 'string' && item);
+    if (!result || typeof result !== 'object') return [];
+    if (result.ok === false) {
+      throw new Error(result.error || 'Não foi possível abrir o seletor.');
+    }
+    const value = Object.prototype.hasOwnProperty.call(result, 'value') ? result.value : null;
+    if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item);
+    return [];
+  }
+
+  /** Vazio quando o link abriu. Mensagem quando o IPC recusou. */
+  function externalOpenError(result) {
+    if (result === true) return '';
+    if (result === false || result == null) return 'Não foi possível abrir o link.';
+    if (typeof result === 'object') {
+      if (result.ok === false) return result.error || 'Não foi possível abrir o link.';
+      return '';
+    }
+    return '';
+  }
+
   function capaY(value) {
     if (value == null || value === '') return 0.5;
     const text = String(value).trim();
@@ -589,6 +617,8 @@
     COVER_IDS,
     COVER_NAMES,
     filterSlash,
+    chosenFileList,
+    externalOpenError,
     CONFLICT,
   };
 });
