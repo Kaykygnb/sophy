@@ -173,7 +173,7 @@ test('busca devolve segmentos sem Markdown cru e o grafo filtra estante e tag', 
     edges: Array<{ from: string; to: string }>;
   };
   assert.deepEqual(full.edges, [
-    { from: 'Estudos/Nota.md', to: 'Estudos/Outra.md', format: 'wiki' },
+    { from: 'Estudos/Nota.md', to: 'Estudos/Outra.md', format: 'wiki', weight: 1 },
   ]);
 });
 

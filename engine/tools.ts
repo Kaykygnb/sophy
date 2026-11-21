@@ -309,14 +309,21 @@ export const tools = [
   ),
   define(
     'graph.query',
-    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante e tag.',
+    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante e tag antes de um subgrafo opcional em torno de center (depth de 1 a 3; padrão 1 quando há center). Arestas agregadas por par direcionado: weight é a quantidade de links e format é o do primeiro. degreeIn e degreeOut somam weight (contam links). orphan é grau zero. broken conta links de saída quebrados ou ambíguos. Caminhos em .sophy ficam de fora.',
     z.object({
       libraryPath,
       workspace: z.string().min(1).optional(),
       tag: z.string().min(1).optional(),
+      center: z.string().min(1).optional(),
+      depth: z
+        .number('depth precisa ser um inteiro de 1 a 3.')
+        .int('depth precisa ser um inteiro de 1 a 3.')
+        .min(1, 'depth precisa ser um inteiro de 1 a 3.')
+        .max(3, 'depth precisa ser um inteiro de 1 a 3.')
+        .optional(),
     }),
-    ({ libraryPath: folder, workspace, tag }) =>
-      queryGraph(openLibrary(folder), { workspace, tag }),
+    ({ libraryPath: folder, workspace, tag, center, depth }) =>
+      queryGraph(openLibrary(folder), { workspace, tag, center, depth }),
   ),
   define(
     'history.list',

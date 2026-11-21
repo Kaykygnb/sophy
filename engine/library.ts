@@ -100,6 +100,11 @@ export function listFiles(library: Library, workspace?: string): FileInfo[] {
   return walkFiles(library, workspace).filter((file): file is FileInfo => file.kind !== 'note');
 }
 
+/** Notas, canvas e anexos visíveis. Pastas ocultas, como `.sophy`, ficam de fora. */
+export function listEntries(library: Library) {
+  return walkFiles(library);
+}
+
 export function listDirectories(library: Library): string[] {
   const directories: string[] = [];
   let count = 0;
@@ -220,6 +225,72 @@ export function moveEntry(library: Library, source: string, target: string) {
     throw new EngineError('exists', 'Já existe um item com esse nome no destino.');
   fs.renameSync(from, to);
   return { from: source, path: target };
+}
+
+const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
+
+export function isImageName(name: string) {
+  const extension = name.split('.').pop()?.toLowerCase() ?? '';
+  return name.includes('.') && imageExtensions.has(extension);
+}
+
+function attachmentDestination(library: Library, folder: string, name: string) {
+  const base = name.split(/[/\\]/).pop() || name;
+  validateSegment(base, 'entry');
+  const directory = folder.replace(/\/+$/, '');
+  const relative = directory ? `${directory}/${base}` : base;
+  if (directory) createDirectory(library, directory);
+  const full = resolveInside(library.root, relative, { allowMissing: true });
+  if (fs.existsSync(full)) throw new EngineError('exists', 'Já existe um anexo com esse nome.');
+  return { path: relative, full };
+}
+
+export function importAttachmentFromPath(library: Library, source: string, folder = '') {
+  if (typeof source !== 'string' || !source)
+    throw new EngineError('invalid-path', 'Informe o arquivo do anexo.');
+  const from = path.resolve(source);
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(from);
+  } catch {
+    throw new EngineError('not-found', 'Arquivo do anexo não encontrado.');
+  }
+  if (stat.isSymbolicLink() || !stat.isFile())
+    throw new EngineError('invalid-path', 'O anexo precisa ser um arquivo.');
+  if (stat.size > MAX_NOTE_BYTES) throw new EngineError('too-large', 'O anexo passa de 8 MB.');
+  const target = attachmentDestination(library, folder, path.basename(from));
+  fs.copyFileSync(from, target.full);
+  return { path: target.path, name: path.basename(target.path), size: stat.size };
+}
+
+export function importAttachmentBytes(library: Library, name: string, data: Buffer, folder = '') {
+  if (!Buffer.isBuffer(data)) throw new EngineError('invalid-path', 'O anexo precisa ser bytes.');
+  if (data.length > MAX_NOTE_BYTES) throw new EngineError('too-large', 'O anexo passa de 8 MB.');
+  const target = attachmentDestination(library, folder, name);
+  fs.writeFileSync(target.full, data, { flag: 'wx' });
+  return { path: target.path, name: path.basename(target.path), size: data.length };
+}
+
+export function readAttachmentDataUrl(library: Library, relative: string) {
+  if (!isImageName(relative))
+    throw new EngineError('invalid-path', 'Somente imagens podem ser lidas como anexo.');
+  const full = resolveInside(library.root, relative);
+  const stat = fs.lstatSync(full);
+  if (stat.isSymbolicLink() || !stat.isFile())
+    throw new EngineError('invalid-path', 'O anexo não é um arquivo.');
+  if (stat.size > MAX_NOTE_BYTES) throw new EngineError('too-large', 'O anexo passa de 8 MB.');
+  const extension = relative.split('.').pop()?.toLowerCase() ?? '';
+  const mime =
+    extension === 'jpg' || extension === 'jpeg'
+      ? 'image/jpeg'
+      : extension === 'svg'
+        ? 'image/svg+xml'
+        : `image/${extension}`;
+  return {
+    path: relative,
+    mime,
+    dataUrl: `data:${mime};base64,${fs.readFileSync(full).toString('base64')}`,
+  };
 }
 
 export function trashEntry(library: Library, relative: string, options?: TrashOptions) {
