@@ -3,6 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 
+/**
+ * Lixeira do sistema, no layout Freedesktop (`files/` e `info/` em
+ * `$XDG_DATA_HOME/Trash` ou `~/.local/share/Trash`).
+ *
+ * O excluir da biblioteca não passa mais por aqui: `trashEntry` / `entry.trash`
+ * movem o item para `.sophy/lixeira/` dentro da biblioteca. `moveToTrash`
+ * continua para quem chama direto. Itens que já estão na lixeira do sistema
+ * permanecem lá — este módulo não os lista, restaura nem apaga.
+ * Se o movimento falha, o original fica no lugar.
+ */
+
 export type TrashOptions = {
   /** Pasta da lixeira (pai de `files/` e `info/`). Testes usam um diretório temporário. */
   trashRoot?: string;

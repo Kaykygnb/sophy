@@ -23,8 +23,15 @@ export {
   createNote,
   writeNote,
   moveEntry,
-  trashEntry,
 } from './library.ts';
+export {
+  trashEntry,
+  listTrash,
+  restoreTrash,
+  purgeTrash,
+  emptyTrash,
+  deletePermanent,
+} from './lixeira.ts';
 export { scan, resolvePath, parseTarget } from './wikilinks.ts';
 export {
   outgoingLinks,
