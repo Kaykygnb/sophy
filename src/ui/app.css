@@ -2104,3 +2104,164 @@ button.arvore__linha[aria-selected='true'] {
 }
 .arvore__linha.is-invalido .arvore__nome { text-decoration: underline dotted; }
 .nota-menu__fontes [data-note-font='default'] b { font-family: var(--font-reading); }
+
+.nav__sep {
+  height: 1px;
+  margin: 8px 4px;
+  background: var(--line);
+}
+
+.centro:has(> .lixeira) {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.lixeira {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.lixeira__topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 32px 8px;
+}
+.lixeira__topo h2 {
+  margin: 0;
+  font: var(--text-title-2);
+  color: var(--ink);
+}
+.lixeira__topo p {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font: var(--text-detail);
+}
+.lixeira__ferramentas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 32px 12px;
+}
+.lixeira__ferramentas .input {
+  width: min(320px, 100%);
+}
+.lixeira__filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lixeira__tipo-btn[aria-pressed='true'] {
+  background: var(--sel);
+  color: var(--ink);
+  font-weight: 600;
+}
+.lixeira__lista {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+.lixeira__item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1.6fr) minmax(72px, 0.6fr) 72px auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 56px;
+  padding: 8px 32px;
+  border-bottom: 1px solid var(--line);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+}
+.lixeira__item:hover {
+  background: var(--hover-subtle);
+}
+.lixeira__item[aria-selected='true'] {
+  background: var(--sel);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.lixeira__tipo .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-2);
+}
+.lixeira__corpo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lixeira__titulo,
+.lixeira__caminho,
+.lixeira__quando,
+.lixeira__tamanho {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lixeira__titulo {
+  font-weight: 600;
+  color: var(--ink);
+}
+.lixeira__caminho,
+.lixeira__quando,
+.lixeira__tamanho {
+  color: var(--ink-2);
+  font: var(--text-detail);
+}
+.lixeira__acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.lixeira__apagar {
+  color: var(--danger);
+}
+.lixeira__vazio,
+.lixeira__estado {
+  flex: 1;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 32px;
+  text-align: center;
+  color: var(--ink-2);
+}
+.lixeira__vazio .icon,
+.lixeira__estado .icon,
+.icon--48 {
+  width: 40px;
+  height: 40px;
+  color: var(--ink-3);
+}
+.lixeira__vazio h2,
+.lixeira__estado h2 {
+  margin: 4px 0 0;
+  font: var(--text-title-3);
+  color: var(--ink);
+}
+.lixeira__vazio p,
+.lixeira__estado p {
+  margin: 0;
+  max-width: 420px;
+  font: var(--text-ui);
+}
+.menu.confirma {
+  width: min(440px, calc(100vw - 48px));
+  padding: 16px;
+}
+.confirma p {
+  margin: 0 0 16px;
+  font: var(--text-ui);
+  color: var(--ink);
+}
+.confirma__acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
