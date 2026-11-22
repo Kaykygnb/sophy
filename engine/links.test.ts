@@ -177,13 +177,25 @@ test('busca devolve segmentos sem Markdown cru e o grafo filtra estante e tag', 
   ]);
 });
 
-test('o motor de links não grava log de depuração', () => {
-  const source = fs.readFileSync(path.join('engine', 'links.ts'), 'utf8');
-  assert.equal(source.includes('127.0.0.1'), false);
-  assert.equal(source.includes('7516'), false);
-  assert.equal(source.includes('debug-1de8c6'), false);
-  assert.equal(source.includes('#region agent log'), false);
+test('engine, main e preload não enviam log de depuração', () => {
+  const files = listSources('engine').concat(['src/main.js', 'src/preload.js']);
+  assert.equal(files.some((file) => file.endsWith(`${path.sep}links.ts`)), true);
+  for (const file of files) {
+    const source = fs.readFileSync(file, 'utf8');
+    assert.equal(source.includes('127.0.0.1:7516'), false, file);
+    assert.equal(source.includes('#region agent log'), false, file);
+    assert.equal(source.includes('debug-1de8c6'), false, file);
+  }
 });
+
+function listSources(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return listSources(full);
+    if (!/\.(ts|js)$/.test(entry.name) || entry.name.endsWith('.test.ts')) return [];
+    return [full];
+  });
+}
 
 test('watcher percebe Markdown gravado fora do motor', async () => {
   const { root } = fixture();

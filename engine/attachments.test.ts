@@ -119,6 +119,7 @@ test('note.export tira o id, copia os anexos citados e o PDF reusa o papel claro
   assert.equal(markdown.format, 'md');
   assert.equal(markdown.path, 'Estudos/Ideia.md');
   assert.equal(markdown.filename, 'Ideia.md');
+  assert.equal(markdown.suggestedName, 'Ideia.md');
   assert.equal(fs.readFileSync(file).equals(before), true);
   assert.match(fs.readFileSync(file, 'utf8'), /^---\nid: abc\n/);
   const parsed = splitMarkdown(markdown.content);
@@ -145,6 +146,7 @@ test('note.export tira o id, copia os anexos citados e o PDF reusa o papel claro
   }) as { format: string; filename: string; content: string; files: unknown[] };
   assert.equal(pdf.format, 'pdf');
   assert.equal(pdf.filename, 'Ideia.pdf');
+  assert.equal(pdf.suggestedName, 'Ideia.pdf');
   assert.equal(pdf.files.length, 0);
   assert.equal(pdf.content, lightPaperHtml('Ideia', parsed.body));
   assert.match(pdf.content, /data-theme="light"/);
