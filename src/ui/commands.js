@@ -450,14 +450,14 @@
   }
 
   function filterSlash(items, query) {
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = foldText(query).trim();
     if (!needle) return items;
-    return items.filter(
-      (item) =>
-        item.label.toLocaleLowerCase().includes(needle) ||
-        item.id.includes(needle) ||
-        (item.hint && item.hint.toLocaleLowerCase().includes(needle)),
-    );
+    return items.filter((item) => {
+      const hay = [item.label, item.id, item.hint, ...(item.keywords || [])]
+        .filter(Boolean)
+        .join(' ');
+      return foldText(hay).includes(needle);
+    });
   }
 
   const SLASH_ITEMS = [
@@ -500,6 +500,42 @@
       icon: 'divisor',
       hint: '---',
       insert: '---',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid',
+      label: 'Diagrama (Mermaid)',
+      icon: 'diagrama',
+      hint: '```mermaid',
+      keywords: ['mermaid', 'diagrama', 'fluxo', 'fluxograma', 'grafico', 'gráfico'],
+      insert: '```mermaid\ngraph TD\n  A[Início] --> B[Próximo passo]\n```',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid-sequencia',
+      label: 'Sequência',
+      icon: 'conector',
+      hint: 'sequence',
+      keywords: ['mermaid', 'diagrama', 'sequencia', 'sequência', 'sequence'],
+      insert: '```mermaid\nsequenceDiagram\n  Ana->>Bruno: Olá\n  Bruno-->>Ana: Oi\n```',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid-mapa',
+      label: 'Mapa mental',
+      icon: 'grafo',
+      hint: 'mindmap',
+      keywords: ['mermaid', 'diagrama', 'mapa', 'mental', 'mindmap'],
+      insert: '```mermaid\nmindmap\n  root((Ideia))\n    Ramo A\n    Ramo B\n```',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid-gantt',
+      label: 'Gantt',
+      icon: 'linha-do-tempo',
+      hint: 'gantt',
+      keywords: ['mermaid', 'diagrama', 'gantt', 'cronograma', 'prazo'],
+      insert: '```mermaid\ngantt\n  title Plano\n  dateFormat YYYY-MM-DD\n  section Etapa\n  Tarefa :a1, 2026-11-22, 7d\n```',
     },
     {
       group: 'Inserir',
