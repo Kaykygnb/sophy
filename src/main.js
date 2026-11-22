@@ -24,6 +24,7 @@ if (testData) {
   app.setPath('userData', userData);
   process.env.SOPHY_UI_DIR = path.join(userData, 'presenca');
 }
+process.env.SOPHY_SETTINGS_DIR = app.getPath('userData');
 const presetLibrary = process.argv.find((arg) => arg.startsWith('--biblioteca='));
 const presetTheme = process.argv.find((arg) => arg.startsWith('--theme='));
 
@@ -66,19 +67,130 @@ function writeSettings(patch) {
 }
 
 function rememberLibrary(folder) {
-  const settings = readSettings();
-  const libraries = [
-    folder,
-    ...(Array.isArray(settings.libraries) ? settings.libraries : []).filter(
-      (item) => typeof item === 'string' && item !== folder,
-    ),
-  ];
-  return writeSettings({
-    libraryPath: folder,
-    onboarded: true,
-    libraries,
-    recentLibraries: libraries.slice(0, 5),
-  });
+  return engine.rememberLibrary(folder);
+}
+
+/**
+ * A chave da Sofi fica só no processo principal. `agent.providers`,
+ * `agent.config.*`, `agent.models`, `agent.testConnection` e `agent.systemPrompt`
+ * são atendidas aqui, via `sophy:tool` (`window.sophy.tool(nome, input)`),
+ * e não pelo registro puro do motor.
+ * O cofre é o `safeStorage` quando `isEncryptionAvailable()`. Se o cofre não
+ * existe, a chave cai no modo `arquivo`: base64 em `agent-secrets.json`,
+ * protegida só pela pasta do usuário.
+ */
+function cofreDoSistema() {
+  const disponivel = safeStorage.isEncryptionAvailable();
+  return {
+    disponivel,
+    cifrar(texto) {
+      return safeStorage.encryptString(texto).toString('base64');
+    },
+    decifrar(dados) {
+      return safeStorage.decryptString(Buffer.from(dados, 'base64'));
+    },
+  };
+}
+
+function abrirConfigSofi() {
+  const config = engine.abrirAgentConfig(app.getPath('userData'), cofreDoSistema());
+  const legado = agentKeyFile();
+  if (!config.temPerfis() && fs.existsSync(legado) && safeStorage.isEncryptionAvailable()) {
+    try {
+      const key = safeStorage.decryptString(fs.readFileSync(legado)).trim();
+      if (key && config.importarLegado(key)) fs.rmSync(legado, { force: true });
+    } catch {
+      /* o arquivo antigo permanece até o cofre conseguir ler */
+    }
+  }
+  return config;
+}
+
+function perfilAtivo(config) {
+  const estado = config.get();
+  return estado.perfis.find((item) => item.id === estado.ativo) || null;
+}
+
+function emitirBiblioteca(info) {
+  for (const window of windows) {
+    if (!window.isDestroyed()) window.webContents.send('sophy:library-changed', info);
+  }
+}
+
+function camposDoPerfil(ativo, extra) {
+  return {
+    id: ativo.id,
+    provider: ativo.provider,
+    nome: ativo.nome,
+    endpoint: ativo.endpoint,
+    model: ativo.model,
+    ...(ativo.raciocinio ? { raciocinio: ativo.raciocinio } : {}),
+    ...extra,
+  };
+}
+
+function alvoDoTeste(config, body) {
+  const entrada = body && typeof body === 'object' ? body : {};
+  if (typeof entrada.id === 'string' && entrada.id) {
+    const perfil = config.get().perfis.find((item) => item.id === entrada.id);
+    if (!perfil) throw new Error('Perfil não encontrado.');
+    return {
+      provider: perfil.provider,
+      endpoint: perfil.endpoint,
+      model: perfil.model,
+      apiKey: config.segredo(perfil.id) || '',
+      raciocinio: Object.prototype.hasOwnProperty.call(entrada, 'raciocinio')
+        ? entrada.raciocinio
+        : perfil.raciocinio,
+    };
+  }
+  if (typeof entrada.provider !== 'string' || typeof entrada.model !== 'string')
+    throw new Error('Informe o perfil ou o provedor e o modelo.');
+  const item = engine.provedor(entrada.provider);
+  if (!item) throw new Error('Provedor desconhecido.');
+  return {
+    provider: entrada.provider,
+    endpoint:
+      typeof entrada.endpoint === 'string' && entrada.endpoint.trim()
+        ? entrada.endpoint.trim()
+        : item.endpointPadrao,
+    model: entrada.model,
+    apiKey: typeof entrada.apiKey === 'string' ? entrada.apiKey : '',
+    raciocinio: entrada.raciocinio,
+  };
+}
+
+async function ferramentaDaSofi(name, body) {
+  if (name === 'agent.providers') return engine.agentProviders();
+  const config = abrirConfigSofi();
+  if (name === 'agent.config.get') return config.get();
+  if (name === 'agent.config.set') return config.set(body && typeof body === 'object' ? body : {});
+  if (name === 'agent.config.remove') return config.remove(body && body.id);
+  if (name === 'agent.config.activate') return config.activate(body && body.id);
+  if (name === 'agent.systemPrompt') {
+    return {
+      texto: engine.sofiSystemPrompt({
+        libraryPath: sessionPath || undefined,
+        context: body,
+        modo: body && body.modo,
+      }),
+    };
+  }
+  if (name === 'agent.models') {
+    if (!body || typeof body.id !== 'string' || !body.id) throw new Error('Informe o perfil.');
+    const perfil = config.get().perfis.find((item) => item.id === body.id);
+    if (!perfil) throw new Error('Perfil não encontrado.');
+    return engine.listarModelos({
+      provider: perfil.provider,
+      endpoint: perfil.endpoint,
+      apiKey: config.segredo(perfil.id) || '',
+      fetchImpl: fetch,
+    });
+  }
+  if (name === 'agent.testConnection') {
+    return engine.testarConexao({ ...alvoDoTeste(config, body), fetchImpl: fetch });
+  }
+  throw new Error('Tool desconhecida.');
 }
 
 function agentKeyFile() {
@@ -235,23 +347,47 @@ function setupIpc() {
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     const body = input && typeof input === 'object' ? input : {};
+    if (
+      name === 'agent.providers' ||
+      name === 'agent.testConnection' ||
+      name === 'agent.models' ||
+      name === 'agent.systemPrompt' ||
+      name.startsWith('agent.config.')
+    ) {
+      return ferramentaDaSofi(name, body);
+    }
     return gate(name, body);
   });
 
-  handle('sophy:agent-status', () => ({
-    saved: fs.existsSync(agentKeyFile()),
-  }));
+  handle('sophy:agent-status', () => {
+    const ativo = perfilAtivo(abrirConfigSofi());
+    if (ativo) return { saved: ativo.temChave };
+    return { saved: fs.existsSync(agentKeyFile()) };
+  });
 
   handle('sophy:agent-key-set', (_event, key) => {
     if (typeof key !== 'string' || key.trim().length < 8)
       throw new Error('A chave é curta demais.');
-    if (!safeStorage.isEncryptionAvailable())
-      throw new Error('O cofre do sistema não está disponível.');
-    fs.writeFileSync(agentKeyFile(), safeStorage.encryptString(key.trim()));
+    const config = abrirConfigSofi();
+    const ativo = perfilAtivo(config);
+    if (!ativo) {
+      config.set({
+        provider: 'openai',
+        nome: 'OpenAI',
+        model: 'gpt-4o-mini',
+        apiKey: key.trim(),
+        ativar: true,
+      });
+    } else {
+      config.set(camposDoPerfil(ativo, { apiKey: key.trim(), ativar: true }));
+    }
     return { saved: true };
   });
 
   handle('sophy:agent-key-clear', () => {
+    const config = abrirConfigSofi();
+    const ativo = perfilAtivo(config);
+    if (ativo) config.set(camposDoPerfil(ativo, { apiKey: '' }));
     fs.rmSync(agentKeyFile(), { force: true });
     return { saved: false };
   });
@@ -259,31 +395,67 @@ function setupIpc() {
   handle('sophy:agent-ask', async (event, message, context) => {
     if (typeof message !== 'string' || !message.trim()) throw new Error('Escreva o pedido.');
     if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
-    if (!fs.existsSync(agentKeyFile()))
-      fail('Guarde a chave no cofre antes de pedir.', 'sem_chave');
-    if (!safeStorage.isEncryptionAvailable())
+    const config = abrirConfigSofi();
+    const ativo = perfilAtivo(config);
+    let key = '';
+    let provider = 'openai';
+    let endpoint;
+    let model;
+    let requiresKey = true;
+    let raciocinio;
+    if (ativo) {
+      const item = engine.provedor(ativo.provider);
+      provider = ativo.provider;
+      endpoint = ativo.endpoint;
+      model = ativo.model;
+      requiresKey = item ? item.precisaChave : true;
+      raciocinio = ativo.raciocinio;
+      key = config.segredo(ativo.id) || '';
+      if (requiresKey && !key) fail('Guarde a chave no cofre antes de pedir.', 'sem_chave');
+    } else if (fs.existsSync(agentKeyFile()) && !safeStorage.isEncryptionAvailable()) {
       throw new Error('O cofre do sistema não está disponível.');
+    } else {
+      fail('Guarde a chave no cofre antes de pedir.', 'sem_chave');
+    }
     if (agentAbort)
       throw new Error(
         'A Sofi ainda está respondendo. Cancele o pedido atual antes de enviar outro.',
       );
-    const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
     const controller = new AbortController();
     agentAbort = controller;
+    const modo = context && context.modo === 'pergunta' ? 'pergunta' : 'agente';
     try {
       const turn = await engine.runAgentTurn({
         libraryPath: sessionPath,
         message: message.trim(),
         context,
+        modo,
         key,
+        provider,
+        endpoint,
+        model,
+        requiresKey,
+        raciocinio,
         fetchImpl: fetch,
         signal: controller.signal,
         onProgress: (payload) => emitAgent(event.sender, 'sophy:agent-progress', payload),
         confirm: (request) => waitForAgentConfirm(event.sender, request, controller.signal),
+        onLibraryChanged: (info) => {
+          sessionPath = info.path;
+          try {
+            gate('library.watch', { enabled: true });
+          } catch {
+            /* a troca já foi gravada */
+          }
+          emitirBiblioteca(info);
+        },
       });
-      return turn.canceled
-        ? { text: turn.text, actions: turn.actions, canceled: true }
-        : { text: turn.text, actions: turn.actions };
+      const result = { text: turn.text, actions: turn.actions };
+      if (turn.canceled) result.canceled = true;
+      if (turn.sugestoes) result.sugestoes = turn.sugestoes;
+      if (turn.linksInexistentes) result.linksInexistentes = turn.linksInexistentes;
+      if (turn.raciocinio) result.raciocinio = turn.raciocinio;
+      return result;
     } finally {
       if (agentAbort === controller) agentAbort = null;
     }

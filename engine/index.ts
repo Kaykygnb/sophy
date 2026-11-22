@@ -50,7 +50,12 @@ export { parseCanvas, serializeCanvas, readCanvas, createCanvas, updateCanvas } 
 export { listTasks, updateTask, queryCalendar } from './tasks.ts';
 export { fillTemplate, unlinkedMentions, linkMentions, importVault, listViews, saveView } from './extras.ts';
 export { listCards, reviewCard, undoCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
-export { runAgentTurn, agentTools, agentConfirmation } from './agent.ts';
+export { runAgentTurn, agentTools, agentConfirmation, sofiSystemPrompt, normalizeContext } from './agent.ts';
+export { agentProviders, provedor } from './agent-providers.ts';
+export { abrirAgentConfig } from './agent-config.ts';
+export { testarConexao, listarModelos } from './agent-client.ts';
+export { rememberLibrary } from './agent-libraries.ts';
+export { capacidadeDoModelo } from './agent-reasoning.ts';
 export { listHistory, undoLast, undoById } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';
 export {
