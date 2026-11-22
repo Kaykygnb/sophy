@@ -177,6 +177,14 @@ test('busca devolve segmentos sem Markdown cru e o grafo filtra estante e tag', 
   ]);
 });
 
+test('o motor de links não grava log de depuração', () => {
+  const source = fs.readFileSync(path.join('engine', 'links.ts'), 'utf8');
+  assert.equal(source.includes('127.0.0.1'), false);
+  assert.equal(source.includes('7516'), false);
+  assert.equal(source.includes('debug-1de8c6'), false);
+  assert.equal(source.includes('#region agent log'), false);
+});
+
 test('watcher percebe Markdown gravado fora do motor', async () => {
   const { root } = fixture();
   create(root, 'Estudos/Nota.md', 'Origem.\n');

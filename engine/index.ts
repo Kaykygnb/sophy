@@ -19,6 +19,8 @@ export {
   importAttachmentFromPath,
   importAttachmentBytes,
   readAttachmentDataUrl,
+  listAttachments,
+  resolveAttachmentPath,
   readNote,
   createNote,
   writeNote,
@@ -43,6 +45,7 @@ export { parseCanvas, serializeCanvas, readCanvas, createCanvas, updateCanvas } 
 export { listTasks, updateTask, queryCalendar } from './tasks.ts';
 export { fillTemplate, unlinkedMentions, linkMentions, importVault, listViews, saveView } from './extras.ts';
 export { listCards, reviewCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
+export { exportNote } from './export.ts';
 export { runAgentTurn, agentTools } from './agent.ts';
 export { listHistory, undoLast } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';

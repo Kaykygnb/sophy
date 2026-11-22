@@ -13,6 +13,7 @@ import {
 } from './canvas.ts';
 import { createChildNote, isMother, listChildren } from './children.ts';
 import { EngineError } from './errors.ts';
+import { exportNote } from './export.ts';
 import { queryGraph } from './graph.ts';
 import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
 import { readShelfStyles, writeShelfStyle } from './shelves.ts';
@@ -44,6 +45,7 @@ import {
   createWorkspace,
   importAttachmentBytes,
   importAttachmentFromPath,
+  listAttachments,
   listFiles,
   listNotes,
   listWorkspaces,
@@ -212,6 +214,12 @@ export const tools = [
     ({ libraryPath: folder, path }) => readAttachmentDataUrl(openLibrary(folder), path),
   ),
   define(
+    'attachment.list',
+    'Lista os arquivos da pasta Anexos/ na raiz da biblioteca, com tamanho, tipo e as notas que os citam.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listAttachments(openLibrary(folder)),
+  ),
+  define(
     'note.read',
     'Lê uma nota. O corpo é o Markdown exato. A revisão precisa ser reenviada na escrita.',
     z.object({ libraryPath, path: relativePath }),
@@ -247,6 +255,16 @@ export const tools = [
       tracked(folder, source, 'note.write', `Gravar ${path}`, (library) =>
         writeNote(library, path, { body, frontmatter: matter, expectedRevision }),
       ),
+  ),
+  define(
+    'note.export',
+    'Exporta uma nota em Markdown sem o id do frontmatter, com os anexos citados, ou em HTML de PDF em papel claro. Não grava nem altera a nota.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      format: z.enum(['md', 'pdf']),
+    }),
+    ({ libraryPath: folder, path, format }) => exportNote(openLibrary(folder), path, format),
   ),
   define(
     'entry.move',

@@ -150,6 +150,15 @@ function setupIpc() {
     await shell.openExternal(url.href);
     return true;
   });
+  // Abre um arquivo de Anexos/ no aplicativo do sistema. O caminho fica preso à biblioteca.
+  handle('sophy:open-attachment', async (_event, relative) => {
+    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
+    const library = engine.openLibrary(sessionPath);
+    const full = engine.resolveAttachmentPath(library, relative);
+    const opened = await shell.openPath(full);
+    if (opened) throw new Error(opened);
+    return true;
+  });
   ipcMain.on('sophy:attention', (event) => {
     if (!trusted(event)) return;
     const window = BrowserWindow.fromWebContents(event.sender);

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld(
     libraryReveal: (folder) => ipcRenderer.invoke('sophy:library-reveal', folder),
     saveSettings: (patch) => ipcRenderer.invoke('sophy:settings', patch),
     exportPdf: (html) => ipcRenderer.invoke('sophy:export-pdf', html),
+    openAttachment: (path) => ipcRenderer.invoke('sophy:open-attachment', path),
     agentStatus: () => ipcRenderer.invoke('sophy:agent-status'),
     agentKeySet: (key) => ipcRenderer.invoke('sophy:agent-key-set', key),
     agentKeyClear: () => ipcRenderer.invoke('sophy:agent-key-clear'),
