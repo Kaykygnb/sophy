@@ -121,6 +121,45 @@ export function suggestTags(records: TagNoteRecord[], prefix = '', limit = 10) {
   return { tags: tags.slice(0, limit) };
 }
 
+/**
+ * Outras tags nas mesmas notas que `tags.notes` devolveria com `nested: true`.
+ * `juntas` é quantas dessas notas também têm a outra tag. A tag pedida não entra.
+ */
+export function relatedTags(records: TagNoteRecord[], tag: string) {
+  const name = cleanTag(tag);
+  if (!name) throw new EngineError('tag_invalida', 'A tag é inválida.');
+  const key = tagKey(name);
+  const index = buildIndex(records);
+  const notePaths = new Set<string>();
+  for (const [candidate, bucket] of index.exact) {
+    if (candidate !== key && !candidate.startsWith(key + '/')) continue;
+    for (const notePath of bucket) notePaths.add(notePath);
+  }
+  if (!notePaths.size) throw new EngineError('tag_inexistente', 'A tag não existe.');
+  const counts = new Map<string, number>();
+  for (const notePath of notePaths) {
+    const note = index.notes.get(notePath);
+    if (!note) continue;
+    const seen = new Set<string>();
+    for (const record of note.tagRecords) {
+      if (record.key === key || seen.has(record.key)) continue;
+      seen.add(record.key);
+      counts.set(record.key, (counts.get(record.key) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([itemKey, juntas]) => ({
+      tag: index.display.get(itemKey) ?? itemKey,
+      juntas,
+      key: itemKey,
+    }))
+    .sort(
+      (a, b) =>
+        b.juntas - a.juntas || a.tag.localeCompare(b.tag, 'pt-BR') || a.key.localeCompare(b.key, 'pt-BR'),
+    )
+    .map(({ tag: item, juntas }) => ({ tag: item, juntas }));
+}
+
 export function readStoredTags(library: Library, relative: string) {
   const file = readText(library, relative);
   const parts = splitMarkdown(file.content);
