@@ -25,10 +25,20 @@ import {
   reviewCard,
   saveVersionPoint,
   semanticSearch,
+  undoCard,
   weeklyReview,
 } from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
-import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
+import { capture, diff, listHistory, pushHistory, undoById, undoLast, type Origin } from './history.ts';
+import {
+  deletePermanent,
+  emptyTrash,
+  listTrash,
+  purgeTrash,
+  restoreTrash,
+  TRASH_ID,
+  trashEntry,
+} from './lixeira.ts';
 import {
   backlinks,
   brokenLinks,
@@ -50,8 +60,6 @@ import {
   openLibrary,
   readAttachmentDataUrl,
   readNote,
-  restoreEntry,
-  trashEntry,
   writeNote,
   type Library,
 } from './library.ts';
@@ -282,26 +290,50 @@ export const tools = [
   ),
   define(
     'entry.trash',
-    'Move um arquivo ou pasta para a lixeira. Não apaga de forma permanente.',
+    'Move um arquivo ou pasta para .sophy/lixeira, dentro da biblioteca. Não apaga de forma permanente.',
     z.object({ libraryPath, path: relativePath, origin }),
     ({ libraryPath: folder, path, origin: source }) =>
-      tracked(folder, source, 'entry.trash', `Lixeira ${path}`, (library) =>
-        trashEntry(library, path),
-      ),
+      tracked(folder, source, 'entry.trash', `Lixeira ${path}`, (library) => trashEntry(library, path)),
+  ),
+  define(
+    'trash.list',
+    'Lista a lixeira da biblioteca, da exclusão mais recente para a mais antiga.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listTrash(openLibrary(folder)),
   ),
   define(
     'trash.restore',
-    'Restaura um item da lixeira. Se o dia já tem nota, devolve o conflito em vez de gravar.',
+    'Devolve um item da lixeira ao caminho original. Se o caminho estiver ocupado, usa o sufixo “ (restaurado)”.',
     z.object({
       libraryPath,
-      id: z.string().min(1),
-      mode: z.enum(['merge', 'asNote']).optional(),
-      trashRoot: z.string().min(1).optional(),
+      id: z.string().regex(TRASH_ID, 'Identificador de lixeira inválido.'),
       origin,
     }),
-    ({ libraryPath: folder, id, mode, trashRoot: root, origin: source }) =>
-      tracked(folder, source, 'trash.restore', `Restaurar ${id}`, (library) =>
-        restoreEntry(library, id, { mode, trashRoot: root }),
+    ({ libraryPath: folder, id }) => restoreTrash(openLibrary(folder), id),
+  ),
+  define(
+    'trash.purge',
+    'Apaga de vez um item da lixeira. O original não volta.',
+    z.object({
+      libraryPath,
+      id: z.string().regex(TRASH_ID, 'Identificador de lixeira inválido.'),
+      origin,
+    }),
+    ({ libraryPath: folder, id }) => purgeTrash(openLibrary(folder), id),
+  ),
+  define(
+    'trash.empty',
+    'Esvazia a lixeira da biblioteca. Não mexe na lixeira do sistema nem no resto de .sophy.',
+    z.object({ libraryPath, origin }),
+    ({ libraryPath: folder }) => emptyTrash(openLibrary(folder)),
+  ),
+  define(
+    'note.deletePermanent',
+    'Apaga de vez um arquivo ou pasta, sem passar pela lixeira. Vale para nota, canvas, anexo ou pasta.',
+    z.object({ libraryPath, path: relativePath, origin }),
+    ({ libraryPath: folder, path, origin: source }) =>
+      tracked(folder, source, 'note.deletePermanent', `Apagar ${path}`, (library) =>
+        deletePermanent(library, path),
       ),
   ),
   define(
@@ -349,14 +381,16 @@ export const tools = [
   ),
   define(
     'graph.query',
-    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante e tag.',
+    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante, tag e intervalo de createdAt.',
     z.object({
       libraryPath,
       workspace: z.string().min(1).optional(),
       tag: z.string().min(1).optional(),
+      from: z.string().min(1).optional(),
+      to: z.string().min(1).optional(),
     }),
-    ({ libraryPath: folder, workspace, tag }) =>
-      queryGraph(openLibrary(folder), { workspace, tag }),
+    ({ libraryPath: folder, workspace, tag, from, to }) =>
+      queryGraph(openLibrary(folder), { workspace, tag, from, to }),
   ),
   define(
     'history.list',
@@ -373,6 +407,12 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'agent.undo',
+    'Desfaz uma ação específica da Sofi pelo versionId do histórico. Falha se a versão não existe ou já foi desfeita.',
+    z.object({ libraryPath, versionId: z.string().min(1) }),
+    ({ libraryPath: folder, versionId }) => undoById(openLibrary(folder), versionId),
   ),
   define(
     'shelf.style.list',
@@ -448,10 +488,26 @@ export const tools = [
   ),
   define(
     'card.review',
-    'Marca um cartão como sabido ou não e grava a próxima data em .sophy/flashcards.json.',
-    z.object({ libraryPath, id: z.string().min(1), knew: z.boolean(), today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), origin }),
-    ({ libraryPath: folder, id, knew, today, origin: source }) =>
-      tracked(folder, source, 'card.review', `Cartão ${id}`, (library) => reviewCard(library, id, knew, today)),
+    'Registra a nota 1 a 4 de um cartão e grava o próximo prazo em .sophy/flashcards.json. knew continua aceito.',
+    z.object({
+      libraryPath,
+      id: z.string().min(1),
+      grade: z.number().optional(),
+      knew: z.boolean().optional(),
+      today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      origin,
+    }),
+    ({ libraryPath: folder, id, grade, knew, today, origin: source }) =>
+      tracked(folder, source, 'card.review', `Cartão ${id}`, (library) =>
+        reviewCard(library, id, grade !== undefined ? grade : knew, today),
+      ),
+  ),
+  define(
+    'card.undo',
+    'Restaura o agendamento anterior de um cartão. Só guarda um nível.',
+    z.object({ libraryPath, id: z.string().min(1), origin }),
+    ({ libraryPath: folder, id, origin: source }) =>
+      tracked(folder, source, 'card.undo', `Desfazer cartão ${id}`, (library) => undoCard(library, id)),
   ),
   define(
     'version.list',
@@ -719,13 +775,18 @@ const MUTATIONS = new Set([
   'note.write',
   'entry.move',
   'entry.trash',
+  'note.deletePermanent',
   'trash.restore',
+  'trash.purge',
+  'trash.empty',
   'history.undo',
+  'agent.undo',
   'shelf.style.set',
   'mention.link',
   'vault.import',
   'view.save',
   'card.review',
+  'card.undo',
   'version.point',
   'version.restore',
   'site.export',
@@ -750,6 +811,14 @@ export function callTool(name: string, raw: unknown) {
   return tool.run(tool.input.parse(raw) as never);
 }
 
+const trackedVersions = new WeakMap<object, string>();
+
+/** Id do histórico que `tracked()` gravou para este resultado, quando a mutação mudou o disco. */
+export function trackedVersionId(result: unknown) {
+  if (!result || typeof result !== 'object') return undefined;
+  return trackedVersions.get(result);
+}
+
 function tracked<T>(
   folder: string,
   source: Origin,
@@ -761,7 +830,13 @@ function tracked<T>(
   if (source === 'mcp' || source === 'agent') saveVersionPoint(library, `${source}:${tool}`);
   const before = capture(library);
   const result = run(library);
-  pushHistory(library, { origin: source, tool, summary, changes: diff(before, capture(library)) });
+  const entry = pushHistory(library, {
+    origin: source,
+    tool,
+    summary,
+    changes: diff(before, capture(library)),
+  });
+  if (entry?.id && result !== null && typeof result === 'object') trackedVersions.set(result, entry.id);
   return result;
 }
 

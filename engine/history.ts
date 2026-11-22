@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
+import { removeTrashOriginals } from './lixeira.ts';
+import { syncLinks } from './links.ts';
 import { createDirectory, listDirectories, listFiles, listNotes, type Library } from './library.ts';
 import { resolveInside } from './paths.ts';
 
@@ -104,9 +106,32 @@ export function undoLast(library: Library) {
   const last = actions.at(-1);
   if (!last) throw new EngineError('not-found', 'Não há ação para desfazer.');
   apply(library, last.changes);
+  // Desfazer `entry.trash` regrava o snapshot e apaga só a cópia mais recente
+  // da lixeira com aquele caminho. Restaurar, purgar e esvaziar não geram histórico.
+  if (last.tool === 'entry.trash') removeTrashOriginals(library, trashRoots(last.changes));
   actions.pop();
   writeActions(library, actions);
+  if (last.tool === 'entry.trash') syncLinks(library);
   return { undone: last.id, tool: last.tool, summary: last.summary, origin: last.origin };
+}
+
+function trashRoots(changes: Change[]) {
+  const removedDirs = changes
+    .filter(
+      (change): change is Extract<Change, { type: 'directory' }> =>
+        change.type === 'directory' && change.before === true && change.after === false,
+    )
+    .map((change) => change.path);
+  if (removedDirs.length)
+    return removedDirs.filter(
+      (dir) => !removedDirs.some((other) => other !== dir && dir.startsWith(other + '/')),
+    );
+  return changes
+    .filter(
+      (change): change is Extract<Change, { type: 'file' }> =>
+        change.type === 'file' && change.before !== null && change.after === null,
+    )
+    .map((change) => change.path);
 }
 
 function apply(library: Library, changes: Change[]) {
@@ -198,4 +223,48 @@ function writeActions(library: Library, actions: Action[]) {
 
 function historyFile(library: Library) {
   return path.join(library.root, '.sophy', 'history.json');
+}
+
+function undoneFile(library: Library) {
+  return path.join(library.root, '.sophy', 'agent-undone.json');
+}
+
+function readUndone(library: Library) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(undoneFile(library), 'utf8')) as { ids?: unknown };
+    return Array.isArray(parsed.ids)
+      ? parsed.ids.filter((id): id is string => typeof id === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberUndone(library: Library, id: string) {
+  const ids = readUndone(library).filter((item) => item !== id);
+  ids.push(id);
+  fs.mkdirSync(path.join(library.root, '.sophy'), { recursive: true });
+  fs.writeFileSync(undoneFile(library), JSON.stringify({ ids: ids.slice(-200) }));
+}
+
+/** Desfaz uma ação pelo id do histórico. Não cria outra entrada. */
+export function undoById(library: Library, id: string) {
+  const versionId = typeof id === 'string' ? id.trim() : '';
+  if (!versionId) throw new EngineError('not-found', 'Não encontrei essa versão para desfazer.');
+  if (readUndone(library).includes(versionId))
+    throw new EngineError('already-undone', 'Essa ação já foi desfeita.');
+  const actions = readActions(library);
+  const index = actions.findIndex((action) => action.id === versionId);
+  if (index < 0) throw new EngineError('not-found', 'Não encontrei essa versão para desfazer.');
+  if (index === actions.length - 1) {
+    const undone = undoLast(library);
+    rememberUndone(library, versionId);
+    return undone;
+  }
+  const action = actions[index]!;
+  apply(library, action.changes);
+  actions.splice(index, 1);
+  writeActions(library, actions);
+  rememberUndone(library, versionId);
+  return { undone: action.id, tool: action.tool, summary: action.summary, origin: action.origin };
 }
