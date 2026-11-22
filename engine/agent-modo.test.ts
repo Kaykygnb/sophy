@@ -62,10 +62,17 @@ test('modo pergunta só oferece leitura e recusa mutação com modo_pergunta', a
       };
     },
   });
+  assert.equal(rodada, 2);
+  assert.equal(turn.text, 'li a nota');
+  assert.equal(turn.canceled, undefined);
   assert.equal(fs.existsSync(path.join(root, 'Nova.md')), false);
   assert.deepEqual(
-    turn.actions.slice(0, 3).map((action) => action.error),
-    ['modo_pergunta', 'modo_pergunta', 'modo_pergunta'],
+    turn.actions.slice(0, 3).map((action) => ({ ok: action.ok, error: action.error })),
+    [
+      { ok: false, error: 'modo_pergunta' },
+      { ok: false, error: 'modo_pergunta' },
+      { ok: false, error: 'modo_pergunta' },
+    ],
   );
   assert.equal(turn.actions[3]?.ok, true);
   assert.match(JSON.stringify(turn.actions[3]?.input), /Estudos\/Nota\.md/);

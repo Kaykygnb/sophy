@@ -52,7 +52,7 @@ export { fillTemplate, unlinkedMentions, linkMentions, importVault, listViews, s
 export { listCards, reviewCard, undoCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
 export { runAgentTurn, agentTools, agentConfirmation, sofiSystemPrompt, normalizeContext } from './agent.ts';
 export { agentProviders, provedor } from './agent-providers.ts';
-export { abrirAgentConfig } from './agent-config.ts';
+export { abrirAgentConfig, resolverModelos, resolverTeste } from './agent-config.ts';
 export { testarConexao, listarModelos } from './agent-client.ts';
 export { rememberLibrary } from './agent-libraries.ts';
 export { capacidadeDoModelo } from './agent-reasoning.ts';

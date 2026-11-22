@@ -129,37 +129,6 @@ function camposDoPerfil(ativo, extra) {
   };
 }
 
-function alvoDoTeste(config, body) {
-  const entrada = body && typeof body === 'object' ? body : {};
-  if (typeof entrada.id === 'string' && entrada.id) {
-    const perfil = config.get().perfis.find((item) => item.id === entrada.id);
-    if (!perfil) throw new Error('Perfil não encontrado.');
-    return {
-      provider: perfil.provider,
-      endpoint: perfil.endpoint,
-      model: perfil.model,
-      apiKey: config.segredo(perfil.id) || '',
-      raciocinio: Object.prototype.hasOwnProperty.call(entrada, 'raciocinio')
-        ? entrada.raciocinio
-        : perfil.raciocinio,
-    };
-  }
-  if (typeof entrada.provider !== 'string' || typeof entrada.model !== 'string')
-    throw new Error('Informe o perfil ou o provedor e o modelo.');
-  const item = engine.provedor(entrada.provider);
-  if (!item) throw new Error('Provedor desconhecido.');
-  return {
-    provider: entrada.provider,
-    endpoint:
-      typeof entrada.endpoint === 'string' && entrada.endpoint.trim()
-        ? entrada.endpoint.trim()
-        : item.endpointPadrao,
-    model: entrada.model,
-    apiKey: typeof entrada.apiKey === 'string' ? entrada.apiKey : '',
-    raciocinio: entrada.raciocinio,
-  };
-}
-
 async function ferramentaDaSofi(name, body) {
   if (name === 'agent.providers') return engine.agentProviders();
   const config = abrirConfigSofi();
@@ -177,18 +146,16 @@ async function ferramentaDaSofi(name, body) {
     };
   }
   if (name === 'agent.models') {
-    if (!body || typeof body.id !== 'string' || !body.id) throw new Error('Informe o perfil.');
-    const perfil = config.get().perfis.find((item) => item.id === body.id);
-    if (!perfil) throw new Error('Perfil não encontrado.');
     return engine.listarModelos({
-      provider: perfil.provider,
-      endpoint: perfil.endpoint,
-      apiKey: config.segredo(perfil.id) || '',
+      ...engine.resolverModelos(config, body && typeof body === 'object' ? body : {}),
       fetchImpl: fetch,
     });
   }
   if (name === 'agent.testConnection') {
-    return engine.testarConexao({ ...alvoDoTeste(config, body), fetchImpl: fetch });
+    return engine.testarConexao({
+      ...engine.resolverTeste(config, body && typeof body === 'object' ? body : {}),
+      fetchImpl: fetch,
+    });
   }
   throw new Error('Tool desconhecida.');
 }
