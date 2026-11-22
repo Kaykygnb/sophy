@@ -312,13 +312,6 @@ function setupIpc() {
     return { allow: allow === true };
   });
 
-  handle('sophy:agent-undo', (_event, versionId) => {
-    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
-    if (typeof versionId !== 'string' || !versionId.trim())
-      throw new Error('Informe a versão para desfazer.');
-    return gate('agent.undo', { versionId: versionId.trim() });
-  });
-
   handle('sophy:choose-files', async (event) => {
     if (!trusted(event)) throw new Error('Origem não confiável.');
     const owner = BrowserWindow.fromWebContents(event.sender);
@@ -376,26 +369,6 @@ function setupIpc() {
       gate('library.watch', { enabled: true });
     }
     return { libraryPath: nextPath, libraries };
-  });
-
-  handle('sophy:library-list', () => {
-    const settings = readSettings();
-    const source = Array.isArray(settings.recentLibraries)
-      ? settings.recentLibraries
-      : settings.libraries;
-    return (Array.isArray(source) ? source : [])
-      .filter((item) => typeof item === 'string')
-      .slice(0, 5)
-      .map((folder) => ({ name: path.basename(folder), path: folder }));
-  });
-
-  handle('sophy:library-pick', async () => {
-    const window = BrowserWindow.getFocusedWindow() || windows[0];
-    const chosen = await dialog.showOpenDialog(window, {
-      properties: ['openDirectory', 'createDirectory'],
-    });
-    if (chosen.canceled || !chosen.filePaths[0]) return null;
-    return chosen.filePaths[0];
   });
 
   handle('sophy:library-reveal', (_event, folder) => {
