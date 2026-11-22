@@ -201,24 +201,22 @@ function dailyConflictDialog() {
   });
 }
 
+/* Devolve um item da lixeira ao lugar de origem. Se o caminho já estiver
+   ocupado, o back grava com o sufixo “ (restaurado)” e devolve o novo caminho. */
 async function restoreTrashed(id) {
-  const first = await tool('trash.restore', { id });
-  if (first?.conflict !== 'daily-exists') return first;
-  const mode = await dailyConflictDialog();
-  if (!mode) return first;
-  return tool('trash.restore', { id, mode });
+  return tool('trash.restore', { id });
 }
 
 function toast(message, kind = 'ok', action = null) {
   const el = document.createElement('div');
   el.className = `toast ${kind === 'erro' ? 'toast--erro' : 'toast--ok'}`;
   el.setAttribute('role', kind === 'erro' ? 'alert' : 'status');
-  el.innerHTML = `${icon(kind === 'erro' ? 'erro' : 'salvo', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
+  el.innerHTML = `${kind === 'erro' ? icon('erro', 'toast__icone') : ANIM.salvo ? `<span class="toast__icone anim">${ANIM.salvo}</span>` : icon('salvo', 'toast__icone')}<span class="toast__texto">${escapeHtml(message)}</span>`;
   if (action?.label && typeof action.onClick === 'function') {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'toast__acao';
-    button.textContent = action.label;
+    button.innerHTML = `${/desfazer/i.test(action.label) ? anim('desfazer') : ''}${escapeHtml(action.label)}`;
     button.onclick = async () => {
       el.remove();
       await action.onClick();
@@ -226,8 +224,30 @@ function toast(message, kind = 'ok', action = null) {
     el.append(button);
   }
   $('#toasts').append(el);
-  if (kind !== 'erro') setTimeout(() => el.remove(), 5000);
-  else el.addEventListener('click', () => el.remove());
+  if (kind !== 'erro') setTimeout(() => leaveToast(el), 5000);
+  else {
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast__fechar';
+    close.setAttribute('aria-label', 'Fechar aviso');
+    close.innerHTML = icon('fechar');
+    close.onclick = (event) => {
+      event.stopPropagation();
+      leaveToast(el);
+    };
+    el.append(close);
+    el.addEventListener('click', () => leaveToast(el));
+  }
+}
+
+function leaveToast(el) {
+  if (!el.isConnected) return;
+  if (motionReduced()) {
+    el.remove();
+    return;
+  }
+  el.classList.add('is-saindo');
+  setTimeout(() => el.remove(), 180);
 }
 
 async function undoLastAction(message = 'Ação desfeita.') {
@@ -568,17 +588,73 @@ function toggleSidebar(opener) {
   lateral.classList.toggle('is-fechada');
 }
 
+const NAV_GROUPS = [
+  ['', [['inicio', 'inicio', 'Início'], ['hoje', 'nota-diaria', 'Hoje']]],
+  ['Organizar', [['tarefas', 'lista-tarefas', 'Tarefas'], ['calendario', 'calendario', 'Calendário']]],
+  ['Estudar', [['cartas', 'flashcard', 'Flashcards']]],
+  ['Explorar', [['grafo', 'grafo', 'Grafo'], ['canvas', 'canvas', 'Canvas']]],
+];
+
+/* Ícones animados (assets/anim). O <style> de cada um vai uma vez para o <head>,
+   assim o texto dos botões e toasts continua limpo. */
+const ANIM = {};
+const ANIM_NAMES = ['abrir-estante', 'agente-trabalhando', 'carregando', 'desfazer', 'favoritar', 'fixar', 'nova-nota', 'salvo', 'sincronizar', 'tarefa-marcar'];
+
+async function loadAnims() {
+  const styles = [];
+  await Promise.all(
+    ANIM_NAMES.map(async (name) => {
+      try {
+        const text = await fetch(`ui/assets/anim/${name}.svg`).then((response) => response.text());
+        const style = text.match(/<style>([\s\S]*?)<\/style>/);
+        if (style) styles.push(style[1]);
+        ANIM[name] = text
+          .replace(/<\?xml[^>]*>\s*/, '')
+          .replace(/<style>[\s\S]*?<\/style>/, '')
+          .replace(/<title>[\s\S]*?<\/title>/, '')
+          .replace(/\srole="img"/, '')
+          .replace(/\saria-label(?:ledby)?="[^"]*"/g, '')
+          .replace('<svg ', '<svg aria-hidden="true" focusable="false" ');
+      } catch {
+        /* sem animação: fica o ícone estático */
+      }
+    }),
+  );
+  const tag = document.createElement('style');
+  tag.id = 'anim-css';
+  tag.textContent = styles.join('\n');
+  document.head.append(tag);
+}
+
+function anim(name, fallback = '') {
+  if (ANIM[name]) return `<span class="anim anim--${name}" aria-hidden="true">${ANIM[name]}</span>`;
+  return fallback ? icon(fallback) : '';
+}
+
+function replayAnim(host) {
+  const holder = host?.querySelector?.('.anim') || (host?.classList?.contains('anim') ? host : null);
+  if (!holder || motionReduced()) return;
+  holder.innerHTML = holder.innerHTML;
+}
+
+function ilustracao(name, width = 200) {
+  const theme = themeName() === 'dark' ? 'escuro' : 'claro';
+  return `<img class="vazio__arte" alt="" width="${width}" src="ui/assets/ilustracoes/${name}-${theme}.svg" />`;
+}
+
 function paintShell() {
   $('#onboarding').hidden = true;
   const shell = $('#shell');
   shell.hidden = false;
   const logo = themeName() === 'dark' ? 'escuro' : 'claro';
   shell.innerHTML = `<header class="titulo">
-      <div class="titulo__marca"><img alt="Sophy" src="ui/assets/logo/logo-horizontal-${logo}.svg" /></div>
+      <div class="titulo__marca"><img class="titulo__logo" alt="Sophy" src="ui/assets/logo/logo-horizontal-${logo}.svg" /></div>
       <div class="titulo__abas" role="tablist" id="abas"></div>
       <div class="titulo__acoes">
         <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
-        <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
+        <button type="button" class="btn btn--fantasma btn--pequeno titulo__sofi" id="abrir-sofi" title="Pedir à Sofi (Ctrl+J)" aria-label="Pedir à Sofi (Ctrl+J)" aria-pressed="false">${icon('faisca')}<span>Sofi</span></button>
+        <button type="button" class="btn btn--icone titulo__sino" id="notificacoes" title="Notificações" aria-label="Notificações" aria-haspopup="dialog" aria-expanded="false">${icon('notificacao')}<span class="sino__contador" id="notificacoes-contador" hidden></span></button>
+        <button type="button" class="btn btn--icone" id="busca" title="Buscar (Ctrl+K)" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
         <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
         <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('painel-direito')}</button>
         <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
@@ -594,26 +670,21 @@ function paintShell() {
           <button type="button" class="btn btn--icone" id="recolher" aria-label="Recolher">${icon('painel-lateral')}</button>
         </div>
         <div class="lateral__acoes">
-          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${icon('novo')} Novo</button>
+          <button type="button" class="btn btn--secundario" id="novo" aria-haspopup="menu">${anim('nova-nota', 'novo')} Novo</button>
           <button type="button" class="btn btn--icone" id="filtrar" aria-label="Filtrar">${icon('busca')}</button>
         </div>
         <nav class="lateral__nav" aria-label="Seções">
-          ${[
-            ['inicio', 'inicio', 'Início'],
-            ['hoje', 'nota-diaria', 'Hoje'],
-            ['tarefas', 'lista-tarefas', 'Tarefas'],
-            ['calendario', 'calendario', 'Calendário'],
-            ['grafo', 'grafo', 'Grafo'],
-            ['canvas', 'canvas', 'Canvas'],
-          ]
-            .map(
-              ([id, glyph, label]) =>
-                `<button type="button" class="nav__item" data-nav="${id}">${icon(glyph)} ${label}</button>`,
-            )
-            .join('')}
+          ${NAV_GROUPS.map(
+            ([group, items]) =>
+              `${group ? `<p class="nav__grupo" aria-hidden="true">${group}</p>` : ''}${items
+                .map(([id, glyph, label]) => `<button type="button" class="nav__item" data-nav="${id}">${icon(glyph)} ${label}</button>`)
+                .join('')}`,
+          ).join('')}
         </nav>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
+        <section class="tags-painel" id="tags-painel" aria-label="Tags" hidden></section>
+        <div class="lateral__rodape"><button type="button" class="nav__item" data-nav="lixeira" title="Lixeira">${icon('lixeira')} Lixeira</button><button type="button" class="nav__item" data-nav="config" title="Configurações (Ctrl+,)">${icon('configuracoes')} Configurações</button></div>
       </aside>
       <main class="centro" id="centro"></main>
       <aside class="conexoes painel is-oculta" id="conexoes"></aside>
@@ -621,15 +692,21 @@ function paintShell() {
     <footer class="status">
       <span id="st-caminho"></span>
       <span id="st-palavras"></span>
-      <span id="st-estado">Pronta</span>
+      <span class="status__estado"><span id="st-anim" class="anim" aria-hidden="true"></span><span id="st-estado">Pronta</span></span>
       <span class="status__fim" id="st-tema"></span>
     </footer>`;
   $('#busca').onclick = () => openPalette();
+  $('#notificacoes').onclick = () => toggleNotifications();
+  $('#abrir-sofi').onclick = () => {
+    if (state.sofiOpen) closeSofi();
+    else openAgent();
+  };
   $('#ver-grafo').onclick = () => showGraph();
   $('#abrir-conexoes').onclick = () => toggleConnections();
   $('#tema').onclick = () => toggleTheme();
   bindWindow(shell);
   $('#novo').onclick = (event) => openNewMenu(event.currentTarget);
+  $('#novo').onmouseenter = (event) => replayAnim(event.currentTarget);
   $('#seletor-biblioteca').onclick = (event) => openLibraryMenu(event.currentTarget);
   $('#recolher').onclick = (event) => toggleSidebar(event.currentTarget);
   $('#abrir-lateral').onclick = (event) => toggleSidebar(event.currentTarget);
@@ -641,6 +718,7 @@ function paintShell() {
   shell.querySelectorAll('[data-nav]').forEach((button) => {
     button.onclick = () => runCommand(button.dataset.nav === 'inicio' ? 'inicio' : button.dataset.nav);
   });
+  syncNav();
   $('#filtro-arvore').oninput = () => paintTree();
   paintTree();
   paintCenter();
@@ -676,6 +754,7 @@ async function refreshLibrary() {
   } catch {
     state.linkCatalog = [];
   }
+  refreshTags();
 }
 
 function treeUiStorageKey() {
@@ -1264,6 +1343,12 @@ const PROPERTY_TYPES = {
   url: 'URL',
 };
 
+const PROPERTY_ICONS = { text: 'texto', number: 'hash', select: 'lista', multi: 'tag', date: 'calendario', checkbox: 'check', url: 'link' };
+
+function propertyTypeIcon(type) {
+  return `<span class="propriedade__tipo" title="Tipo: ${escapeHtml(PROPERTY_TYPES[type] || 'Texto')}" aria-hidden="true">${icon(PROPERTY_ICONS[type] || 'texto')}</span>`;
+}
+
 function noteLayout() {
   const layout = state.frontmatter?.layout;
   return {
@@ -1453,6 +1538,12 @@ function closeConnections() {
 }
 
 function toggleConnections() {
+  // Com a Sofi aberta no mesmo painel, o botão Conexões troca para os links em vez de fechar.
+  if (state.sofiOpen) {
+    $('#abrir-sofi')?.setAttribute('aria-pressed', 'false');
+    openConnections();
+    return;
+  }
   if (state.connectionsOpen && !$('#conexoes')?.classList.contains('is-oculta')) closeConnections();
   else openConnections();
 }
@@ -1475,7 +1566,8 @@ function coverArt(id, y) {
 
 function coverBand() {
   const cover = Cmd.resolveCover(state.frontmatter);
-  if (!cover) return '';
+  if (!cover)
+    return `<div class="capa-adicionar"><button type="button" class="btn btn--fantasma btn--pequeno" id="trocar-capa">${icon('imagem')} Adicionar capa</button></div>`;
   if (cover.kind === 'cor') {
     const paint = cover.color === 'estante' ? noteShelfColor() : `var(--shelf-${cover.color}, var(--accent-soft))`;
     return `<div class="capa capa--cor" style="--capa-y:${cover.y};--capa-tinta:${paint}" role="img" aria-label="Capa cor ${escapeHtml(cover.color)}">${coverActions()}</div>`;
@@ -1618,14 +1710,14 @@ function notePropertiesHtml() {
   const properties = noteProperties();
   const daily = dailyPathDate(state.active);
   const locked = daily
-    ? `<div class="propriedade propriedade--travada"><span class="propriedade__nome">data</span><input class="propriedade__valor" value="${escapeHtml(daily)}" readonly aria-readonly="true" tabindex="-1" aria-label="data">${icon('cadeado', 'icon--14')}</div>`
+    ? `<div class="propriedade propriedade--travada"><span class="propriedade__nome">${propertyTypeIcon('date')}<span>data</span></span><input class="propriedade__valor" value="${escapeHtml(daily)}" readonly aria-readonly="true" tabindex="-1" aria-label="data">${icon('cadeado', 'icon--14')}</div>`
     : '';
-  const rows = locked + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
+  const rows = locked + noteTagsRowHtml() + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}" title="${escapeHtml(PROPERTY_TYPES[property.type] || 'Texto')}: renomear">${propertyTypeIcon(property.type)}<span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
   const noteId = typeof state.frontmatter?.id === 'string' ? state.frontmatter.id : '';
   const advanced = noteId
-    ? `<details class="nota-avancado"><summary>Avançado</summary><div class="propriedade propriedade--id"><span class="propriedade__nome">id</span><input class="propriedade__valor" value="${escapeHtml(noteId)}" readonly aria-readonly="true" tabindex="-1" aria-label="id da nota"></div></details>`
+    ? `<details class="nota-avancado"><summary>Avançado</summary><div class="propriedade propriedade--id"><span class="propriedade__nome"><span class="propriedade__tipo" aria-hidden="true">${icon('chave')}</span><span>id</span></span><input class="propriedade__valor" value="${escapeHtml(noteId)}" readonly aria-readonly="true" tabindex="-1" aria-label="id da nota">${icon('cadeado', 'icon--14')}<small class="propriedade__dica">Somente leitura. É o que mantém os links da nota ao renomear.</small></div></details>`
     : '';
-  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button>${advanced}</div></details>`;
+  return `<details class="nota-propriedades" ${properties.length || noteTagList().length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="propriedade-adicionar" id="adicionar-propriedade">${icon('mais')}<span>Adicionar propriedade</span></button>${advanced}</div></details>`;
 }
 
 function openPropertyValuePicker(propertyId, anchor) {
@@ -1739,13 +1831,25 @@ function openNoteMenu(anchor) {
   menu.className = 'menu menu-flutuante nota-menu';
   menu.setAttribute('role', 'dialog');
   menu.setAttribute('aria-label', 'Opções da nota');
-  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button>`;
+  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button><button type="button" class="menu__item" id="menu-filha">Nova página filha</button><hr><h4>Exportar</h4><button type="button" class="menu__item" id="menu-exportar-pdf"><span>${icon('exportar')} Exportar como PDF</span></button><button type="button" class="menu__item" id="menu-exportar-md"><span>${icon('exportar')} Exportar como Markdown</span></button>`;
   document.body.append(menu);
   anchor.setAttribute('aria-expanded', 'true');
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
   menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
   menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 8)}px`;
+  const exportMd = menu.querySelector('#menu-exportar-md');
+  if (exportMd)
+    exportMd.onclick = () => {
+      closeMenus();
+      exportNoteMarkdown().catch((error) => toast(error.message, 'erro'));
+    };
+  const exportPdf = menu.querySelector('#menu-exportar-pdf');
+  if (exportPdf)
+    exportPdf.onclick = () => {
+      closeMenus();
+      exportNotePdf().catch((error) => toast(error.message, 'erro'));
+    };
   menu.addEventListener('mousedown', (event) => event.stopPropagation());
   menu.querySelectorAll('[data-note-font]').forEach((button) => {
     button.onclick = (event) => {
@@ -1779,6 +1883,11 @@ function openNoteMenu(anchor) {
     setFocusMode(!state.focusMode);
     paintCenter();
   };
+  menu.querySelector('#menu-filha').onclick = () => {
+    menu.remove();
+    anchor.removeAttribute('aria-expanded');
+    createChildPage();
+  };
 }
 
 function paintHome(center) {
@@ -1788,11 +1897,12 @@ function paintHome(center) {
       const notes = state.notes.filter((note) => note.workspace === workspace.name).length;
       const boards = state.canvases.filter((file) => file.workspace === workspace.name).length;
       const color = mark.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
-      return `<button type="button" class="cartao-estante" data-home="${escapeHtml(workspace.name)}"${color}>${icon(mark.icon, 'icon--estante')}<strong>${escapeHtml(workspace.name)}</strong><span>${notes} notas · ${boards} canvas</span></button>`;
+      return `<button type="button" class="cartao-estante" data-home="${escapeHtml(workspace.name)}"${color}>${icon(mark.icon, 'icon--estante')}<span class="cartao-estante__abrir">${anim('abrir-estante')}</span><strong>${escapeHtml(workspace.name)}</strong><span>${notes} notas · ${boards} canvas</span></button>`;
     })
     .join('');
-  center.innerHTML = `<div class="inicio"><h2>Início</h2><p>As estantes desta biblioteca. Escolha uma ou crie uma nota.</p><div class="inicio__cartoes">${cards || '<p>Nenhuma estante ainda. Use Novo.</p>'}</div><div class="vazio-ensina__atalhos"><span><kbd class="kbd">Ctrl N</kbd> nota</span><span><kbd class="kbd">Ctrl ,</kbd> configurações</span><span><kbd class="kbd">Ctrl K</kbd> buscar</span></div></div>`;
+  center.innerHTML = `<div class="inicio"><h2>Início</h2><p>As estantes desta biblioteca. Escolha uma ou crie uma nota.</p><div class="inicio__cartoes">${cards || '<p>Nenhuma estante ainda. Crie a primeira pelo botão Novo, na lateral.</p>'}</div><div class="vazio-ensina__atalhos"><span><kbd class="kbd">Ctrl N</kbd> nota</span><span><kbd class="kbd">Ctrl ,</kbd> configurações</span><span><kbd class="kbd">Ctrl K</kbd> buscar</span></div></div>`;
   center.querySelectorAll('[data-home]').forEach((button) => {
+    button.onmouseenter = () => replayAnim(button);
     button.onclick = () => {
       state.selectedShelf = button.dataset.home;
       state.treeFocus = 'shelf';
@@ -1802,6 +1912,30 @@ function paintHome(center) {
       paintCenter();
     };
   });
+}
+
+const CONFIG_SECTIONS = [
+  ['geral', 'configuracoes', 'Geral'],
+  ['aparencia', 'aparencia', 'Aparência'],
+  ['editor', 'editar', 'Editor'],
+  ['anexos', 'anexo', 'Anexos'],
+  ['notificacoes', 'notificacao', 'Notificações'],
+  ['bibliotecas', 'biblioteca', 'Bibliotecas'],
+  ['sofi', 'faisca', 'Sofi e IA'],
+  ['atalhos', 'teclado', 'Atalhos'],
+  ['sobre', 'info', 'Sobre'],
+];
+
+function cfgRow(title, help, control, extra = '') {
+  return `<div class="config__linha${extra}"><div class="config__rotulo"><b>${title}</b>${help ? `<p>${help}</p>` : ''}</div><div class="config__controle">${control}</div></div>`;
+}
+
+function cfgSoon(title, help, control) {
+  return cfgRow(`${title} <span class="em-breve">em breve</span>`, help, control, ' is-em-breve');
+}
+
+function cfgSwitch(id, checked, label, disabled = false) {
+  return `<label class="alternar"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${label}</span></label>`;
 }
 
 function paintSettings(center) {
@@ -1816,21 +1950,104 @@ function paintSettings(center) {
     vinho: 'Vinho',
     grafite: 'Grafite',
   };
-  center.innerHTML = `<div class="config"><h2>Configurações</h2>
-    <section><h3>Aparência</h3>
-      <div class="segmentado" role="radiogroup" aria-label="Tema">
-        ${['light', 'dark', 'system'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-tema" value="${value}" ${(state.settings.theme || 'system') === value ? 'checked' : ''}><span>${value === 'light' ? 'Claro' : value === 'dark' ? 'Escuro' : 'Sistema'}</span></label>`).join('')}
-      </div>
-      <div class="segmentado" role="radiogroup" aria-label="Fonte">
-        ${['inter', 'literata'].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-fonte" value="${value}" ${(state.settings.readingFont || 'inter') === value ? 'checked' : ''}><span>${value === 'inter' ? 'Inter' : 'Literata'}</span></label>`).join('')}
-      </div>
-      <label class="alternar"><input type="checkbox" id="cfg-motion" ${state.settings.reduceMotion ? 'checked' : ''}><span>Reduzir animações</span></label>
-    </section>
-    <section><h3>Cor de destaque</h3><div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div><label class="alternar"><input type="checkbox" id="cfg-sistema" ${state.settings.accentSystem ? 'checked' : ''}><span>Seguir a cor do sistema</span></label><p class="nota-privacidade">Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.</p></section>
-    <section><h3>Busca por significado</h3><label class="alternar"><input type="checkbox" id="cfg-busca" ${state.settings.semantic ? 'checked' : ''}><span>${state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'}</span></label><p class="nota-privacidade">Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.</p></section>
-    <section><h3>Revisão da semana</h3><p>O aviso aparece só no domingo. A semana começa ${weekStartsOn() === 0 ? 'no domingo' : 'na segunda'}.</p><div class="segmentado" role="radiogroup" aria-label="Início da semana">${[1, 0].map((value) => `<label class="segmentado__opcao"><input type="radio" name="cfg-semana" value="${value}" ${(state.settings.weekStartsOn ?? 1) === value ? 'checked' : ''}><span>${value === 1 ? 'Segunda' : 'Domingo'}</span></label>`).join('')}</div><button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button></section>
-    <section><h3>Versões</h3><p>Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando as mais antigas.</p><button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button><button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button></section>
+  const radios = (name, label, options, current) =>
+    `<div class="segmentado" role="radiogroup" aria-label="${label}">${options.map(([value, text]) => `<label class="segmentado__opcao"><input type="radio" name="${name}" value="${value}" ${String(current) === String(value) ? 'checked' : ''}><span>${text}</span></label>`).join('')}</div>`;
+  const libraries = [...new Set([state.libraryPath, ...(state.settings.libraries || [])])].filter(Boolean);
+  const libraryRows = libraries
+    .map((folder) => {
+      const current = folder === state.libraryPath;
+      return `<li class="config__biblioteca${current ? ' is-atual' : ''}">${icon('biblioteca')}<div><b>${escapeHtml(folder.split(/[/\\]/).pop())}</b><span>${escapeHtml(folder)}</span></div>${current ? '<span class="chip chip--acento">Aberta agora</span>' : '<button type="button" class="btn btn--fantasma btn--pequeno" disabled title="Em breve">Abrir <span class="em-breve">em breve</span></button>'}</li>`;
+    })
+    .join('');
+  const shortcuts = Cmd.COMMANDS.filter((item) => item.atalho)
+    .map((item) => `<tr><td>${escapeHtml(item.rotulo)}</td><td>${item.atalho.split('+').map((key) => `<kbd class="kbd">${escapeHtml(key)}</kbd>`).join('<span class="kbd-mais">+</span>')}</td></tr>`)
+    .join('');
+  const codeLines = localStorage.getItem('sophy-code-lines') === '1';
+  const folded = Object.keys(state.settings.collapsedSections || {}).length;
+  const active = state.configSection || 'geral';
+  center.innerHTML = `<div class="config config--tela">
+    <nav class="config__nav" aria-label="Seções das configurações">
+      ${CONFIG_SECTIONS.map(([id, glyph, label]) => `<button type="button" class="nav__item config__nav-item" data-cfg-secao="${id}" ${active === id ? 'aria-current="true"' : ''}>${icon(glyph)} ${label}</button>`).join('')}
+    </nav>
+    <div class="config__corpo">
+      <header class="config__topo"><h2>Configurações</h2><p>Tudo fica salvo na hora. Nada aqui altera suas notas.</p></header>
+      <section class="config__secao" id="cfg-geral" data-secao="geral"><h3>Geral</h3>
+        ${cfgRow('Início da semana', `O calendário e a revisão usam esta data. A semana começa ${weekStartsOn() === 0 ? 'no domingo' : 'na segunda'}.`, radios('cfg-semana', 'Início da semana', [[1, 'Segunda'], [0, 'Domingo']], state.settings.weekStartsOn ?? 1))}
+        ${cfgRow('Revisão da semana', 'Aos domingos, um aviso no topo convida a revisar a semana. A Sofi não altera as notas sozinha.', '<button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button>')}
+        ${cfgSoon('Idioma', 'Por enquanto o Sophy fala português do Brasil.', '<select disabled aria-label="Idioma"><option>Português (Brasil)</option></select>')}
+        ${cfgSoon('Ao abrir o Sophy', 'Escolher se abre no Início ou na última nota.', '<select disabled aria-label="Ao abrir"><option>Início</option></select>')}
+      </section>
+      <section class="config__secao" id="cfg-aparencia" data-secao="aparencia"><h3>Aparência</h3>
+        ${cfgRow('Tema', 'Sistema acompanha o claro ou escuro do computador.', radios('cfg-tema', 'Tema', [['light', 'Claro'], ['dark', 'Escuro'], ['system', 'Sistema']], state.settings.theme || 'system'))}
+        ${cfgRow('Cor de destaque', 'Aparece em botões, links e seleção.', `<div class="acentos">${accents.map((id) => `<button type="button" class="acento ${accent === id ? 'is-escolhida' : ''}" data-accent="${id}" aria-label="${labels[id]}" title="${labels[id]}" style="--amostra: var(--accent-${id})"></button>`).join('')}</div>`)}
+        ${cfgRow('Seguir a cor do sistema', 'Desligada por padrão. Ligada, o acento escolhido sai e a janela fica no índigo até o sistema informar uma cor.', cfgSwitch('cfg-sistema', state.settings.accentSystem, state.settings.accentSystem ? 'Ligado' : 'Desligado'))}
+        ${cfgRow('Reduzir animações', 'Desliga transições e ícones animados. O Sophy também respeita a preferência do sistema.', cfgSwitch('cfg-motion', state.settings.reduceMotion, state.settings.reduceMotion ? 'Ligado' : 'Desligado'))}
+      </section>
+      <section class="config__secao" id="cfg-editor" data-secao="editor"><h3>Editor</h3>
+        ${cfgRow('Fonte do texto', 'Vale para todas as notas. Cada nota ainda pode trocar a sua no menu ••• dela.', radios('cfg-fonte', 'Fonte', [['inter', 'Inter'], ['literata', 'Literata']], state.settings.readingFont || 'inter'))}
+        ${cfgRow('Números de linha no código', 'Mostra a numeração nos blocos de código.', cfgSwitch('cfg-linhas', codeLines, codeLines ? 'Ligado' : 'Desligado'))}
+        ${cfgRow('Seções recolhidas', folded ? `${folded} ${folded === 1 ? 'seção está recolhida' : 'seções estão recolhidas'} nas suas notas.` : 'Nenhuma seção recolhida agora.', `<button type="button" class="btn btn--secundario" id="cfg-abrir-secoes" ${folded ? '' : 'disabled'}>Abrir todas</button>`)}
+        ${cfgSoon('Verificar ortografia', 'Sublinhar palavras com erro enquanto você escreve.', cfgSwitch('cfg-ortografia', false, 'Desligado', true))}
+      </section>
+      <section class="config__secao" id="cfg-anexos" data-secao="anexos"><h3>Anexos</h3>
+        <p class="config__ajuda">Arquivos da pasta Anexos/ da biblioteca: imagens e documentos que você arrastou ou anexou nas notas. Arrastar para a nota funciona em qualquer arquivo, até 25 MB.</p>
+        <div id="cfg-anexos-conteudo" class="anexos" aria-live="polite"><p class="config__ajuda">Carregando…</p></div>
+      </section>
+      <section class="config__secao" id="cfg-notificacoes" data-secao="notificacoes"><h3>Notificações</h3>
+        <p class="config__ajuda">O sino na barra de título junta os avisos. Escolha quais tipos entram nele e no contador.</p>
+        ${NOTIF_TYPES.map(([type, label, , help]) => cfgRow(label, help, cfgSwitch(`cfg-notif-${type}`, notifEnabled(type), notifEnabled(type) ? 'Ligado' : 'Desligado'))).join('')}
+      </section>
+      <section class="config__secao" id="cfg-bibliotecas" data-secao="bibliotecas"><h3>Bibliotecas</h3>
+        <p class="config__ajuda">Uma biblioteca é uma pasta com suas notas em Markdown. Você pode ter várias.</p>
+        <ul class="config__bibliotecas">${libraryRows}</ul>
+        <div class="config__acoes"><button type="button" class="btn btn--secundario" id="cfg-revelar">${icon('mostrar-pasta')} ${/linux/i.test(navigator.userAgent) ? 'Mostrar na pasta' : 'Mostrar no Explorer'}</button><button type="button" class="btn btn--secundario" id="cfg-importar">${icon('importar')} Importar do Obsidian</button></div>
+        <h4>Busca por significado</h4>
+        ${cfgRow('Busca local', 'Nenhum modelo é baixado e nenhum texto sai da biblioteca. O índice local só nasce quando você liga.', cfgSwitch('cfg-busca', state.settings.semantic, state.settings.semantic ? 'Pronta, só nesta máquina' : 'Desligada'))}
+        <h4>Versões e exportação</h4>
+        ${cfgRow('Pontos de restauração', 'Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando os mais antigos.', '<button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button>')}
+        ${cfgRow('Exportar a biblioteca', 'Gera um site estático ou um PDF com as notas escolhidas.', '<button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button>')}
+      </section>
+      <section class="config__secao" id="cfg-sofi" data-secao="sofi"><h3>Sofi e IA</h3>
+        <div class="config__sofi">${ilustracao('agente-desconectado', 120)}<div><b id="cfg-agente-estado">Verificando a Sofi…</b><p>A Sofi lê só esta biblioteca, usa as mesmas ferramentas que você e grava um ponto antes de agir.</p></div></div>
+        ${cfgRow('Chave de acesso', 'Fica no cofre do sistema, nunca dentro da biblioteca.', '<input id="cfg-agente-chave" type="password" autocomplete="off" placeholder="Cole a chave aqui" aria-label="Chave de acesso"><button type="button" class="btn btn--secundario" id="cfg-agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="cfg-agente-apagar">Apagar chave</button>', ' config__linha--larga')}
+        <p class="config__retorno" id="cfg-agente-retorno" role="status"></p>
+        ${cfgSoon('Provedor e modelo', 'Escolher qual serviço de IA a Sofi usa.', '<select disabled aria-label="Provedor"><option>Padrão</option></select>')}
+        ${cfgSoon('Ferramentas externas (MCP)', 'Conectar a Sofi a agenda, e-mail e outros apps.', '<button type="button" class="btn btn--secundario" disabled>Conectar</button>')}
+        ${cfgSoon('Permissões da Sofi', 'Definir o que ela pode criar, editar ou apagar.', '<button type="button" class="btn btn--secundario" disabled>Ajustar</button>')}
+      </section>
+      <section class="config__secao" id="cfg-atalhos" data-secao="atalhos"><h3>Atalhos</h3>
+        <p class="config__ajuda">Todos também ficam em botões na tela. O atalho é só um caminho mais curto.</p>
+        <table class="config__atalhos"><tbody>${shortcuts}<tr><td>Comandos de bloco</td><td><kbd class="kbd">/</kbd> numa linha vazia</td></tr></tbody></table>
+      </section>
+      <section class="config__secao" id="cfg-sobre" data-secao="sobre"><h3>Sobre</h3>
+        <div class="config__sobre"><img alt="Sophy" src="ui/assets/logo/logo-horizontal-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" height="28"><p>Versão 0.1.0. Suas notas são arquivos Markdown na sua pasta, e continuam seus se o Sophy sair do caminho.</p></div>
+      </section>
+    </div>
   </div>`;
+  const body = center.querySelector('.config__corpo');
+  const navButtons = [...center.querySelectorAll('[data-cfg-secao]')];
+  const mark = (id) => {
+    state.configSection = id;
+    navButtons.forEach((button) => {
+      if (button.dataset.cfgSecao === id) button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+    });
+  };
+  navButtons.forEach((button) => {
+    button.onclick = () => {
+      mark(button.dataset.cfgSecao);
+      center.querySelector(`#cfg-${button.dataset.cfgSecao}`)?.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
+    };
+  });
+  if (body)
+    body.onscroll = () => {
+      const top = body.getBoundingClientRect().top + 72;
+      const sections = [...body.querySelectorAll('.config__secao')];
+      const atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 4;
+      const current = atEnd ? sections.at(-1) : sections.filter((section) => section.getBoundingClientRect().top <= top).at(-1) || sections[0];
+      if (current && current.dataset.secao !== state.configSection) mark(current.dataset.secao);
+    };
+  if (state.configSection && state.configSection !== 'geral') center.querySelector(`#cfg-${state.configSection}`)?.scrollIntoView({ block: 'start' });
   center.querySelectorAll('[name="cfg-tema"]').forEach((input) => {
     input.onchange = async () => {
       state.settings.theme = input.value;
@@ -1851,6 +2068,7 @@ function paintSettings(center) {
   if (motion)
     motion.onchange = async () => {
       state.settings.reduceMotion = motion.checked;
+      motion.nextElementSibling.textContent = motion.checked ? 'Ligado' : 'Desligado';
       syncMotion();
       await sophy.saveSettings({ reduceMotion: motion.checked });
     };
@@ -1867,8 +2085,32 @@ function paintSettings(center) {
   if (system)
     system.onchange = async () => {
       state.settings.accentSystem = system.checked;
+      system.nextElementSibling.textContent = system.checked ? 'Ligado' : 'Desligado';
       applyTheme(themeName());
       await sophy.saveSettings({ accentSystem: system.checked });
+    };
+  const lines = $('#cfg-linhas');
+  if (lines)
+    lines.onchange = () => {
+      localStorage.setItem('sophy-code-lines', lines.checked ? '1' : '0');
+      lines.nextElementSibling.textContent = lines.checked ? 'Ligado' : 'Desligado';
+    };
+  paintAttachmentsSettings();
+  NOTIF_TYPES.forEach(([type]) => {
+    const input = $(`#cfg-notif-${type}`);
+    if (!input) return;
+    input.onchange = () => {
+      setNotifEnabled(type, input.checked);
+      input.nextElementSibling.textContent = input.checked ? 'Ligado' : 'Desligado';
+    };
+  });
+  const unfold = $('#cfg-abrir-secoes');
+  if (unfold)
+    unfold.onclick = async () => {
+      state.settings.collapsedSections = {};
+      await sophy.saveSettings({ collapsedSections: {} });
+      toast('Todas as seções estão abertas de novo.');
+      paintCenter();
     };
   const search = $('#cfg-busca');
   if (search)
@@ -1893,6 +2135,52 @@ function paintSettings(center) {
   if (site) site.onclick = () => openExport('site');
   const pdf = $('#cfg-pdf');
   if (pdf) pdf.onclick = () => openExport('pdf');
+  const reveal = $('#cfg-revelar');
+  if (reveal) reveal.onclick = () => sophy.libraryReveal?.(state.libraryPath);
+  const importer = $('#cfg-importar');
+  if (importer) importer.onclick = () => importObsidian();
+  const feedback = (text) => {
+    const out = $('#cfg-agente-retorno');
+    if (out) out.textContent = text;
+  };
+  const save = $('#cfg-agente-guardar');
+  if (save)
+    save.onclick = async () => {
+      const input = $('#cfg-agente-chave');
+      if (!input.value.trim()) {
+        feedback('Cole a chave no campo antes de guardar.');
+        input.focus();
+        return;
+      }
+      const response = await sophy.agentKeySet(input.value);
+      input.value = '';
+      feedback(response.ok ? 'Pronto, a chave está no cofre.' : `Não deu para guardar: ${response.error}`);
+      syncAgentStatus();
+    };
+  const clear = $('#cfg-agente-apagar');
+  if (clear)
+    clear.onclick = async () => {
+      if (!(await confirmDialog('Apagar a chave da Sofi do cofre? Você pode colar outra depois.', { confirm: 'Apagar chave', danger: true }))) return;
+      const response = await sophy.agentKeyClear();
+      feedback(response.ok ? 'Chave apagada do cofre.' : `Não deu para apagar: ${response.error}`);
+      syncAgentStatus();
+    };
+  syncAgentStatus();
+}
+
+async function syncAgentStatus() {
+  const label = $('#cfg-agente-estado');
+  if (!label) return;
+  try {
+    const status = await sophy.agentStatus?.();
+    const value = status?.value ?? status;
+    const ready = Boolean(value?.saved ?? value?.hasKey ?? value?.configured ?? value?.ready ?? value?.ok);
+    state.sofiKey = ready;
+    label.textContent = ready ? 'A Sofi está pronta para ajudar' : 'A Sofi ainda não tem uma chave';
+    label.closest('.config__sofi')?.classList.toggle('is-pronta', ready);
+  } catch {
+    label.textContent = 'Não deu para saber o estado da Sofi agora';
+  }
 }
 
 async function showCards() {
@@ -1907,39 +2195,700 @@ function paintCards(center) {
   const due = (state.cardRows || []).filter((card) => card.due <= today);
   const card = due[0];
   if (!card) {
-    center.innerHTML = `<div class="vazio-ensina"><h2>Flashcards</h2><p>Escreva <span class="kbd">pergunta :: resposta</span> ou <span class="kbd">frente ::: verso</span> numa nota. Cada estante vira um baralho.</p></div>`;
+    const total = (state.cardRows || []).length;
+    center.innerHTML = `<div class="vazio-ensina">${ilustracao('flashcards-vazio')}<h2>${total ? 'Tudo revisado por hoje' : 'Flashcards'}</h2><p>${total ? `Você tem ${total} ${total === 1 ? 'cartão' : 'cartões'}. O próximo volta na data marcada, sem pressa.` : 'Ainda não há cartões. Escreva uma linha assim em qualquer nota:'}</p><p><span class="kbd">pergunta :: resposta</span> vira um cartão. <span class="kbd">frente ::: verso</span> vira dois, um em cada sentido.</p><p>Cada estante vira um baralho.</p>${state.cardUndo ? `<p>${undoCardButton()}</p>` : ''}</div>`;
+    center.onkeydown = null;
+    bindCardUndo(center);
     return;
   }
   const side = state.cardFace === 'back' ? 'verso' : 'frente';
-  center.innerHTML = `<div class="inicio"><h2>Flashcards</h2><p>${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p><button type="button" class="btn btn--secundario" id="carta-virar">Mostrar resposta</button></p><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao">Não sabia</button><button type="button" class="btn btn--primario" id="carta-sim">Sabia</button></div></div>`;
+  const labels = { 1: 'Errei', 2: 'Difícil', 3: 'Bom', 4: 'Fácil' };
+  const grades = [1, 2, 3, 4]
+    .map((grade) => `<button type="button" class="btn ${grade === 3 ? 'btn--primario' : 'btn--secundario'} fc-nota fc-nota--${grade}" data-nota="${grade}" aria-keyshortcuts="${grade}"><span class="fc-nota__nome">${labels[grade]}</span><span class="fc-nota__intervalo">${escapeHtml(card.intervals?.[grade] || '')}</span><kbd class="kbd">${grade}</kbd></button>`)
+    .join('');
+  center.innerHTML = `<div class="inicio fc-tela"><h2>Flashcards</h2><p class="fc-contagem">${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p class="fc-acoes"><button type="button" class="btn btn--secundario" id="carta-virar" aria-keyshortcuts="Space">${side === 'verso' ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd></button>${undoCardButton()}</p><div class="fc-notas" role="group" aria-label="Como foi lembrar?">${grades}</div><p class="fc-dica">Depois da resposta, o intervalo mostra quando o cartão volta.</p></div>`;
   $('#carta-virar').onclick = () => {
     state.cardFace = state.cardFace === 'back' ? 'front' : 'back';
-    paintCenter();
+    const back = state.cardFace === 'back';
+    const stage = center.querySelector('.fc-revisao');
+    if (stage) stage.dataset.lado = back ? 'verso' : 'frente';
+    $('#carta-virar').innerHTML = `${back ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd>`;
   };
-  $('#carta-sim').onclick = () => answerCard(card, true);
-  $('#carta-nao').onclick = () => answerCard(card, false);
+  center.querySelectorAll('[data-nota]').forEach((button) => {
+    button.onclick = () => answerCard(card, Number(button.dataset.nota));
+  });
+  bindCardUndo(center);
+  center.onkeydown = (event) => {
+    if (state.view !== 'cards' || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      $('#carta-virar')?.click();
+    } else if (['1', '2', '3', '4'].includes(event.key)) {
+      event.preventDefault();
+      center.querySelector(`[data-nota="${event.key}"]`)?.click();
+    } else if (event.key.toLowerCase() === 'z' || event.key === 'Backspace') {
+      event.preventDefault();
+      undoCardReview();
+    }
+  };
+  $('#carta-virar').focus();
 }
 
-async function answerCard(card, knew) {
-  await tool('card.review', { id: card.id, knew, today: isoToday() });
+function undoCardButton() {
+  if (!state.cardUndo) return '';
+  return `<button type="button" class="btn btn--fantasma" id="carta-desfazer" aria-keyshortcuts="Z" title="Voltar o último cartão respondido">${icon('desfazer')} Desfazer <kbd class="kbd">Z</kbd></button>`;
+}
+
+function bindCardUndo(center) {
+  const button = center.querySelector('#carta-desfazer');
+  if (button) button.onclick = () => undoCardReview();
+  if (!button) return;
+  if (!center.onkeydown) center.onkeydown = (event) => {
+    if (state.view === 'cards' && (event.key.toLowerCase() === 'z' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey) undoCardReview();
+  };
+}
+
+async function answerCard(card, grade) {
+  try {
+    await tool('card.review', { id: card.id, grade, today: isoToday() });
+  } catch (error) {
+    toast(error.message, 'erro');
+    return;
+  }
+  state.cardUndo = { id: card.id, grade };
   state.cardFace = 'front';
   state.cardRows = await tool('card.list', { today: isoToday() });
   paintCenter();
 }
 
-function syncWeekly() {
-  const existing = $('#revisao-semana');
-  if (new Date().getDay() !== 0) {
-    existing?.remove();
+async function undoCardReview() {
+  const last = state.cardUndo;
+  if (!last) return;
+  try {
+    await tool('card.undo', { id: last.id });
+  } catch (error) {
+    state.cardUndo = null;
+    toast(error.message, 'erro');
+    state.cardRows = await tool('card.list', { today: isoToday() });
+    paintCenter();
     return;
   }
-  if (existing || !$('#centro')) return;
-  const bar = document.createElement('div');
-  bar.id = 'revisao-semana';
-  bar.className = 'aviso';
-  bar.setAttribute('role', 'status');
-  bar.textContent = 'Domingo: a revisão da semana está pronta. A Sofi não altera as notas sozinha.';
-  $('#centro').prepend(bar);
+  state.cardUndo = null;
+  state.cardFace = 'front';
+  state.cardRows = await tool('card.list', { today: isoToday() });
+  const index = state.cardRows.findIndex((row) => row.id === last.id);
+  if (index > 0) state.cardRows.unshift(...state.cardRows.splice(index, 1));
+  paintCenter();
+  toast('Resposta desfeita. O cartão voltou.');
+}
+
+/* ------------------------------------------------------------------ Lixeira */
+const TRASH_ICON = { note: 'nota', canvas: 'canvas', attachment: 'anexo', folder: 'pasta' };
+const TRASH_KIND = { note: 'Nota', canvas: 'Canvas', attachment: 'Anexo', folder: 'Pasta' };
+
+function trashWhen(iso) {
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return '';
+  const minutes = Math.floor((Date.now() - time) / 60000);
+  if (minutes < 1) return 'agora há pouco';
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours} ${hours === 1 ? 'hora' : 'horas'}`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'ontem';
+  if (days < 30) return `há ${days} dias`;
+  return new Date(time).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function trashFolder(originalPath) {
+  const parts = String(originalPath || '').split('/');
+  parts.pop();
+  return parts.length ? parts.join(' / ') : 'Raiz da biblioteca';
+}
+
+async function showTrash() {
+  state.view = 'trash';
+  state.nav = 'lixeira';
+  state.trashRows = null;
+  paintCenter();
+  await loadTrash();
+}
+
+async function loadTrash() {
+  try {
+    state.trashRows = await tool('trash.list', {});
+  } catch (error) {
+    state.trashRows = [];
+    toast(error.message, 'erro');
+  }
+  if (state.view === 'trash') paintCenter();
+}
+
+async function afterTrashChange() {
+  state.notifTrashAt = 0;
+  await refreshLibrary();
+  paintTree();
+  paintTabs();
+  state.canvasGalleryLoaded = false;
+  await loadTrash();
+}
+
+async function restoreFromTrashView(item) {
+  try {
+    const result = await restoreTrashed(item.id);
+    await afterTrashChange();
+    const renamed = result?.path && result.path !== item.originalPath;
+    toast(
+      renamed
+        ? `“${item.title}” voltou como “${baseName(result.path)}”, porque o nome original já estava em uso.`
+        : `“${item.title}” voltou para ${trashFolder(item.originalPath) === 'Raiz da biblioteca' ? 'a raiz da biblioteca' : trashFolder(item.originalPath)}.`,
+      'ok',
+      item.kind === 'note' && result?.path ? { label: 'Abrir', onClick: () => openNote(result.path) } : null,
+    );
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+async function purgeFromTrashView(item) {
+  const ok = await confirmDialog(`Excluir “${item.title}” de vez? Não dá para desfazer.`, { confirm: 'Excluir de vez', danger: true });
+  if (!ok) return;
+  try {
+    await tool('trash.purge', { id: item.id });
+    await afterTrashChange();
+    toast(`“${item.title}” foi excluído de vez.`);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+async function emptyTrashFromView() {
+  const count = (state.trashRows || []).length;
+  if (!count) return;
+  const ok = await confirmDialog(
+    `Esvaziar a lixeira? ${count === 1 ? 'O 1 item' : `Os ${count} itens`} serão excluídos de vez. Não dá para desfazer.`,
+    { confirm: 'Esvaziar lixeira', danger: true },
+  );
+  if (!ok) return;
+  try {
+    await tool('trash.empty', {});
+    await afterTrashChange();
+    toast('Lixeira esvaziada.');
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+/* Aviso depois de mandar algo para a lixeira, com Desfazer que devolve só esse item. */
+function toastTrashed(message, id) {
+  state.notifTrashAt = 0;
+  toast(message, 'ok', id
+    ? {
+        label: 'Desfazer',
+        onClick: async () => {
+          try {
+            await restoreTrashed(id);
+            await refreshLibrary();
+            state.canvasGalleryLoaded = false;
+            paintTree();
+            paintTabs();
+            paintCenter();
+            toast('Restaurado.');
+          } catch (error) {
+            toast(error.message, 'erro');
+          }
+        },
+      }
+    : null);
+}
+
+function paintTrash(center) {
+  const rows = state.trashRows;
+  if (!rows) {
+    center.innerHTML = `<div class="lixeira"><header class="lixeira__topo"><h2>Lixeira</h2></header><p class="lixeira__nota" role="status">Carregando…</p></div>`;
+    return;
+  }
+  const total = rows.reduce((sum, item) => sum + (item.size || 0), 0);
+  if (!rows.length) {
+    center.innerHTML = `<div class="vazio-ensina lixeira-vazia">${ilustracao('lixeira-vazia')}<h2>A lixeira está vazia</h2><p>O que você apagar aparece aqui, e dá para devolver ao lugar de origem. Nada some sem você confirmar.</p></div>`;
+    return;
+  }
+  center.innerHTML = `<div class="lixeira"><header class="lixeira__topo"><div><h2>Lixeira</h2><p class="lixeira__nota">${rows.length} ${rows.length === 1 ? 'item' : 'itens'} · ${sizeLabel(total)}. Ficam aqui até você restaurar ou excluir de vez.</p></div><button type="button" class="btn btn--secundario btn--perigo" id="lixeira-esvaziar">${icon('lixeira')} Esvaziar lixeira</button></header><ul class="lixeira__lista" aria-label="Itens na lixeira">${rows
+    .map(
+      (item, index) => `<li class="lixeira__item" data-lixeira-id="${escapeHtml(item.id)}"><span class="lixeira__icone">${icon(TRASH_ICON[item.kind] || 'nota')}</span><span class="lixeira__texto"><strong class="lixeira__titulo">${escapeHtml(item.title)}</strong><small class="lixeira__meta">${TRASH_KIND[item.kind] || 'Item'} · ${escapeHtml(trashFolder(item.originalPath))} · apagado ${escapeHtml(trashWhen(item.deletedAt))} · ${sizeLabel(item.size || 0)}</small></span><span class="lixeira__acoes"><button type="button" class="btn btn--secundario" data-restaurar="${index}">${icon('desfazer')} Restaurar</button><button type="button" class="btn btn--fantasma btn--perigo" data-excluir="${index}">Excluir de vez</button></span></li>`,
+    )
+    .join('')}</ul></div>`;
+  $('#lixeira-esvaziar').onclick = () => emptyTrashFromView();
+  center.querySelectorAll('[data-restaurar]').forEach((button) => {
+    button.onclick = () => restoreFromTrashView(rows[Number(button.dataset.restaurar)]);
+  });
+  center.querySelectorAll('[data-excluir]').forEach((button) => {
+    button.onclick = () => purgeFromTrashView(rows[Number(button.dataset.excluir)]);
+  });
+}
+
+/* A faixa fixa da revisão saiu do topo das telas: o aviso mora no sino de notificações. */
+/* ------------------------------------------------------------ Notificações */
+const NOTIF_TYPES = [
+  ['revisao', 'Revisão da semana', 'calendario', 'Aviso no domingo, quando a revisão da semana está pronta.'],
+  ['lixeira', 'Lixeira', 'lixeira', 'Lembra que há itens na lixeira para restaurar ou esvaziar.'],
+  ['conflito', 'Conflitos de edição', 'alerta', 'Quando uma nota mudou fora do Sophy e precisa da sua escolha.'],
+  ['exportacao', 'Exportações concluídas', 'exportar', 'PDF, Markdown ou site salvos, com atalho para a pasta.'],
+  ['sofi', 'Avisos da Sofi', 'faisca', 'Quando a Sofi termina um pedido com o painel fechado.'],
+];
+const NOTIF_KEY = 'sophy.notificacoes';
+
+function notifStore() {
+  try {
+    const data = JSON.parse(localStorage.getItem(NOTIF_KEY) || '{}');
+    return { prefs: data.prefs || {}, items: data.items || [], dismissed: data.dismissed || {}, read: data.read || {} };
+  } catch {
+    return { prefs: {}, items: [], dismissed: {}, read: {} };
+  }
+}
+
+function notifSave(store) {
+  store.items = store.items.slice(0, 30);
+  localStorage.setItem(NOTIF_KEY, JSON.stringify(store));
+}
+
+function notifEnabled(type) {
+  return notifStore().prefs[type] !== false;
+}
+
+function setNotifEnabled(type, on) {
+  const store = notifStore();
+  store.prefs[type] = on;
+  notifSave(store);
+  refreshNotifications();
+}
+
+/* Avisos que acontecem uma vez (exportação, Sofi) ficam guardados; os de estado (revisão, lixeira, conflito) são calculados. */
+function pushNotification({ type, title, body, action }) {
+  const store = notifStore();
+  store.items.unshift({ id: `${type}:${Date.now()}`, type, title, body, action: action || null, at: Date.now() });
+  notifSave(store);
+  refreshNotifications();
+}
+
+async function computeNotifications() {
+  const store = notifStore();
+  const list = [];
+  const today = isoToday();
+  if (new Date().getDay() === 0 && state.libraryPath)
+    list.push({ id: `revisao:${today}`, type: 'revisao', title: 'Revisão da semana pronta', body: 'A Sofi juntou o que você escreveu. Ela não altera as notas sozinha.', action: { label: 'Abrir revisão', kind: 'revisao' }, at: new Date().setHours(0, 0, 0, 0) });
+  if (state.libraryPath && Date.now() - (state.notifTrashAt || 0) > 4000) {
+    state.notifTrashAt = Date.now();
+    try {
+      state.notifTrash = await tool('trash.list', {});
+    } catch {
+      state.notifTrash = [];
+    }
+  }
+  const trash = state.notifTrash || [];
+  if (trash.length) {
+    const size = trash.reduce((sum, item) => sum + (item.size || 0), 0);
+    list.push({ id: `lixeira:${trash.length}:${trash[0].id}`, type: 'lixeira', title: `Lixeira com ${trash.length} ${trash.length === 1 ? 'item' : 'itens'}`, body: `${sizeLabel(size)} guardados. Restaure o que precisar ou esvazie.`, action: { label: 'Abrir lixeira', kind: 'lixeira' }, at: Date.parse(trash[0].deletedAt) || Date.now() });
+  }
+  if (state.conflict && state.active)
+    list.push({ id: `conflito:${state.active}`, type: 'conflito', title: 'Nota mudou fora do app', body: `“${baseName(state.active)}” foi alterada em outro programa. Escolha qual versão manter.`, action: { label: 'Abrir nota', kind: 'note', arg: state.active }, at: Date.now() });
+  for (const item of store.items) list.push(item);
+  return list
+    .filter((item) => store.prefs[item.type] !== false && !store.dismissed[item.id])
+    .map((item) => ({ ...item, read: Boolean(store.read[item.id]) }))
+    .sort((a, b) => b.at - a.at);
+}
+
+/* exportPdf devolve { ok, value }, com value vazio quando a pessoa cancela o diálogo. */
+function exportDone(saved) {
+  return Boolean(saved && typeof saved === 'object' && 'value' in saved ? saved.value : saved);
+}
+
+function scheduleNotifRefresh() {
+  clearTimeout(state.notifTimer);
+  state.notifTimer = setTimeout(refreshNotifications, 250);
+}
+
+async function refreshNotifications() {
+  if (!$('#notificacoes')) return;
+  state.notifList = await computeNotifications();
+  const unread = state.notifList.filter((item) => !item.read).length;
+  const badge = $('#notificacoes-contador');
+  if (badge) {
+    badge.hidden = !unread;
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+  }
+  const button = $('#notificacoes');
+  if (button) button.setAttribute('aria-label', unread ? `Notificações, ${unread} ${unread === 1 ? 'não lida' : 'não lidas'}` : 'Notificações');
+  if ($('#notificacoes-painel')) paintNotifications();
+}
+
+function toggleNotifications() {
+  if ($('#notificacoes-painel')) {
+    closeNotifications();
+    return;
+  }
+  closeMenus();
+  const anchor = $('#notificacoes');
+  const panel = document.createElement('div');
+  panel.id = 'notificacoes-painel';
+  panel.className = 'menu menu-flutuante notif';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Notificações');
+  document.body.append(panel);
+  anchor.setAttribute('aria-expanded', 'true');
+  const rect = anchor.getBoundingClientRect();
+  panel.style.position = 'fixed';
+  panel.style.top = `${rect.bottom + 6}px`;
+  panel.style.right = `${Math.max(8, window.innerWidth - rect.right - 40)}px`;
+  panel.addEventListener('mousedown', (event) => event.stopPropagation());
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeNotifications();
+  });
+  paintNotifications();
+  refreshNotifications();
+  panel.querySelector('button')?.focus();
+}
+
+function closeNotifications() {
+  $('#notificacoes-painel')?.remove();
+  $('#notificacoes')?.setAttribute('aria-expanded', 'false');
+}
+
+function paintNotifications() {
+  const panel = $('#notificacoes-painel');
+  if (!panel) return;
+  const list = state.notifList || [];
+  const icons = Object.fromEntries(NOTIF_TYPES.map(([type, , glyph]) => [type, glyph]));
+  const unread = list.filter((item) => !item.read).length;
+  panel.innerHTML = `<header class="notif__topo"><h3>Notificações</h3><button type="button" class="btn btn--fantasma btn--pequeno" id="notif-todas" ${unread ? '' : 'disabled'}>Marcar todas como lidas</button></header>${
+    list.length
+      ? `<ul class="notif__lista">${list
+          .map(
+            (item, index) => `<li class="notif__item${item.read ? '' : ' is-nova'}" data-notif="${index}"><span class="notif__icone">${icon(icons[item.type] || 'notificacao')}</span><span class="notif__texto"><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.body || '')}</small>${item.action ? `<button type="button" class="btn btn--secundario btn--pequeno" data-notif-acao="${index}">${escapeHtml(item.action.label)}</button>` : ''}</span><span class="notif__lado"><time>${escapeHtml(trashWhen(new Date(item.at).toISOString()) || '')}</time><button type="button" class="btn btn--icone notif__fechar" data-notif-dispensar="${index}" aria-label="Dispensar: ${escapeHtml(item.title)}">${icon('fechar')}</button></span></li>`,
+          )
+          .join('')}</ul>`
+      : `<div class="notif__vazio">${icon('notificacao')}<b>Tudo em dia</b><p>Nada novo por aqui. Os avisos aparecem neste sino.</p></div>`
+  }<footer class="notif__rodape"><button type="button" class="btn btn--fantasma btn--pequeno" id="notif-config">Configurar avisos</button></footer>`;
+  $('#notif-todas').onclick = () => markNotifications(list, 'read');
+  $('#notif-config').onclick = () => {
+    closeNotifications();
+    state.configSection = 'notificacoes';
+    runCommand('config');
+  };
+  panel.querySelectorAll('[data-notif-acao]').forEach((button) => {
+    button.onclick = () => runNotificationAction(list[Number(button.dataset.notifAcao)]);
+  });
+  panel.querySelectorAll('[data-notif-dispensar]').forEach((button) => {
+    button.onclick = () => markNotifications([list[Number(button.dataset.notifDispensar)]], 'dismiss');
+  });
+}
+
+function markNotifications(items, mode) {
+  const store = notifStore();
+  for (const item of items) {
+    if (mode === 'read') store.read[item.id] = 1;
+    else {
+      store.dismissed[item.id] = 1;
+      store.items = store.items.filter((stored) => stored.id !== item.id);
+    }
+  }
+  notifSave(store);
+  refreshNotifications();
+}
+
+function runNotificationAction(item) {
+  if (!item?.action) return;
+  markNotifications([item], 'read');
+  closeNotifications();
+  const { kind, arg } = item.action;
+  if (kind === 'revisao') showReview();
+  else if (kind === 'lixeira') runCommand('lixeira');
+  else if (kind === 'note') openNote(arg);
+  else if (kind === 'reveal') sophy.libraryReveal(arg);
+  else if (kind === 'sofi') openAgent();
+}
+
+/* ------------------------------------------------------------------- Tags */
+async function refreshTags() {
+  try {
+    const result = await tool('tags.list', {});
+    state.tagTree = result?.tags || [];
+  } catch {
+    state.tagTree = [];
+  }
+  paintTags();
+  if (state.view === 'tag' && state.tagFilter) loadTagNotes(false);
+}
+
+function scheduleTagsRefresh() {
+  clearTimeout(state.tagsTimer);
+  state.tagsTimer = setTimeout(refreshTags, 900);
+}
+
+function tagsOpen() {
+  return localStorage.getItem('sophy-tags-aberto') !== '0';
+}
+
+function paintTags() {
+  const host = $('#tags-painel');
+  if (!host) return;
+  const tree = state.tagTree || [];
+  host.hidden = !tree.length;
+  if (!tree.length) {
+    host.innerHTML = '';
+    return;
+  }
+  const open = tagsOpen();
+  const row = (node, depth) => `<li><div class="tag-linha${state.view === 'tag' && state.tagFilter === node.path ? ' is-atual' : ''}" style="--nivel:${depth}"><button type="button" class="tag-linha__abrir" data-tag="${escapeHtml(node.path)}" title="Ver as notas com #${escapeHtml(node.path)}">${icon('hash')}<span class="tag-linha__nome">${escapeHtml(node.name)}</span><span class="tag-linha__conta">${node.total}</span></button><button type="button" class="tag-linha__mais" data-tag-menu="${escapeHtml(node.path)}" aria-label="Opções da tag ${escapeHtml(node.name)}">${icon('mais-opcoes')}</button></div>${node.children?.length ? `<ul>${node.children.map((child) => row(child, depth + 1)).join('')}</ul>` : ''}</li>`;
+  host.innerHTML = `<button type="button" class="tags-painel__topo" id="tags-alternar" aria-expanded="${open}">${icon(open ? 'chevron-baixo' : 'chevron-direita')}<span>Tags</span></button>${open ? `<ul class="tags-painel__lista">${tree.map((node) => row(node, 0)).join('')}</ul>` : ''}`;
+  $('#tags-alternar').onclick = () => {
+    localStorage.setItem('sophy-tags-aberto', open ? '0' : '1');
+    paintTags();
+  };
+  host.querySelectorAll('[data-tag]').forEach((button) => {
+    button.onclick = () => showTag(button.dataset.tag);
+  });
+  host.querySelectorAll('[data-tag-menu]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      openTagMenu(button, button.dataset.tagMenu);
+    };
+  });
+  host.querySelectorAll('.tag-linha').forEach((line) => {
+    line.oncontextmenu = (event) => {
+      event.preventDefault();
+      openTagMenu(line, line.querySelector('[data-tag]').dataset.tag);
+    };
+  });
+}
+
+function openTagMenu(anchor, tag) {
+  closeMenus();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `<button type="button" class="menu__item" role="menuitem" data-acao="ver">${icon('hash')} Ver as notas</button><button type="button" class="menu__item" role="menuitem" data-acao="renomear">${icon('renomear')} Renomear tag…</button>`;
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.min(rect.right - 8, window.innerWidth - 220)}px`;
+  menu.style.top = `${rect.bottom + 2}px`;
+  menu.addEventListener('mousedown', (event) => event.stopPropagation());
+  menu.querySelector('[data-acao="ver"]').onclick = () => {
+    closeMenus();
+    showTag(tag);
+  };
+  menu.querySelector('[data-acao="renomear"]').onclick = () => {
+    closeMenus();
+    renameTag(tag);
+  };
+}
+
+async function renameTag(from) {
+  const to = await textDialog({ title: 'Renomear tag', label: `Novo nome para #${from}`, value: from, confirm: 'Renomear' });
+  if (!to || to.replace(/^#/, '').trim() === from) return;
+  const target = to.replace(/^#/, '').trim();
+  const existing = flatTags(state.tagTree || []).some((node) => node.path.toLocaleLowerCase() === target.toLocaleLowerCase());
+  if (existing && !(await confirmDialog(`Já existe #${target}. As notas das duas tags vão ficar juntas em #${target}.`, { confirm: 'Unir tags' }))) return;
+  try {
+    if (!(await flushNote())) return;
+    await tool('tag.rename', { from, to: target });
+    if (state.tagFilter === from) state.tagFilter = target;
+    await refreshLibrary();
+    if (state.active) await openNote(state.active, { force: true });
+    paintTree();
+    toast(existing ? `#${from} foi unida a #${target}.` : `#${from} agora é #${target}.`, 'ok', { label: 'Desfazer', onClick: () => undoLastAction('Renomeação desfeita.').then(refreshTags) });
+    if (state.view === 'tag') showTag(state.tagFilter);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+function flatTags(nodes) {
+  return nodes.flatMap((node) => [node, ...flatTags(node.children || [])]);
+}
+
+async function showTag(tag) {
+  state.view = 'tag';
+  state.nav = '';
+  state.tagFilter = tag;
+  state.tagNotes = null;
+  paintCenter();
+  paintTags();
+  await loadTagNotes(true);
+}
+
+async function loadTagNotes(repaint) {
+  const tag = state.tagFilter;
+  try {
+    const result = await tool('tags.notes', { tag, nested: true });
+    state.tagNotes = result?.notes || [];
+  } catch (error) {
+    state.tagNotes = [];
+    toast(error.message, 'erro');
+  }
+  if (repaint !== false || state.view === 'tag') paintCenter();
+}
+
+function paintTagView(center) {
+  const tag = state.tagFilter;
+  const notes = state.tagNotes;
+  if (!notes) {
+    center.innerHTML = `<div class="etiqueta-tela"><header class="etiqueta-tela__topo"><h2>#${escapeHtml(tag)}</h2></header><p class="lixeira__nota" role="status">Carregando…</p></div>`;
+    return;
+  }
+  center.innerHTML = `<div class="etiqueta-tela"><header class="etiqueta-tela__topo"><div><h2><span class="tag-selo">#${escapeHtml(tag)}</span></h2><p class="lixeira__nota">${notes.length} ${notes.length === 1 ? 'nota' : 'notas'}, com as tags filhas.</p></div><button type="button" class="btn btn--secundario" id="tag-renomear">${icon('renomear')} Renomear tag</button></header>${
+    notes.length
+      ? `<ul class="etiqueta-tela__lista">${notes.map((note) => `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('nota')}<span><b>${escapeHtml(note.title || baseName(note.path))}</b><small>${escapeHtml(trashFolder(note.path))}${note.source === 'text' ? ' · no texto' : note.source === 'frontmatter' ? ' · nas propriedades' : ''}</small></span></button></li>`).join('')}</ul>`
+      : '<p class="lixeira__nota">Nenhuma nota usa esta tag agora.</p>'
+  }</div>`;
+  $('#tag-renomear').onclick = () => renameTag(tag);
+  center.querySelectorAll('[data-abrir-nota]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.abrirNota);
+  });
+}
+
+/* Chips de tag nas Propriedades: o frontmatter é a fonte; o + abre um campo com sugestões. */
+function noteTagList() {
+  const raw = state.frontmatter?.tags;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map((tag) => String(tag).replace(/^#/, '')).filter(Boolean);
+}
+
+function noteTagsRowHtml() {
+  const chips = noteTagList()
+    .map((tag) => `<span class="tag-chip" data-tag-chip="${escapeHtml(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Ver as notas com #${escapeHtml(tag)}">#${escapeHtml(tag)}</button><button type="button" class="tag-chip__tirar" data-tag-tirar="${escapeHtml(tag)}" aria-label="Tirar a tag ${escapeHtml(tag)}">${icon('fechar')}</button></span>`)
+    .join('');
+  return `<div class="propriedade propriedade--tags"><span class="propriedade__nome"><span class="propriedade__tipo" aria-hidden="true">${icon('tag')}</span><span>tags</span></span><div class="propriedade__valor tag-chips">${chips}<span class="tag-chip-novo"><button type="button" class="tag-chip-mais" id="tag-adicionar" aria-label="Adicionar tag" title="Adicionar tag">${icon('mais')}</button></span></div><span></span></div>`;
+}
+
+function bindNoteTags() {
+  const column = $('#coluna');
+  if (!column) return;
+  column.querySelectorAll('[data-tag-ver]').forEach((button) => {
+    button.onclick = () => showTag(button.dataset.tagVer);
+  });
+  column.querySelectorAll('[data-tag-tirar]').forEach((button) => {
+    button.onclick = () => changeNoteTags({ remove: [button.dataset.tagTirar] });
+  });
+  const add = $('#tag-adicionar');
+  if (add)
+    add.onclick = () => {
+      const slot = add.parentElement;
+      slot.innerHTML = '<input id="tag-novo-campo" class="tag-chip-campo" list="tag-sugestoes" placeholder="nova-tag" aria-label="Nova tag" maxlength="60" autocomplete="off"><datalist id="tag-sugestoes"></datalist>';
+      const input = $('#tag-novo-campo');
+      input.focus();
+      const suggest = async () => {
+        try {
+          const result = await tool('tag.suggest', { prefix: input.value.replace(/^#/, ''), limit: 8 });
+          $('#tag-sugestoes').innerHTML = (result?.tags || []).map((item) => `<option value="${escapeHtml(item.name)}"></option>`).join('');
+        } catch {
+          /* sem sugestões, o campo continua valendo */
+        }
+      };
+      suggest();
+      input.oninput = suggest;
+      input.onkeydown = (event) => {
+        if (event.key === 'Escape') paintCenter();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const value = input.value.replace(/^#/, '').trim();
+          if (value) changeNoteTags({ add: [value] });
+          else paintCenter();
+        }
+      };
+      input.onblur = () => setTimeout(() => $('#tag-novo-campo') === input && !input.value.trim() && paintCenter(), 150);
+    };
+}
+
+async function changeNoteTags(change) {
+  if (!state.active) return;
+  try {
+    if (!(await flushNote())) return;
+    await tool('note.tags', { path: state.active, ...change });
+    await openNote(state.active, { force: true });
+    refreshTags();
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+/* ------------------------------------------------- #tag no texto e autocomplete */
+function tagHue(tag) {
+  const root = String(tag).split('/')[0].toLocaleLowerCase();
+  let hash = 0;
+  for (const char of root) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  return hash;
+}
+
+const INLINE_TAG = /(^|[\s(>])#([\p{L}\p{N}_][\p{L}\p{N}_\-\/]*)/gu;
+
+// Marca #tag no HTML já renderizado, sem tocar em links, código nem atributos.
+function tagifyHtml(html) {
+  let skip = 0;
+  return String(html)
+    .split(/(<[^>]+>)/)
+    .map((part) => {
+      if (part.startsWith('<')) {
+        if (/^<(a|code|kbd|pre)[\s>]/i.test(part)) skip += 1;
+        else if (/^<\/(a|code|kbd|pre)>/i.test(part)) skip = Math.max(0, skip - 1);
+        return part;
+      }
+      if (skip || !part.includes('#')) return part;
+      return part.replace(INLINE_TAG, (all, lead, name) => {
+        if (!/\D/.test(name)) return all;
+        const clean = name.replace(/[\/\-]+$/, '');
+        const rest = name.slice(clean.length);
+        return `${lead}<span class="tag-inline" data-tag-texto="${clean}" style="--tag-h:${tagHue(clean)}" title="Ver as notas com #${clean}">#${clean}</span>${rest}`;
+      });
+    })
+    .join('');
+}
+
+let tagClickGuard = null;
+function hookInlineTags() {
+  document.addEventListener(
+    'mousedown',
+    (event) => {
+      const chip = event.target.closest?.('#coluna .tag-inline');
+      tagClickGuard = chip ? { chip, editing: chip.closest('[data-block]') === document.activeElement } : null;
+    },
+    true,
+  );
+  document.addEventListener('click', (event) => {
+    const chip = event.target.closest?.('#coluna .tag-inline[data-tag-texto]');
+    if (!chip) return;
+    if (getSelection()?.toString()) return;
+    if (tagClickGuard?.chip === chip && tagClickGuard.editing && !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    showTag(chip.dataset.tagTexto);
+  });
+}
+
+async function showTagMenu(el, found) {
+  const seq = (state.tagMenuSeq = (state.tagMenuSeq || 0) + 1);
+  let tags = [];
+  try {
+    tags = (await tool('tag.suggest', { prefix: found.query, limit: 8 }))?.tags || [];
+  } catch {
+    tags = [];
+  }
+  if (seq !== state.tagMenuSeq || !el.isConnected) return;
+  if (!tags.length) {
+    closeMenus();
+    return;
+  }
+  const rows = tags
+    .map((tag) => `<button type="button" class="menu__item" role="option" data-insert="#${escapeHtml(tag.name)}">${icon('hash')}<span><span class="menu__titulo">${highlight(tag.name, found.query)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`)
+    .join('');
+  openMenu(el, 'menu menu--wiki menu-flutuante menu--tags', rows, (button) => {
+    insertAt(el, found.start, found.start + 1 + found.query.length, button.dataset.insert);
+  });
+}
+
+function syncWeekly() {
+  $('#revisao-semana')?.remove();
+  scheduleNotifRefresh();
 }
 
 function paintCenter() {
@@ -1952,6 +2901,15 @@ function paintCenter() {
     state.graphKeyHandler = null;
   }
   state.painting = true;
+  const viewKey = `${state.view}:${state.view === 'note' ? state.active : state.view === 'canvas' ? state.canvasPath : state.nav || ''}`;
+  if (viewKey !== state.lastViewKey) {
+    state.lastViewKey = viewKey;
+    center.classList.remove('is-entrando');
+    void center.offsetWidth;
+    center.classList.add('is-entrando');
+    clearTimeout(state.enterTimer);
+    state.enterTimer = setTimeout(() => center.classList.remove('is-entrando'), 400);
+  }
   try {
     paintCenterBody(center);
   } finally {
@@ -1959,6 +2917,7 @@ function paintCenter() {
   }
   bindCodeChrome();
   ensureCodeGrammars();
+  fillMermaid();
   syncNav();
   bindBlockDrag();
   syncWeekly();
@@ -2093,7 +3052,7 @@ function paintCanvasGallery(center) {
     .join('');
   const empty = count
     ? ''
-    : `<div class="canvas-grade__vazio"><strong>Nenhum canvas ainda</strong><p>Crie um quadro para ligar notas, formas e ideias.</p></div>`;
+    : `<div class="canvas-grade__vazio">${ilustracao('canvas-vazio', 180)}<strong>Nenhum canvas ainda</strong><p>Crie um quadro para ligar notas, formas e ideias. Use Novo, na lateral, e escolha Canvas.</p></div>`;
   center.innerHTML = `<div class="canvas-grade"><header class="canvas-grade__topo"><div><h2>Canvas</h2><p>${count ? `${count} quadro${count === 1 ? '' : 's'} · capas, formas e wikilinks` : 'Quadros livres para ligar ideias, notas e formas.'}</p></div><button type="button" class="btn btn--primario" id="atalho-novo-canvas">${icon('canvas')} Novo canvas</button></header>${empty}${cards}<button type="button" class="canvas-cartao canvas-cartao--novo" id="atalho-novo-canvas-card">${icon('canvas')}<strong>Novo canvas</strong><span>Começar um quadro em branco</span></button></div>`;
   center.querySelectorAll('[data-abrir-canvas]').forEach((button) => {
     button.onclick = () => openCanvas(button.dataset.abrirCanvas);
@@ -2108,17 +3067,16 @@ function paintCanvasGallery(center) {
     button.onclick = async (event) => {
       event.stopPropagation();
       const file = button.dataset.file;
-      if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`))) return;
-      $('#overlay').hidden = true;
+      if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`, { confirm: 'Mover para a lixeira', danger: true }))) return;
       try {
-        await tool('entry.trash', { path: file });
+        const trashed = await tool('entry.trash', { path: file });
         state.tabs = state.tabs.filter((tab) => tab !== file);
         state.canvasGalleryLoaded = false;
         await refreshLibrary();
         paintTree();
         paintTabs();
         paintCenter();
-        toast('Canvas movido para a lixeira.');
+        toastTrashed('Canvas movido para a lixeira.', trashed?.id);
       } catch (error) {
         toast(error.message, 'erro');
       }
@@ -2181,6 +3139,14 @@ function paintCenterBody(center) {
     paintCards(center);
     return;
   }
+  if (state.view === 'trash') {
+    paintTrash(center);
+    return;
+  }
+  if (state.view === 'tag') {
+    paintTagView(center);
+    return;
+  }
   if (state.view === 'versions') {
     paintVersions(center);
     return;
@@ -2203,16 +3169,12 @@ function paintCenterBody(center) {
     if (create) create.onclick = () => createNote();
     return;
   }
-  if (state.view === 'soon') {
-    center.innerHTML = `<div class="vazio-ensina"><h2>${escapeHtml(state.soonTitle || 'Em seguida')}</h2><p>Esta tela entra na próxima etapa. As notas continuam Markdown.</p></div>`;
-    return;
-  }
   if (state.view === 'graph') {
     paintGraph(center);
     return;
   }
   if (state.view === 'canvas-error') {
-    center.innerHTML = `<div class="vazio-ensina"><h2>Não foi possível abrir o canvas</h2><p>${escapeHtml(state.canvasError || 'O quadro não pôde ser lido.')}</p></div>`;
+    center.innerHTML = `<div class="vazio-ensina"><h2>Não deu para abrir este canvas</h2><p>${escapeHtml(state.canvasError || 'O arquivo do quadro não pôde ser lido.')} O arquivo continua intacto na pasta.</p></div>`;
     return;
   }
   if (state.view === 'canvas') {
@@ -2278,11 +3240,11 @@ function paintCenterBody(center) {
     const emptyLibrary = !state.notes.length;
     center.innerHTML = emptyLibrary
       ? `<div class="vazio-ensina"><img alt="" src="ui/assets/ilustracoes/biblioteca-vazia-${themeName() === 'dark' ? 'escuro' : 'claro'}.svg" width="200" /><h2>Esta biblioteca ainda não tem notas</h2><p>Crie a primeira pelo botão Novo, ou abra uma pasta que já tenha Markdown.</p><div class="vazio-ensina__atalhos"><span><kbd class="kbd">Ctrl N</kbd> nova nota</span><span><kbd class="kbd">Ctrl K</kbd> buscar</span><span><kbd class="kbd">/</kbd> blocos</span></div></div>`
-      : `<div class="vazio-ensina"><h2>Escolha uma nota</h2><p>Ou crie uma com Novo. O arquivo continua Markdown puro.</p></div>`;
+      : `<div class="vazio-ensina"><h2>Escolha uma nota na lateral</h2><p>Ou crie uma pelo botão Novo. Cada nota é um arquivo Markdown na sua pasta.</p></div>`;
     return;
   }
   const conflict = state.conflict
-    ? `<div class="aviso" role="alert">${icon('erro')} <span>A nota mudou desde a leitura. Nada foi gravado.</span> <button type="button" class="btn btn--secundario" id="recarregar">Recarregar</button></div>`
+    ? `<div class="aviso" role="alert">${icon('erro')} <span>A nota mudou desde a leitura, fora do Sophy. Nada foi gravado ainda: escolha recarregar ou manter a sua versão.</span> <button type="button" class="btn btn--secundario" id="recarregar">${anim('sincronizar', 'sincronizar')}Recarregar</button></div>`
     : '';
   const chips = tagChips(state.frontmatter);
   const crumb = noteCrumb(state.active);
@@ -2306,8 +3268,8 @@ function paintCenterBody(center) {
   const strip = dailyStrip(state.active);
   const layout = noteLayout();
   const layoutClasses = [`nota--font-${layout.font}`, layout.small ? 'nota--small' : '', layout.wide ? 'nota--wide' : ''].filter(Boolean).join(' ');
-  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" aria-haspopup="true">•••</button></div>`;
-  center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}</article>`;
+  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-filha" title="Criar uma página dentro desta">${icon('nota-nova')}<span>Página filha</span></button><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-anexar" title="Anexar imagem ou arquivo (ou arraste para a nota)">${icon('anexo')}<span>Anexar</span></button><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" title="Opções da nota" aria-haspopup="true">${icon('mais-opcoes')}</button></div>`;
+  center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}<button type="button" class="nota-adicionar" id="nota-adicionar">${icon('mais')}<span>Adicionar bloco</span><span class="nota-adicionar__dica">ou digite <kbd class="kbd">/</kbd> numa linha vazia</span></button></article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   const changeCover = $('#trocar-capa');
@@ -2319,7 +3281,14 @@ function paintCenterBody(center) {
   if (focusMode) focusMode.onclick = () => { setFocusMode(!state.focusMode); paintCenter(); };
   const noteMore = $('#nota-mais');
   if (noteMore) noteMore.onclick = () => openNoteMenu(noteMore);
+  const child = $('#nota-filha');
+  if (child) child.onclick = () => createChildPage();
+  const attach = $('#nota-anexar');
+  if (attach) attach.onclick = () => pickAndInsertImages().catch((error) => toast(error.message, 'erro'));
+  const addBlock = $('#nota-adicionar');
+  if (addBlock) addBlock.onclick = () => insertBlockBelow(Math.max(0, state.doc.blocks.length - 1));
   $('#adicionar-propriedade')?.addEventListener('click', () => openPropertyEditor());
+  bindNoteTags();
   $('#coluna').querySelectorAll('[data-property-edit]').forEach((button) => {
     button.onclick = () => openPropertyEditor(button.dataset.propertyEdit);
   });
@@ -2392,7 +3361,7 @@ function paintCenterBody(center) {
         if (event.dataTransfer.files?.length) {
           event.preventDefault();
           event.stopPropagation();
-          ingestImageBlobs(event.dataTransfer.files).catch((error) => toast(error.message, 'erro'));
+          ingestFileBlobs(event.dataTransfer.files).catch((error) => toast(error.message, 'erro'));
           return;
         }
         const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
@@ -2443,19 +3412,140 @@ function codeLinesOn() {
   }
 }
 
+const MERMAID_SRC = '../node_modules/mermaid/dist/mermaid.min.js';
+let mermaidPromise = null;
+let mermaidCounter = 0;
+
+function isMermaidInfo(info) {
+  return Code.resolveLanguage(info).token.toLowerCase() === 'mermaid';
+}
+
+/* A biblioteca só é baixada do disco quando a nota tem um bloco ```mermaid. */
+function loadMermaid() {
+  if (window.mermaid) return Promise.resolve(window.mermaid);
+  if (!mermaidPromise) {
+    mermaidPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = MERMAID_SRC;
+      script.onload = () => (window.mermaid ? resolve(window.mermaid) : reject(new Error('A biblioteca de diagramas não carregou.')));
+      script.onerror = () => {
+        mermaidPromise = null;
+        reject(new Error('A biblioteca de diagramas não está disponível.'));
+      };
+      document.head.append(script);
+    });
+  }
+  return mermaidPromise;
+}
+
+function mermaidTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const dark = themeName() === 'dark';
+  return {
+    darkMode: dark,
+    background: token('--surface', dark ? '#1c1b22' : '#ffffff'),
+    primaryColor: token('--accent-soft', dark ? '#2b2a4a' : '#e8e8fb'),
+    primaryTextColor: token('--ink', dark ? '#f2f1f6' : '#1c1b22'),
+    primaryBorderColor: token('--accent', '#4f46b8'),
+    secondaryColor: token('--hover', dark ? '#2a2931' : '#efeef3'),
+    tertiaryColor: token('--surface', dark ? '#1c1b22' : '#ffffff'),
+    lineColor: token('--ink-3', '#6e6c7a'),
+    textColor: token('--ink', dark ? '#f2f1f6' : '#1c1b22'),
+    noteBkgColor: token('--hover-subtle', dark ? '#25242b' : '#f6f5f9'),
+    noteTextColor: token('--ink', dark ? '#f2f1f6' : '#1c1b22'),
+    fontFamily: token('--font-ui', 'Inter, system-ui, sans-serif'),
+  };
+}
+
+async function fillMermaid() {
+  const hosts = [...document.querySelectorAll('.codigo--mermaid')];
+  if (!hosts.length) return;
+  let mermaid;
+  try {
+    mermaid = await loadMermaid();
+  } catch (error) {
+    for (const wrap of hosts) paintMermaidError(wrap, error.message);
+    return;
+  }
+  const theme = themeName();
+  if (state.mermaidTheme !== theme) {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: mermaidTheme(), suppressErrorRendering: true });
+    state.mermaidTheme = theme;
+    state.mermaidCache = {};
+  }
+  state.mermaidCache ||= {};
+  for (const wrap of hosts) {
+    const target = wrap.querySelector('.codigo__diagrama');
+    const pre = wrap.querySelector('pre.bloco--codigo');
+    if (!target || !pre || wrap.dataset.vista === 'codigo') continue;
+    const source = pre.textContent.trim();
+    if (!source) {
+      target.innerHTML = '<p class="diagrama__vazio">Diagrama vazio. Mostre o código e escreva a descrição para ver o desenho.</p>';
+      continue;
+    }
+    if (state.mermaidCache[source]) {
+      target.innerHTML = state.mermaidCache[source];
+      target.dataset.estado = 'pronto';
+      continue;
+    }
+    const id = `sophy-mmd-${++mermaidCounter}`;
+    try {
+      await mermaid.parse(source);
+      const { svg } = await mermaid.render(id, source);
+      state.mermaidCache[source] = svg;
+      target.innerHTML = svg;
+      target.dataset.estado = 'pronto';
+    } catch (error) {
+      document.getElementById(`d${id}`)?.remove();
+      document.getElementById(id)?.remove();
+      paintMermaidError(wrap, String(error?.message || error));
+    }
+  }
+}
+
+function paintMermaidError(wrap, detail) {
+  const target = wrap.querySelector('.codigo__diagrama');
+  if (!target) return;
+  target.dataset.estado = 'erro';
+  const first = String(detail || '').split('\n').find((line) => line.trim()) || '';
+  target.innerHTML = `<div class="diagrama__erro" role="alert"><b>Não deu para desenhar este diagrama.</b><p>Confira a sintaxe do bloco. O código continua intacto na nota.</p>${first ? `<small>${escapeHtml(first.slice(0, 160))}</small>` : ''}<button type="button" class="btn btn--secundario btn--pequeno" data-mermaid-view="codigo">Ver o código</button></div>`;
+}
+
+function setMermaidView(wrap, view) {
+  const index = Number(wrap.querySelector('pre.bloco--codigo')?.dataset.block);
+  state.mermaidView ||= {};
+  state.mermaidView[index] = view;
+  wrap.dataset.vista = view;
+  wrap.querySelectorAll('[data-mermaid-view]').forEach((button) => {
+    if (button.closest('.codigo__alternar')) button.setAttribute('aria-pressed', button.dataset.mermaidView === view ? 'true' : 'false');
+  });
+  if (view === 'diagrama') fillMermaid();
+  else wrap.querySelector('pre.bloco--codigo')?.focus();
+}
+
 function renderCodeBlock(block, index) {
   const parts = Doc.codeParts(block.raw);
   const source = parts.body;
   const info = parts.info || '';
+  const blockName = Code.parseInfo(info).title;
   const linesOn = codeLinesOn();
   const highlighted = Code.highlight(source, info, window.Prism);
   const nums = source.split('\n').map((_, line) => String(line + 1)).join('\n');
-  return `<div class="codigo${linesOn ? ' codigo--linhas' : ''}">
+  const mermaid = isMermaidInfo(info);
+  const view = mermaid ? (state.mermaidView?.[index] || 'diagrama') : '';
+  const toggle = mermaid
+    ? `<span class="codigo__alternar" role="group" aria-label="Mostrar"><button type="button" data-mermaid-view="diagrama" aria-pressed="${view === 'diagrama'}">Diagrama</button><button type="button" data-mermaid-view="codigo" aria-pressed="${view === 'codigo'}">Código</button></span>`
+    : '';
+  return `<div class="codigo${linesOn ? ' codigo--linhas' : ''}${mermaid ? ' codigo--mermaid' : ''}"${mermaid ? ` data-vista="${view}"` : ''}>
     <div class="codigo__barra">
+      <label class="codigo__nome">${icon('codigo')}<input type="text" class="codigo__nome-campo" data-code-name="${index}" value="${escapeHtml(blockName)}" maxlength="80" placeholder="Nome do bloco" aria-label="Nome do bloco de código" spellcheck="false"></label>
+      ${toggle}
       <button type="button" class="codigo__acao" data-code-lines aria-pressed="${linesOn ? 'true' : 'false'}">Linhas</button>
       <button type="button" class="codigo__acao" data-code-copy="${index}">Copiar</button>
-      <button type="button" class="codigo__lingua" data-code-lang="${index}" aria-haspopup="listbox" aria-label="Linguagem do bloco">${escapeHtml(Code.labelFor(info))}</button>
+      <button type="button" class="codigo__lingua" data-code-lang="${index}" aria-haspopup="listbox" aria-label="Linguagem do bloco" title="Trocar a linguagem">${icon('codigo')}<span class="codigo__lingua-nome">${escapeHtml(Code.labelFor(info))}</span>${icon('chevron-baixo')}</button>
     </div>
+    ${mermaid ? '<div class="codigo__diagrama" aria-label="Diagrama" role="img"><p class="diagrama__vazio">Desenhando…</p></div>' : ''}
     <div class="codigo__rolagem">
       <pre class="codigo__nums" aria-hidden="true">${escapeHtml(nums)}</pre>
       <div class="codigo__camada">
@@ -2481,9 +3571,30 @@ function bindCodeChrome() {
   if (!center || center.dataset.codeChrome) return;
   center.dataset.codeChrome = '1';
   center.addEventListener('click', onCodeChromeClick);
+  center.addEventListener('change', (event) => {
+    const field = event.target.closest?.('[data-code-name]');
+    if (field) setCodeName(Number(field.dataset.codeName), field.value);
+  });
+  center.addEventListener('keydown', (event) => {
+    const field = event.target.closest?.('[data-code-name]');
+    if (!field) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      field.blur();
+    } else if (event.key === 'Escape') {
+      field.value = Code.parseInfo(state.doc?.blocks[Number(field.dataset.codeName)] ? Doc.codeParts(state.doc.blocks[Number(field.dataset.codeName)].raw).info : '').title;
+      field.blur();
+    }
+  });
 }
 
 function onCodeChromeClick(event) {
+  const view = event.target.closest('[data-mermaid-view]');
+  if (view) {
+    event.preventDefault();
+    setMermaidView(view.closest('.codigo--mermaid'), view.dataset.mermaidView);
+    return;
+  }
   const lang = event.target.closest('[data-code-lang]');
   if (lang) {
     event.preventDefault();
@@ -2533,15 +3644,33 @@ async function copyCode(index) {
   toast('Copiado');
 }
 
-function setCodeLanguage(index, info) {
+/* Só o nome muda: linguagem e corpo ficam como estão na cerca. */
+function setCodeName(index, name) {
   const pre = document.querySelector(`pre.bloco--codigo[data-block="${index}"]`);
   const block = state.doc?.blocks[index];
   if (!pre || !block || block.type !== 'code') return;
   const parts = Doc.codeParts(rawFromEditor(pre, block));
+  const info = Code.composeInfo(Code.parseInfo(parts.info).rest, name);
+  if (info === parts.info) return;
+  state.doc = Doc.withBlockRaw(state.doc, index, Doc.codeRaw(parts.fence, info, parts.body));
+  pre.dataset.info = info;
+  const field = pre.closest('.codigo')?.querySelector('[data-code-name]');
+  if (field) field.value = Code.parseInfo(info).title;
+  scheduleSave();
+}
+
+function setCodeLanguage(index, language) {
+  const pre = document.querySelector(`pre.bloco--codigo[data-block="${index}"]`);
+  const block = state.doc?.blocks[index];
+  if (!pre || !block || block.type !== 'code') return;
+  const parts = Doc.codeParts(rawFromEditor(pre, block));
+  const info = Code.composeInfo(language, Code.parseInfo(parts.info).title);
   state.doc = Doc.withBlockRaw(state.doc, index, Doc.codeRaw(parts.fence, info, parts.body));
   pre.dataset.info = info;
   const button = pre.closest('.codigo')?.querySelector('.codigo__lingua');
-  if (button) button.textContent = Code.labelFor(info);
+  const name = button?.querySelector('.codigo__lingua-nome');
+  if (name) name.textContent = Code.labelFor(info);
+  else if (button) button.textContent = Code.labelFor(info);
   refreshCodeView(pre);
   ensureCodeGrammars();
   scheduleSave();
@@ -2854,7 +3983,7 @@ function inlineHtml(text) {
       (link) => link.raw === raw && (link.status === 'broken' || link.status === 'ambiguous'),
     ),
   );
-  return html.replace(/<a href="#" class="wikilink([^"]*)"([^>]*)>/g, (all, cls, attrs) => {
+  return tagifyHtml(html).replace(/<a href="#" class="wikilink([^"]*)"([^>]*)>/g, (all, cls, attrs) => {
     const targetMatch = attrs.match(/data-target="([^"]*)"/);
     const target = targetMatch
       ? targetMatch[1]
@@ -2997,8 +4126,10 @@ function onBlockInput(el) {
   }
   const found = slash.offer(text, cursor);
   const wiki = Cmd.wikiQuery(text, cursor);
+  const tagFound = block?.type === 'code' ? null : Cmd.tagQuery(text, cursor);
   if (found) showSlash(el, found);
   else if (wiki) showWiki(el, wiki);
+  else if (tagFound) showTagMenu(el, tagFound);
   else closeMenus();
   if (block?.type === 'code') refreshCodeView(el);
   scheduleSave();
@@ -3604,10 +4735,6 @@ function placeCaret(el, offset) {
   const selection = getSelection();
   const range = document.createRange();
   let left = Math.max(0, offset);
-  // #region agent log
-  const hasZwsp = !!el.textContent?.includes('\u200b');
-  if (hasZwsp) fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'post-fix',hypothesisId:'D',location:'app.js:placeCaret',message:'placeCaret with zwsp',data:{offset,textLen:el.textContent?.length||0,plainLen:(el.textContent||'').replace(/\u200b/g,'').length,mapped:domOffsetForPlain(el.textContent||'',offset),block:el.dataset?.block||null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const walk = (current) => {
     if (left < 0) return true;
     if (current.nodeType === Node.TEXT_NODE) {
@@ -3704,7 +4831,7 @@ async function createChildPage() {
     toast('Abra a nota mãe primeiro.', 'erro');
     return;
   }
-  const title = window.prompt('Nome da página filha');
+  const title = await textDialog({ title: 'Nova página filha', label: 'Nome da página', placeholder: 'Ex.: Resumo', confirm: 'Criar página' });
   if (!title?.trim()) return;
   const child = await tool('note.child.create', { parent: state.active, title: title.trim() });
   const link = `[[${child.path.replace(/\.md$/i, '')}]]`;
@@ -4207,9 +5334,6 @@ async function showWikiPreview(link) {
       coverFileSrc = '';
     }
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'post-fix',hypothesisId:'C',location:'app.js:showWikiPreview',message:'wiki preview cover',data:{notePath,kind:cover?.kind||null,resolved:!coverFileSrc?null:!!coverFileSrc.startsWith('data:'),hasSrc:!!coverFileSrc},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const coverHtml = cover
     ? cover.kind === 'cor'
       ? `<div class="wiki-previa__capa wiki-previa__capa--cor" style="--capa-tinta:${cover.color === 'estante' ? noteShelfColor() : `var(--shelf-${cover.color})`}"></div>`
@@ -4290,12 +5414,28 @@ document.addEventListener(
   true,
 );
 
+function markSaved() {
+  scheduleTagsRefresh();
+  const status = $('#st-estado');
+  if (status) status.textContent = 'Salvo';
+  const mark = $('#st-anim');
+  if (mark && mark.dataset.estado !== 'salvo') {
+    mark.dataset.estado = 'salvo';
+    mark.innerHTML = ANIM.salvo || '';
+  }
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
   state.dirty = true;
   state.editSeq = (state.editSeq || 0) + 1;
   const status = $('#st-estado');
   if (status) status.textContent = 'Alterações locais';
+  const mark = $('#st-anim');
+  if (mark) {
+    mark.innerHTML = '';
+    delete mark.dataset.estado;
+  }
   saveTimer = setTimeout(saveNow, 500);
 }
 
@@ -4331,8 +5471,7 @@ async function saveNowBody() {
     state.revision = result.note.revision;
     state.conflict = false;
     if (state.editSeq === editSeq) state.dirty = false;
-    const status = $('#st-estado');
-    if (status) status.textContent = 'Salvo';
+    markSaved();
     state.notes = await tool('note.list', {});
     const signature = (state.doc?.blocks || []).map((block) => block.raw).join('\n');
     const links = signature.match(/\[\[[^\[\]\n]+\]\]/g)?.join('|') || '';
@@ -4357,9 +5496,6 @@ async function flushNote() {
     while (guard++ < 40) {
       const pending = canvasJob;
       await pending;
-      // #region agent log
-      fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'post-fix',hypothesisId:'B',location:'app.js:flushNote',message:'flushNote after canvasJob',data:{canvasDirty:!!state.canvasDirty,conflict:!!state.conflict,jobStale:canvasJob!==pending,guard,canvasPath:state.canvasPath||null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (canvasJob !== pending) continue;
       if (!state.canvasDirty && !state.conflict) return true;
       break;
@@ -4479,13 +5615,8 @@ async function saveCanvas(document) {
       if (state.canvasEditSeq === editSeq) {
         state.canvasDoc = result.canvas.document;
         state.canvasDirty = false;
-      } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'pre-fix',hypothesisId:'B',location:'app.js:saveCanvas',message:'stale canvas edit kept dirty',data:{editSeq,currentSeq:state.canvasEditSeq,canvasDirty:true},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
       }
-      const status = $('#st-estado');
-      if (status) status.textContent = 'Salvo';
+      markSaved();
       return true;
     } catch (error) {
       toast(error.message, 'erro');
@@ -4568,6 +5699,7 @@ async function openNote(file, options = {}) {
   state.canvasPath = null;
   state.treeFocus = 'note';
   state.view = 'note';
+  state.nav = note.path === `Diário/${isoToday()}.md` ? 'hoje' : '';
   state.doc = Doc.parseBody(note.body);
   clearTimeout(state.undoTimer);
   state.editorPast = [JSON.stringify(state.doc.blocks.map((block) => ({ type: block.type, raw: block.raw, level: block.level })))];
@@ -4621,6 +5753,8 @@ function isImageEmbedTarget(target) {
   return /\.(png|jpe?g|webp|gif|svg)$/i.test(String(target || '').split('|')[0].trim());
 }
 
+const ATTACHMENT_FOLDER = 'Anexos';
+
 function attachmentFolderForActiveNote() {
   if (!state.active || !state.active.includes('/')) return '';
   return state.active.slice(0, state.active.lastIndexOf('/'));
@@ -4655,6 +5789,10 @@ async function fillEmbeds() {
       continue;
     }
     figure.classList.remove('embed--imagem');
+    if (/^Anexos\//.test(resolveEmbedPath(target)) && !/\.md$/i.test(target.split('|')[0])) {
+      paintAttachmentCard(figure, body, resolveEmbedPath(target));
+      continue;
+    }
     const path = target.endsWith('.md') ? target : `${target}.md`;
     try {
       const note = await tool('note.read', { path });
@@ -4663,6 +5801,144 @@ async function fillEmbeds() {
       body.textContent = 'Anexo ou nota ainda não encontrada.';
     }
   }
+}
+
+async function paintAttachmentsSettings() {
+  const host = $('#cfg-anexos-conteudo');
+  if (!host) return;
+  let list;
+  try {
+    list = await tool('attachment.list', {});
+  } catch (error) {
+    if ($('#cfg-anexos-conteudo') === host)
+      host.innerHTML = `<p class="config__ajuda">${/desconhecida/i.test(error.message) ? 'A lista de anexos chega com a atualização do motor (PR 32).' : escapeHtml(error.message)}</p>`;
+    return;
+  }
+  if ($('#cfg-anexos-conteudo') !== host) return;
+  const total = list.reduce((sum, item) => sum + (item.size || 0), 0);
+  const orphans = list.filter((item) => !item.usedBy?.length).length;
+  const bar = `<div class="anexos__barra"><span>${list.length ? `${list.length} ${list.length === 1 ? 'arquivo' : 'arquivos'} · ${sizeLabel(total)}${orphans ? ` · ${orphans} sem uso` : ''}` : 'Nenhum anexo ainda'}</span><button type="button" class="btn btn--secundario btn--pequeno" id="anexos-anexar">${icon('mais')} Anexar arquivo</button></div>`;
+  if (!list.length) {
+    host.innerHTML = `${bar}<p class="anexos__vazio">Arraste um arquivo para dentro de uma nota, ou use Anexar. Ele aparece aqui, com as notas que o usam.</p>`;
+  } else {
+    host.innerHTML = `${bar}<ul class="anexos__lista">${list
+      .map(
+        (item, index) => `<li class="anexos__item${item.usedBy?.length ? '' : ' is-orfao'}"><span class="anexos__icone">${icon(item.mime?.startsWith('image/') ? 'imagem' : 'anexo')}</span><span class="anexos__texto"><b title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</b><small>${item.usedBy?.length ? `Usado em: ${item.usedBy.map((note) => `<button type="button" class="anexos__nota" data-abrir-nota="${escapeHtml(note)}">${escapeHtml(baseName(note))}</button>`).join(', ')}` : 'Nenhuma nota usa este arquivo'}</small></span>${item.usedBy?.length ? '' : '<span class="chip anexos__selo">Sem uso</span>'}<span class="anexos__tamanho">${sizeLabel(item.size || 0)}</span><button type="button" class="btn btn--secundario" data-abrir-anexo="${index}">Abrir</button></li>`,
+      )
+      .join('')}</ul>`;
+    host.querySelectorAll('[data-abrir-anexo]').forEach((button) => {
+      button.onclick = () => openAttachmentFile(list[Number(button.dataset.abrirAnexo)].path).catch((error) => toast(error.message, 'erro'));
+    });
+    host.querySelectorAll('[data-abrir-nota]').forEach((button) => {
+      button.onclick = () => openNote(button.dataset.abrirNota);
+    });
+  }
+  const attach = $('#anexos-anexar');
+  if (attach)
+    attach.onclick = async () => {
+      try {
+        const picked = await sophy.chooseFiles();
+        if (!picked?.ok) throw new Error(picked?.error || 'Não foi possível abrir o seletor.');
+        const paths = picked.value || [];
+        if (!paths.length) return;
+        await importAttachmentFiles(paths.map((path) => ({ path })));
+        toast(paths.length === 1 ? 'Arquivo anexado à biblioteca.' : `${paths.length} arquivos anexados à biblioteca.`);
+        paintAttachmentsSettings();
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
+    };
+}
+
+/* Markdown sem o id, com os anexos citados gravados ao lado (Anexos/…). Quem grava é o main. */
+async function exportNoteMarkdown() {
+  if (!state.active || !state.doc) {
+    toast('Abra uma nota para exportar o Markdown.', 'erro');
+    return;
+  }
+  if (typeof sophy.exportMarkdown !== 'function') {
+    toast('Exportar Markdown chega com a atualização do back (PR 32).', 'erro');
+    return;
+  }
+  if (!(await flushNote())) return;
+  const result = await tool('note.export', { path: state.active, format: 'md' });
+  const response = await sophy.exportMarkdown(result);
+  // O main devolve { ok, value } quando passa por handle(); o contrato do PR 32 descreve o próprio value.
+  const saved = response && typeof response.value === 'object' && response.value ? response.value : response;
+  if (response?.ok === false && !saved?.path) {
+    toast(response.error || 'Não deu para exportar o Markdown.', 'erro');
+    return;
+  }
+  if (saved?.canceled) return;
+  if (saved?.error || saved?.ok === false) {
+    toast(saved.error || 'Não deu para exportar o Markdown.', 'erro');
+    return;
+  }
+  const where = String(saved?.path || '');
+  const folder = where.replace(/[/\\][^/\\]*$/, '');
+  const extra = saved?.written > 1 ? ` e ${saved.written - 1} ${saved.written - 1 === 1 ? 'anexo' : 'anexos'}` : '';
+  toast(`Markdown exportado${extra}.`, 'ok', folder
+    ? { label: 'Mostrar na pasta', onClick: () => sophy.libraryReveal(folder) }
+    : null);
+  pushNotification({
+    type: 'exportacao',
+    title: 'Markdown exportado',
+    body: `“${baseName(state.active)}”${extra ? ` e anexos` : ''} foram gravados em ${folder || 'a pasta escolhida'}.`,
+    action: folder ? { label: 'Mostrar na pasta', kind: 'reveal', arg: folder } : null,
+  });
+}
+
+async function exportNotePdf() {
+  if (!state.active || !state.doc) {
+    toast('Abra uma nota para exportar o PDF.', 'erro');
+    return;
+  }
+  if (!(await flushNote())) return;
+  let result;
+  try {
+    result = await tool('note.export', { path: state.active, format: 'pdf' });
+  } catch (error) {
+    if (/desconhecida/i.test(error.message)) return openExport('pdf');
+    toast(error.message, 'erro');
+    return;
+  }
+  const saved = await sophy.exportPdf(result.content);
+  if (exportDone(saved)) {
+    toast('PDF em papel claro.');
+    pushNotification({ type: 'exportacao', title: 'PDF exportado', body: `“${baseName(state.active)}” foi salvo em papel claro.` });
+  }
+}
+
+async function openAttachmentFile(path) {
+  if (typeof sophy.openAttachment !== 'function') {
+    toast('Abrir anexos precisa da versão com o PR 32 do back.', 'erro');
+    return;
+  }
+  const result = await sophy.openAttachment(path);
+  if (result && result.ok === false) toast(result.error || 'Não deu para abrir o arquivo.', 'erro');
+}
+
+async function paintAttachmentCard(figure, body, path) {
+  figure.classList.add('embed--arquivo');
+  const name = baseNameOf(path);
+  let meta = 'Arquivo';
+  try {
+    const list = await tool('attachment.list', {});
+    const info = list.find((item) => item.path === path);
+    if (info) meta = `${attachmentKind(info)} · ${sizeLabel(info.size)}`;
+    else meta = 'Arquivo não encontrado';
+  } catch {
+    /* sem lista, o cartão mostra só o nome */
+  }
+  body.innerHTML = `<span class="arquivo__icone">${icon('anexo')}</span><span class="arquivo__texto"><b>${escapeHtml(name)}</b><small>${escapeHtml(meta)}</small></span><button type="button" class="btn btn--secundario" data-abrir-anexo="${escapeHtml(path)}">Abrir</button>`;
+  body.querySelector('[data-abrir-anexo]').onclick = () => openAttachmentFile(path).catch((error) => toast(error.message, 'erro'));
+}
+
+function attachmentKind(info) {
+  const ext = (info.name.split('.').pop() || '').toLowerCase();
+  if (info.mime?.startsWith('image/')) return 'Imagem';
+  if (ext === 'pdf') return 'PDF';
+  return ext ? ext.toUpperCase() : 'Arquivo';
 }
 
 function insertEmbedBlocks(paths) {
@@ -4686,8 +5962,7 @@ function insertEmbedBlocks(paths) {
 
 async function importAttachmentFiles(files) {
   if (!files.length) return [];
-  const folder = attachmentFolderForActiveNote();
-  const added = await tool('attachment.import', { folder, files });
+  const added = await tool('attachment.import', { folder: ATTACHMENT_FOLDER, files });
   await refreshLibrary();
   return added.map((item) => item.path);
 }
@@ -4705,27 +5980,46 @@ async function pickAndInsertImages() {
   insertEmbedBlocks(imported);
 }
 
-async function ingestImageBlobs(fileList) {
-  const images = [...fileList].filter((file) => /^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name || ''));
-  if (!images.length) return false;
+async function fileToImport(file, fallback) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { name: file.name || fallback, dataBase64: btoa(binary) };
+}
+
+async function ingestFiles(list, { onlyImages }) {
+  const all = [...list];
+  const files = onlyImages ? all.filter((file) => /^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name || '')) : all;
+  if (!files.length) return false;
   if (!state.active || !state.doc) {
-    toast('Abra uma nota para inserir imagens.', 'erro');
+    toast('Abra uma nota para anexar arquivos.', 'erro');
     return true;
   }
-  const files = [];
-  for (const file of images) {
-    const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    files.push({
-      name: file.name || `imagem-${Date.now()}.png`,
-      dataBase64: btoa(binary),
-    });
+  const tooBig = files.find((file) => file.size > 25 * 1024 * 1024);
+  if (tooBig) {
+    toast(`“${tooBig.name}” passa de 25 MB, o limite de um anexo.`, 'erro');
+    return true;
   }
-  const imported = await importAttachmentFiles(files);
+  const payload = [];
+  for (const file of files) payload.push(await fileToImport(file, `arquivo-${Date.now()}`));
+  const imported = await importAttachmentFiles(payload);
   insertEmbedBlocks(imported);
+  toast(imported.length === 1 ? `“${baseNameOf(imported[0])}” anexado.` : `${imported.length} arquivos anexados.`);
   return true;
+}
+
+function baseNameOf(file) {
+  return String(file).split('/').pop();
+}
+
+/* Colar só aceita imagem, para não sequestrar o texto copiado. Soltar aceita qualquer arquivo. */
+function ingestImageBlobs(fileList) {
+  return ingestFiles(fileList, { onlyImages: true });
+}
+
+function ingestFileBlobs(fileList) {
+  return ingestFiles(fileList, { onlyImages: false });
 }
 
 function paintLinks() {
@@ -5137,14 +6431,14 @@ function paintTasks(center) {
   ]
     .map(
       ([id, label]) =>
-        `<button type="button" class="btn ${state.taskView === id ? 'btn--primario' : 'btn--fantasma'}" data-view="${id}">${label}</button>`,
+        `<button type="button" class="seg-botao${state.taskView === id ? ' is-ativa' : ''}" data-view="${id}" aria-pressed="${state.taskView === id}">${label}</button>`,
     )
     .join('');
   const lista =
     state.taskView === 'todas'
-      ? `<details class="tarefas__grupo" open><summary>Todas (${views.todas.length})</summary>${views.todas.filter((task) => !task.parentLine).map(taskCard).join('') || '<p>Nenhuma tarefa.</p>'}</details>`
+      ? `<details class="tarefas__grupo" open><summary>Todas (${views.todas.length})</summary>${views.todas.filter((task) => !task.parentLine).map(taskCard).join('') || `<div class="vazio-pequeno">${ilustracao('nenhuma-tarefa', 160)}<p>Nenhuma tarefa por aqui. Escreva <span class="kbd">- [ ] algo</span> numa nota ou use o campo acima.</p></div>`}</details>`
       : (views[state.taskView] || []).filter((task) => !task.parentLine).map(taskCard).join('') ||
-        '<p>Nenhuma tarefa nesta visão.</p>';
+        `<div class="vazio-pequeno">${ilustracao('nenhuma-tarefa', 160)}<p>Nada nesta visão. Aproveite, ou troque de visão acima.</p></div>`;
   const focusHtml = `<section class="tarefas__foco"><h3>Foco de hoje</h3><div class="tarefas__lista">${focus.map(taskCard).join('') || '<p class="nota-privacidade">Arraste até 5 tarefas para o foco.</p>'}</div>${leftover.length ? `<h3>Ficou de ontem</h3><div class="tarefas__lista">${leftover.map(taskCard).join('')}</div>` : ''}</section>`;
   const quick = `<form class="tarefas__rapida" id="tarefa-rapida"><input id="tarefa-rapida-texto" placeholder="pagar DAS amanhã !alta" aria-label="Nova tarefa"><select id="tarefa-rapida-estante" aria-label="Estante">${(state.workspaces || []).map((shelf) => `<option value="${escapeHtml(shelf.name)}">${escapeHtml(shelf.name)}</option>`).join('')}</select><button type="submit" class="btn btn--primario">Adicionar</button><div class="tarefas__previa" id="tarefa-rapida-previa"></div></form>`;
   const hasFilter = Object.values(filter).some(Boolean);
@@ -5199,6 +6493,11 @@ function paintTasks(center) {
   center.querySelectorAll('.kcard .check').forEach((check) => {
     check.onclick = async () => {
       const card = check.closest('.kcard');
+      if (ANIM['tarefa-marcar'] && !motionReduced()) {
+        check.classList.add('is-marcando');
+        check.insertAdjacentHTML('beforeend', `<span class="check__anim anim" aria-hidden="true">${ANIM['tarefa-marcar']}</span>`);
+        await new Promise((resolve) => setTimeout(resolve, 260));
+      }
       const current = check.dataset.status;
       const status = current === 'aberta' ? 'andamento' : current === 'andamento' ? 'feita' : 'aberta';
       const result = await tool('task.update', {
@@ -5309,7 +6608,7 @@ function paintCalendar(center) {
   const dailyBlock = !state.dayPanelOpen
     ? ''
     : panelItems === null
-      ? '<p class="nota-privacidade">Carregando…</p>'
+      ? `<p class="nota-privacidade carregando">${anim('carregando')}Carregando…</p>`
       : hasDaily
         ? `<button type="button" class="btn btn--secundario" data-open-note="${escapeHtml(dailyPath)}">${escapeHtml(dailyHeading(focus))}</button>`
         : `<button type="button" class="btn btn--primario" id="criar-nota-dia">Criar nota do dia</button>`;
@@ -5416,7 +6715,7 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
-  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
+  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'lixeira', 'config', 'visoes', 'mencoes'].includes(id);
   if (leaving && ((state.view === 'note' && state.doc) || state.view === 'canvas')) {
     flushNote().then((saved) => { if (saved) runCommandNow(id); });
     return;
@@ -5425,7 +6724,7 @@ function runCommand(id) {
 }
 
 function runCommandNow(id) {
-  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas'].includes(id)) state.nav = id;
+  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'cartas', 'lixeira'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
     estante: () => createWorkspace(),
@@ -5442,6 +6741,7 @@ function runCommandNow(id) {
     importar: () => importObsidian(),
     foco: () => setFocusMode(!state.focusMode),
     cartas: () => showCards(),
+    lixeira: () => showTrash(),
     config: () => {
       state.view = 'settings';
       state.nav = 'config';
@@ -5509,33 +6809,396 @@ function dailyStrip(notePath) {
   return `<div class="semana-diaria" aria-label="Semana">${days.join('')}</div>`;
 }
 
-function paintSofi(host) {
+const SOFI_SUGGESTIONS = [
+  ['Resumir esta nota', true],
+  ['Criar flashcards desta nota', true],
+  ['Achar notas relacionadas', true],
+  ['Organizar minhas tarefas de hoje', false],
+  ['O que eu escrevi esta semana?', false],
+];
+
+function sofiNoteTitle() {
+  if (!state.active) return '';
+  const found = (state.notes || []).find((note) => note.path === state.active);
+  return found?.title || baseName(state.active).replace(/\.md$/i, '');
+}
+
+function sofiStatusText() {
+  if (state.sofiKey === false) return ['Sem chave', 'sem-chave'];
+  if (state.sofiBusy && state.sofiConfirms?.length) return ['Aguardando você…', 'pensando'];
+  if (state.sofiBusy) return [state.sofiPhase || 'Pensando…', 'pensando'];
+  if (state.sofiMood === 'erro') return ['Algo deu errado', 'erro'];
+  return ['Pronta', 'pronta'];
+}
+
+function syncSofiSend() {
+  const send = $('#agente-enviar');
+  const stop = $('#agente-parar');
+  if (stop) stop.hidden = !state.sofiBusy;
+  if (send) send.hidden = Boolean(state.sofiBusy);
+  if (send) send.disabled = Boolean(state.sofiBusy) || state.sofiKey === false || !($('#agente-pedido')?.value || '').trim();
+}
+
+function syncSofiHeader() {
+  const label = $('#agente-estado');
+  if (!label) return;
+  const [text, kind] = sofiStatusText();
+  label.textContent = text;
+  label.dataset.estado = kind;
+  const mascot = $('#sofi-mascote');
+  const mood = state.sofiBusy ? 'pensando' : state.sofiMood === 'erro' ? 'erro' : 'ocioso';
+  if (mascot && mascot.dataset.estado !== mood) {
+    mascot.dataset.estado = mood;
+    mountSofi(mascot, mood);
+  }
+  const fresh = $('#agente-nova');
+  if (fresh) fresh.disabled = !state.sofiChat.length || state.sofiBusy;
+  syncSofiSend();
+  const trigger = $('#abrir-sofi');
+  if (trigger) {
+    const working = state.sofiBusy && ANIM['agente-trabalhando'];
+    trigger.classList.toggle('is-trabalhando', Boolean(state.sofiBusy));
+    const first = trigger.firstElementChild;
+    if (first && working && !first.classList.contains('anim')) first.outerHTML = anim('agente-trabalhando');
+    else if (first && !working && first.classList.contains('anim')) first.outerHTML = icon('faisca');
+  }
+}
+
+function syncSofiContext() {
+  const slot = $('#agente-contexto-slot');
+  if (!slot) return;
+  const title = sofiNoteTitle();
+  if (!title || state.sofiContext === false) {
+    slot.innerHTML = '';
+    return;
+  }
+  slot.innerHTML = `<span class="sofi-contexto" id="agente-contexto">${icon('nota')}<span class="sofi-contexto__nome">Nota atual: ${escapeHtml(title)}</span><button type="button" class="sofi-contexto__tirar" id="agente-contexto-tirar" aria-label="Não usar a nota atual como contexto" title="Tirar o contexto">${icon('fechar')}</button></span>`;
+  $('#agente-contexto-tirar').onclick = () => {
+    state.sofiContext = false;
+    syncSofiContext();
+  };
+}
+
+function sofiMessageHtml(message) {
+  if (message.role === 'user') return `<div class="sofi-msg sofi-msg--voce"><p>${escapeHtml(message.text)}</p></div>`;
+  const actions = (message.actions || [])
+    .map(
+      (action, index) =>
+        `<div class="sofi-acao${action.ok === false ? ' is-falhou' : ''}"><span class="sofi-acao__selo">${icon(action.ok === false ? 'erro' : 'check')}</span><span class="sofi-acao__texto"><b>${escapeHtml(action.label || 'Ação feita')}</b>${action.error ? `<small>${escapeHtml(action.error)}</small>` : action.detail ? `<small>${escapeHtml(action.detail)}</small>` : ''}</span>${action.versionId && action.ok !== false ? `<button type="button" class="btn btn--fantasma btn--pequeno" data-desfazer="${escapeHtml(action.versionId)}" data-msg="${message.id}" data-acao="${index}">${icon('desfazer')} Desfazer</button>` : ''}</div>`,
+    )
+    .join('');
+  return `<div class="sofi-msg sofi-msg--sofi${message.error ? ' is-erro' : ''}"><p>${escapeHtml(message.text)}</p>${actions}</div>`;
+}
+
+function renderSofiMessages() {
+  const list = $('#agente-mensagens');
+  if (!list) return;
+  const chat = state.sofiChat;
+  const empty = $('#agente-vazio');
+  if (empty) empty.hidden = chat.length > 0 || state.sofiBusy || state.sofiKey === false;
+  list.innerHTML =
+    chat.map(sofiMessageHtml).join('') +
+    (state.sofiBusy
+      ? `<div class="sofi-msg sofi-msg--sofi sofi-msg--digitando" role="status" aria-label="A Sofi está escrevendo"><span class="digitando"><i></i><i></i><i></i></span>${state.sofiPhase && state.sofiPhase !== 'Pensando…' ? `<span class="sofi-fase">${escapeHtml(state.sofiPhase)}</span>` : ''}</div>`
+      : '') +
+    (state.sofiConfirms || [])
+      .map(
+        (ask) =>
+          `<div class="sofi-confirma" role="group" aria-label="Confirmação da Sofi" data-confirma="${escapeHtml(ask.confirmId)}"><span class="sofi-confirma__icone">${icon('cadeado')}</span><div class="sofi-confirma__texto"><b>${escapeHtml(ask.label || 'A Sofi quer fazer uma ação.')}</b><small>Ela só continua se você permitir.</small></div><div class="sofi-confirma__acoes"><button type="button" class="btn btn--secundario btn--pequeno" data-confirma-recusar="${escapeHtml(ask.confirmId)}">Recusar</button><button type="button" class="btn btn--primario btn--pequeno" data-confirma-permitir="${escapeHtml(ask.confirmId)}">Permitir</button></div></div>`,
+      )
+      .join('');
+  list.querySelectorAll('[data-confirma-permitir], [data-confirma-recusar]').forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.confirmaPermitir || button.dataset.confirmaRecusar;
+      answerSofiConfirm(id, Boolean(button.dataset.confirmaPermitir));
+    };
+  });
+  list.querySelectorAll('[data-desfazer]').forEach((button) => {
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        await tool('agent.undo', { versionId: button.dataset.desfazer });
+        await refreshLibrary();
+        paintTree();
+        if (state.active) await openNote(state.active, { force: true });
+        toast('Pronto, desfiz o que a Sofi fez.');
+        button.closest('.sofi-acao')?.classList.add('is-desfeita');
+        button.remove();
+      } catch (error) {
+        button.disabled = false;
+        toast(`Não deu para desfazer: ${error.message}`, 'erro');
+        if (/já foi desfeita/i.test(error.message)) {
+          button.closest('.sofi-acao')?.classList.add('is-desfeita');
+          button.remove();
+        }
+      }
+    };
+  });
+  const scroller = $('#agente-rolagem');
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+}
+
+function answerSofiConfirm(confirmId, allow) {
+  state.sofiConfirms = (state.sofiConfirms || []).filter((ask) => ask.confirmId !== confirmId);
+  syncSofiHeader();
+  renderSofiMessages();
+  try {
+    sophy.agentConfirmReply?.(confirmId, allow);
+  } catch {
+    /* o turno resolve a recusa sozinho depois do prazo */
+  }
+}
+
+async function stopSofi() {
+  try {
+    await sophy.agentCancel?.();
+  } catch {
+    /* sem turno ativo */
+  }
+}
+
+let inlineTagsHooked = false;
+function hookInlineTagsOnce() {
+  if (inlineTagsHooked) return;
+  inlineTagsHooked = true;
+  hookInlineTags();
+}
+
+let sofiHooked = false;
+function hookSofiEvents() {
+  hookInlineTagsOnce();
+  if (sofiHooked) return;
+  sofiHooked = true;
+  sophy.onAgentProgress?.((event) => {
+    if (!state.sofiBusy) return;
+    state.sofiPhase = event.phase === 'tool' && event.label ? `${event.label}…`.replace(/…+$/, '…') : event.phase === 'thinking' ? state.sofiPhase || 'Pensando…' : state.sofiPhase;
+    syncSofiHeader();
+    renderSofiMessages();
+  });
+  sophy.onAgentConfirm?.((ask) => {
+    state.sofiConfirms = [...(state.sofiConfirms || []).filter((item) => item.confirmId !== ask.confirmId), ask];
+    if (!state.sofiOpen) openAgent();
+    syncSofiHeader();
+    renderSofiMessages();
+  });
+  // a seleção some quando o foco vai para o campo da Sofi, então guardo a última
+  document.addEventListener('selectionchange', () => {
+    const selection = getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const block = selection.anchorNode?.parentElement?.closest?.('.bloco[data-block]');
+    if (!block || !state.active) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    const blocks = [...document.querySelectorAll('.bloco[data-block]')];
+    const range = selection.getRangeAt(0);
+    const before = blocks.slice(0, blocks.indexOf(block)).reduce((sum, item) => sum + item.textContent.length + 1, 0);
+    const lead = document.createRange();
+    lead.selectNodeContents(block);
+    lead.setEnd(range.startContainer, range.startOffset);
+    const from = before + lead.toString().length;
+    state.editorSelection = { path: state.active, text, from, to: from + selection.toString().length };
+  });
+}
+
+async function sendSofi(raw) {
+  const text = String(raw || '').trim();
+  if (!text || state.sofiBusy || state.sofiKey === false) return;
+  const input = $('#agente-pedido');
+  if (input) {
+    input.value = '';
+    input.style.height = '';
+  }
+  state.sofiDraft = '';
+  state.sofiChat.push({ role: 'user', text });
+  state.sofiBusy = true;
+  state.sofiMood = 'ocioso';
+  syncSofiHeader();
+  renderSofiMessages();
+  const context = {};
+  if (state.active && state.sofiContext !== false) {
+    context.notePath = state.active;
+    if (state.editorSelection?.path === state.active && state.editorSelection.text) {
+      const { text: picked, from, to } = state.editorSelection;
+      context.selection = { text: picked, from, to };
+    }
+  }
+  state.sofiConfirms = [];
+  state.sofiPhase = '';
+  let response;
+  try {
+    response = await sophy.agentAsk(text, context);
+  } catch (error) {
+    response = { ok: false, error: error.message };
+  }
+  state.sofiBusy = false;
+  state.sofiConfirms = [];
+  state.sofiPhase = '';
+  const canceled = Boolean(response.ok && response.value?.canceled);
+  if (!response.ok && response.code === 'sem_chave') {
+    state.sofiKey = false;
+    state.sofiMood = 'ocioso';
+    const host = $('.sofi-chat')?.parentElement;
+    if (host) paintSofi(host, true);
+    return;
+  }
+  state.sofiMood = response.ok ? 'pronta' : 'erro';
+  state.sofiChat.push(
+    response.ok
+      ? { role: 'sofi', id: Date.now(), text: canceled ? 'Pedido cancelado.' : response.value.text || 'Pronto.', actions: response.value.actions || [] }
+      : { role: 'sofi', id: Date.now(), error: true, text: `Não consegui responder: ${response.error || 'tente de novo em instantes.'}` },
+  );
+  if (response.ok) {
+    await refreshLibrary();
+    paintTree();
+  }
+  syncSofiHeader();
+  renderSofiMessages();
+  $('#agente-pedido')?.focus();
+  if (!state.sofiOpen && !canceled)
+    pushNotification({
+      type: 'sofi',
+      title: response.ok ? 'A Sofi terminou' : 'A Sofi não conseguiu responder',
+      body: response.ok ? String(response.value.text || 'Pedido concluído.').slice(0, 120) : String(response.error || 'Tente de novo em instantes.'),
+      action: { label: 'Abrir a Sofi', kind: 'sofi' },
+    });
+}
+
+function newSofiChat() {
+  if (state.sofiBusy) return;
+  state.sofiChat = [];
+  state.sofiMood = 'ocioso';
+  state.sofiContext = true;
+  syncSofiHeader();
+  syncSofiContext();
+  renderSofiMessages();
+  $('#agente-pedido')?.focus();
+}
+
+function openSofiSettings() {
+  if (drawerNarrow()) closeSofi();
+  state.configSection = 'sofi';
+  runCommand('config');
+}
+
+function paintSofi(host, force = false) {
+  hookSofiEvents();
   host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
-  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
-  $('#agente-guardar').onclick = async () => {
-    const response = await sophy.agentKeySet($('#agente-chave').value);
-    $('#agente-chave').value = '';
-    $('#agente-resposta').textContent = response.ok ? 'Chave guardada no cofre.' : response.error;
+  state.sofiChat ||= [];
+  if (!force && host.querySelector('.sofi-chat') && host.dataset.tema === theme) {
+    syncSofiContext();
+    syncSofiHeader();
+    return;
+  }
+  host.dataset.tema = theme;
+  const noKey = state.sofiKey === false;
+  const suggestions = SOFI_SUGGESTIONS.filter(([, needsNote]) => !needsNote || state.active)
+    .map(([label]) => `<button type="button" class="sofi-sugestao" data-sugestao="${escapeHtml(label)}">${escapeHtml(label)}</button>`)
+    .join('');
+  host.innerHTML = `<div class="agente agente--lateral sofi-chat" role="dialog" aria-label="Sofi">
+    <header class="sofi-chat__topo">
+      <div class="sofi-mascote" id="sofi-mascote" data-estado="ocioso" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div>
+      <div class="sofi-chat__titulo"><h3>Sofi</h3><span class="sofi-chat__estado" id="agente-estado" role="status" data-estado="pronta">Pronta</span></div>
+      <button type="button" class="btn btn--icone" id="agente-nova" aria-label="Nova conversa" title="Nova conversa">${icon('novo')}</button>
+      <button type="button" class="btn btn--icone" id="agente-fechar" aria-label="Fechar a Sofi" title="Fechar">${icon('fechar')}</button>
+    </header>
+    <div class="sofi-chat__rolagem" id="agente-rolagem">
+      ${noKey ? `<div class="sofi-conectar"><div class="sofi-mascote sofi-mascote--grande" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div><h4>Conectar a Sofi</h4><p>Para conversar, falta uma chave de acesso. Ela fica guardada no cofre do sistema, nunca dentro da biblioteca.</p><button type="button" class="btn btn--primario" id="agente-conectar">Abrir configurações</button></div>` : ''}
+      <div class="sofi-vazio" id="agente-vazio" ${noKey || state.sofiChat.length ? 'hidden' : ''}>
+        <div class="sofi-mascote sofi-mascote--grande" id="sofi-mascote-vazio" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div>
+        <h4>Oi! Como posso ajudar hoje?</h4>
+        <p>Escolha uma sugestão ou escreva abaixo.</p>
+        <div class="sofi-sugestoes">${suggestions}</div>
+        <p class="sofi-ajuda">Leio só esta biblioteca, uso as mesmas ferramentas que você e gravo um ponto antes de mudar qualquer coisa.</p>
+      </div>
+      <div class="sofi-mensagens" id="agente-mensagens" aria-live="polite"></div>
+    </div>
+    <form class="sofi-chat__rodape" id="agente-form">
+      <div id="agente-contexto-slot"></div>
+      <div class="sofi-campo">
+        <textarea id="agente-pedido" rows="1" aria-label="Mensagem para a Sofi" placeholder="${noKey ? 'Conecte a Sofi para escrever…' : 'Pergunte ou peça algo à Sofi…'}" ${noKey ? 'disabled' : ''}></textarea>
+        <button type="submit" class="btn btn--primario btn--icone sofi-campo__enviar" id="agente-enviar" aria-label="Enviar" title="Enviar (Enter)">${icon('enviar')}</button>
+        <button type="button" class="btn btn--secundario sofi-campo__parar" id="agente-parar" aria-label="Parar" title="Parar o pedido" hidden>${icon('fechar')} Parar</button>
+      </div>
+      <p class="sofi-chat__dica">Enter envia · Shift+Enter quebra a linha</p>
+    </form>
+  </div>`;
+  const input = $('#agente-pedido');
+  input.value = state.sofiDraft || '';
+  const grow = () => {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
   };
-  $('#agente-apagar').onclick = async () => {
-    const response = await sophy.agentKeyClear();
-    $('#agente-resposta').textContent = response.ok ? 'Chave apagada do cofre.' : response.error;
+  grow();
+  input.oninput = () => {
+    state.sofiDraft = input.value;
+    grow();
+    syncSofiSend();
   };
-  $('#agente-enviar').onclick = async () => {
-    const response = await sophy.agentAsk($('#agente-pedido').value);
-    $('#agente-resposta').textContent = response.ok ? response.value.text : response.error;
-    if (response.ok) {
-      await refreshLibrary();
-      paintTree();
+  input.onkeydown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      sendSofi(input.value);
     }
   };
-  $('#agente-fechar').onclick = () => {
-    state.sofiOpen = false;
-    $('#sofi-gaveta')?.classList.remove('is-aberta');
-    if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
-    paintLinks();
+  $('#agente-form').onsubmit = (event) => {
+    event.preventDefault();
+    sendSofi(input.value);
   };
+  host.querySelectorAll('[data-sugestao]').forEach((button) => {
+    button.onclick = () => sendSofi(button.dataset.sugestao);
+  });
+  $('#agente-parar').onclick = () => stopSofi();
+  $('#agente-nova').onclick = () => newSofiChat();
+  $('#agente-fechar').onclick = () => closeSofi();
+  const connect = $('#agente-conectar');
+  if (connect) connect.onclick = () => openSofiSettings();
+  const mascot = $('#sofi-mascote');
+  mountSofi(mascot, 'ocioso');
+  const big = $('#sofi-mascote-vazio');
+  if (big) mountSofi(big, 'ocioso');
+  syncSofiContext();
+  syncSofiHeader();
+  renderSofiMessages();
+  if (state.sofiKey === undefined) {
+    sophy
+      .agentStatus?.()
+      .then((status) => {
+        const value = status?.value ?? status;
+        state.sofiKey = Boolean(value?.saved);
+        if (state.sofiKey === false && $('#conexoes .sofi-chat, #sofi-gaveta .sofi-chat')) {
+          const current = $('.sofi-chat')?.parentElement;
+          if (current) paintSofi(current, true);
+        }
+      })
+      .catch(() => {
+        state.sofiKey = true;
+      });
+  }
+}
+
+/* A chave pode mudar em Configurações: o painel precisa saber na hora. */
+async function refreshSofiKey() {
+  try {
+    const status = await sophy.agentStatus?.();
+    const value = status?.value ?? status;
+    const next = Boolean(value?.saved);
+    if (next !== state.sofiKey) {
+      state.sofiKey = next;
+      const current = $('.sofi-chat')?.parentElement;
+      if (current) paintSofi(current, true);
+    }
+  } catch {
+    /* mantém o último estado conhecido */
+  }
+}
+
+function closeSofi() {
+  state.sofiOpen = false;
+  $('#sofi-gaveta')?.classList.remove('is-aberta');
+  if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
+  $('#abrir-sofi')?.setAttribute('aria-pressed', 'false');
+  paintLinks();
 }
 
 function openAgent() {
@@ -5549,7 +7212,9 @@ function openAgent() {
       $('.miolo')?.append(panel);
     }
     state.sofiOpen = true;
+    $('#abrir-sofi')?.setAttribute('aria-pressed', 'true');
     paintSofi(panel);
+    refreshSofiKey();
     panel.classList.add('is-aberta');
     ensureVeil();
     state.drawerOpener = $('#abrir-lateral');
@@ -5557,8 +7222,10 @@ function openAgent() {
   }
   $('#sofi-gaveta')?.classList.remove('is-aberta');
   state.sofiOpen = true;
+  $('#abrir-sofi')?.setAttribute('aria-pressed', 'true');
   state.connectionsOpen = true;
   paintSofi($('#conexoes'));
+  refreshSofiKey();
   syncConnectionsPanel();
 }
 
@@ -5710,16 +7377,62 @@ async function showMentions() {
   });
 }
 
-function confirmDialog(message) {
+function closeDialog() {
+  const overlay = $('#overlay');
+  overlay.hidden = true;
+  overlay.innerHTML = '';
+  overlay.onkeydown = null;
+}
+
+function confirmDialog(message, { confirm = 'Confirmar', danger = false } = {}) {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Confirmar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+  overlay.innerHTML = `<div class="menu menu-flutuante dialogo" role="alertdialog" aria-modal="true" aria-labelledby="confirma-texto"><p id="confirma-texto" class="dialogo__texto">${escapeHtml(message)}</p><div class="dialogo__acoes"><button type="button" class="btn btn--fantasma" id="confirma-nao">Cancelar</button><button type="button" class="btn ${danger ? 'btn--perigo' : 'btn--primario'}" id="confirma-sim">${escapeHtml(confirm)}</button></div></div>`;
   return new Promise((resolve) => {
-    $('#confirma-sim').onclick = () => resolve(true);
-    $('#confirma-nao').onclick = () => {
-      overlay.hidden = true;
-      resolve(false);
+    const done = (value) => {
+      closeDialog();
+      resolve(value);
     };
+    $('#confirma-sim').onclick = () => done(true);
+    $('#confirma-nao').onclick = () => done(false);
+    overlay.onkeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        done(false);
+      }
+    };
+    $('#confirma-sim').focus();
+  });
+}
+
+function textDialog({ title, label, placeholder = '', value = '', confirm = 'Criar' }) {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<form class="menu menu-flutuante dialogo" role="dialog" aria-modal="true" aria-labelledby="dialogo-titulo" id="dialogo-texto"><h3 id="dialogo-titulo" class="dialogo__titulo">${escapeHtml(title)}</h3><label class="dialogo__campo"><span>${escapeHtml(label)}</span><input id="dialogo-valor" type="text" autocomplete="off" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}" /></label><div class="dialogo__acoes"><button type="button" class="btn btn--fantasma" id="dialogo-cancelar">Cancelar</button><button type="submit" class="btn btn--primario" id="dialogo-ok">${escapeHtml(confirm)}</button></div></form>`;
+  return new Promise((resolve) => {
+    const done = (result) => {
+      closeDialog();
+      resolve(result);
+    };
+    const input = $('#dialogo-valor');
+    $('#dialogo-texto').onsubmit = (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) {
+        input.focus();
+        return;
+      }
+      done(text);
+    };
+    $('#dialogo-cancelar').onclick = () => done(null);
+    overlay.onkeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        done(null);
+      }
+    };
+    input.focus();
+    input.select();
   });
 }
 
@@ -5861,7 +7574,10 @@ function openExport(kind) {
       }
       const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}h1,h2,h3{font-family:Georgia,serif}</style></head><body><h1>${escapeHtml(title)}</h1>${(state.doc?.blocks || []).map(blockPreview).join('')}</body></html>`;
       const saved = await sophy.exportPdf(html);
-      if (saved) toast('PDF em papel claro.');
+      if (exportDone(saved)) {
+        toast('PDF em papel claro.');
+        pushNotification({ type: 'exportacao', title: 'PDF exportado', body: `“${title}” foi salvo em papel claro.` });
+      }
       return;
     }
     const folder = await pickedFolder();
@@ -5870,6 +7586,7 @@ function openExport(kind) {
     try {
       const result = await tool('site.export', { destination: folder, theme });
       toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+      pushNotification({ type: 'exportacao', title: 'Site exportado', body: `${result.pages} página(s), no tema ${theme}.`, action: { label: 'Mostrar na pasta', kind: 'reveal', arg: folder } });
     } catch (error) {
       toast(error.message, 'erro');
     }
@@ -5961,6 +7678,7 @@ function openLibraryMenu(anchor) {
       })
       .join('') +
     `<div class="menu__sep"></div>
+    <button type="button" class="menu__item" role="menuitem" data-acao="lixeira">${icon('lixeira')} Lixeira</button>
     <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
     <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
     <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>
@@ -5976,6 +7694,10 @@ function openLibraryMenu(anchor) {
       switchLibrary(button.dataset.lib);
     };
   });
+  menu.querySelector('[data-acao="lixeira"]').onclick = () => {
+    closeMenus();
+    runCommand('lixeira');
+  };
   menu.querySelector('[data-acao="nova"]').onclick = () => {
     closeMenus();
     openNewLibrary();
@@ -6214,7 +7936,7 @@ function openTreeMenu(event, kind, target) {
         (kind === 'canvas' && state.canvasPath === target)
       )
         if (!(await flushNote())) return;
-      await tool('entry.trash', { path: target });
+      const trashed = await tool('entry.trash', { path: target });
       if (kind === 'shelf') {
         state.collapsedShelves.delete(target);
         delete state.treeOrder[target];
@@ -6238,7 +7960,7 @@ function openTreeMenu(event, kind, target) {
       paintTree();
       paintTabs();
       paintCenter();
-      toast('Movido para a lixeira.');
+      toastTrashed('Movido para a lixeira.', trashed?.id);
     } catch (error) {
       toast(error.message, 'erro');
     }
@@ -6405,7 +8127,7 @@ function showFormatBar(range) {
         `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}">${icon(glyph)}</button>`,
     )
     .join('') +
-    `<button type="button" class="btn btn--icone barra-formato__a" data-cor aria-label="Cor e fundo" title="Cor e fundo"><span aria-hidden="true">A</span></button>` +
+    `<span class="barra-formato__sep" aria-hidden="true"></span><button type="button" class="btn barra-formato__a" data-cor aria-label="Cor e fundo" title="Cor do texto e fundo"><span class="barra-formato__letra" aria-hidden="true">A</span><span class="barra-formato__cores-mini" aria-hidden="true"><i class="marca-cor--vermelho"></i><i class="marca-cor--azul"></i><i class="marca-cor--verde"></i></span>${icon('chevron-baixo')}</button>` +
     `<button type="button" class="btn btn--icone" data-transformar aria-label="Transformar em" title="Transformar em">${icon('mais')}</button>`;
   document.body.append(bar);
   const rect = range.getBoundingClientRect();
@@ -6666,7 +8388,7 @@ async function paintGraph(center) {
     graph = await tool('graph.query', {});
   } catch (error) {
     if (request === state.graphPaintSeq)
-      center.innerHTML = `<div class="vazio-ensina"><h2>Não foi possível carregar o grafo</h2><p>${escapeHtml(error.message || 'Tente abrir esta tela novamente.')}</p></div>`;
+      center.innerHTML = `<div class="vazio-ensina">${ilustracao('grafo-vazio')}<h2>Não deu para montar o grafo</h2><p>${escapeHtml(error.message || 'Tente abrir esta tela de novo.')} Suas notas não foram alteradas.</p></div>`;
     return;
   }
   if (request !== state.graphPaintSeq || state.view !== 'graph') return;
@@ -6693,7 +8415,7 @@ async function paintGraph(center) {
     <div class="grafo__chips" id="grafo-chips" hidden></div>
     <div class="grafo__palco">
       <canvas id="grafo-canvas" tabindex="0" role="application" aria-label="Grafo de notas. Use as setas para navegar e Enter para abrir uma nota."></canvas>
-      <div class="grafo__legenda">${legend}<span id="grafo-contagem">Carregando…</span></div>
+      <div class="grafo__legenda">${legend}<span id="grafo-contagem">${anim('carregando')}Carregando…</span></div>
       <div class="grafo__cartao" id="grafo-cartao" hidden></div>
       <aside class="grafo__forcas" id="grafo-forcas" hidden aria-label="Controles de forças">
         <header><strong>${icon('foco-no')} Forças</strong><button type="button" class="btn btn--icone" id="grafo-forcas-fechar" aria-label="Fechar">${icon('fechar')}</button></header>
@@ -6717,7 +8439,7 @@ async function paintGraph(center) {
       </div>
       <div class="grafo__local" id="grafo-local" hidden>${icon('foco-no')}<span id="grafo-foco"></span><label>Profundidade <select id="grafo-profundidade"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label></div>
     </div>
-    <div class="grafo__rodape"><span>Layout de força · <span id="grafo-status-rodape">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'pausado' : 'estabilizando'}</span> · Ctrl mostra a nota</span></div>
+    <div class="grafo__rodape"><label class="grafo__tempo">${icon('calendario')}<span>Linha do tempo</span><input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" aria-label="Mostrar notas criadas até a data" /><output id="grafo-tempo-data">hoje</output></label><div class="grafo__quadros" id="grafo-quadros" aria-hidden="true"></div><span>Layout de força · <span id="grafo-status-rodape">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'pausado' : 'estabilizando'}</span> · Ctrl mostra a nota</span></div>
   </div>`;
 
   const readLayout = () => {
@@ -6781,6 +8503,29 @@ async function paintGraph(center) {
     document.querySelectorAll('[data-force], #grafo-simulacao, #grafo-forcas-restaurar').forEach((input) => { input.disabled = true; });
     $('#grafo-simulacao').checked = false;
   }
+  // Linha do tempo: mostra só as notas criadas até a data escolhida (createdAt, como o `to` de graph.query).
+  // O filtro roda aqui, sobre a mesma consulta, para o desenho não se refazer a cada passo do controle.
+  const createdTime = (node) => {
+    const created = Date.parse(node.createdAt);
+    return Number.isNaN(created) ? node.modifiedAt || 0 : created;
+  };
+  const times = (graph?.nodes || []).map(createdTime).filter(Boolean).sort((a, b) => a - b);
+  const timeLabel = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const frames = $('#grafo-quadros');
+  if (frames && times.length) frames.innerHTML = `<span>${escapeHtml(timeLabel(times[0]))}</span><span>${escapeHtml(timeLabel(times[times.length - 1]))}</span>`;
+  const timeline = $('#grafo-tempo');
+  const applyTime = () => {
+    const ratio = Number(timeline.value) / 100;
+    state.graphUntil = ratio;
+    const cutoff = ratio >= 1 || !times.length ? 0 : times[0] + (times[times.length - 1] - times[0]) * ratio;
+    $('#grafo-tempo-data').textContent = cutoff ? timeLabel(cutoff) : 'hoje';
+    state.graphView?.setUntil(cutoff);
+  };
+  if (timeline) {
+    timeline.disabled = times.length < 2;
+    timeline.oninput = applyTime;
+    applyTime();
+  }
 
   const applyFilters = () => {
     const rawQuery = ($('#grafo-busca')?.value || '').trim();
@@ -6823,7 +8568,7 @@ async function paintGraph(center) {
         empty.id = 'grafo-vazio';
         empty.className = 'grafo__vazio';
         empty.innerHTML =
-          '<div><strong>Nenhuma nota com esses filtros</strong><p>Remova um filtro para ver mais conexões.</p></div>';
+          `<div>${ilustracao('grafo-vazio', 150)}<strong>Nenhuma nota com esses filtros</strong><p>Remova um filtro para ver mais conexões.</p></div>`;
         $('.grafo__palco')?.append(empty);
       }
     } else empty?.remove();
@@ -7050,18 +8795,25 @@ function openPalette() {
   const render = async () => {
     const raw = input.value;
     const commandMode = raw.trimStart().startsWith('>');
-    const query = (commandMode ? raw.trimStart().slice(1) : raw).trim();
+    const tagTokens = commandMode ? [] : [...raw.matchAll(/(?:^|\s)#([^\s#]+)/g)].map((match) => match[1]);
+    const query = (commandMode ? raw.trimStart().slice(1) : tagTokens.length ? raw.replace(/(?:^|\s)#[^\s#]+/g, ' ') : raw).trim();
     let hits = [];
-    if (!commandMode && query.length >= 2) {
+    if (!commandMode && (query.length >= 2 || tagTokens.length)) {
       try {
-        hits = await tool('search.query', { query });
+        if (!tagTokens.length) hits = await tool('search.query', { query });
+        else if (query.length >= 2) hits = await tool('search.query', { query, tags: tagTokens, tagsMode: 'all' });
+        else {
+          const lists = await Promise.all(tagTokens.map((tag) => tool('tags.notes', { tag, nested: true })));
+          const common = lists.map((result) => result?.notes || []).reduce((left, right) => left.filter((note) => right.some((other) => other.path === note.path)));
+          hits = common.map((note) => ({ path: note.path, title: note.title, segments: [] }));
+        }
       } catch {
         hits = [];
       }
       const seen = new Set(
         hits.filter((hit) => String(hit.path).toLowerCase().endsWith('.canvas')).map((hit) => hit.path),
       );
-      const canvases = state.canvases.filter(
+      const canvases = (tagTokens.length ? [] : state.canvases).filter(
         (file) =>
           !seen.has(file.path) && file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
       );
@@ -7087,7 +8839,7 @@ function openPalette() {
       hits = unique;
     }
     const list = $('#paleta-lista');
-    const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
+    const commands = tagTokens.length ? [] : (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
       .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
     const noteHits = hits.filter((hit) => hit.kind !== 'canvas');
@@ -7104,6 +8856,7 @@ function openPalette() {
       return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
     };
     list.innerHTML =
+      (tagTokens.length ? `<div class="paleta__filtros" id="paleta-filtro-tag">Filtrando por ${tagTokens.map((tag) => `<span class="tag-inline" style="--tag-h:${tagHue(tag)}">#${escapeHtml(tag)}</span>`).join(' ')}</div>` : '') +
       (noteHits.length ? '<div class="menu__grupo">Notas</div>' : '') +
       noteHits.map(row).join('') +
       (canvasHits.length ? '<div class="menu__grupo">Canvas</div>' : '') +
@@ -7116,8 +8869,8 @@ function openPalette() {
             `<button type="button" class="menu__item" data-cmd="${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>`,
         )
         .join('') +
-      (hits.length === 0 && query.length >= 2
-        ? '<p class="nota-privacidade">Nada encontrado.</p>'
+      (hits.length === 0 && (query.length >= 2 || tagTokens.length)
+        ? `<div class="vazio-pequeno vazio-pequeno--paleta">${ilustracao('busca-sem-resultado', 120)}<p>Nada encontrado para “${escapeHtml(query)}”. Tente outra palavra ou crie uma nota com esse nome.</p></div>`
         : '');
     list.querySelectorAll('[data-hit]').forEach((button) => {
       button.onclick = () => {
@@ -7162,6 +8915,7 @@ async function toggleTheme() {
   const button = $('#tema');
   if (button) button.innerHTML = icon(next === 'dark' ? 'tema-claro' : 'tema-escuro');
   paintStatus();
+  fillMermaid();
 }
 
 async function applyCommand(command) {
@@ -7380,6 +9134,7 @@ async function boot() {
   const sprite = await fetch('ui/assets/sprite.svg').then((response) => response.text());
   const covers = await fetch('ui/assets/sprite-capas.svg').then((response) => response.text());
   $('#sprite').innerHTML = sprite;
+  await loadAnims();
   const host = document.createElement('div');
   host.id = 'sprite-capas';
   host.hidden = true;
@@ -7404,6 +9159,7 @@ async function boot() {
   sophy.onCommand((command) => {
     commandJob = commandJob.then(() => applyCommand(command)).catch((error) => toast(error.message, 'erro'));
   });
+  hookInlineTagsOnce();
   if (!state.settings.onboarded || !state.libraryPath) paintOnboarding();
   else await showShell();
   sophy.ready?.();

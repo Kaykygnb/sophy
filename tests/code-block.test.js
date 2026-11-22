@@ -61,3 +61,20 @@ test('a busca lista as linguagens da nota antes das mais usadas', () => {
   assert.equal(code.search('type').some((item) => item.id === 'typescript'), true);
   assert.equal(code.search('inexistente').length, 0);
 });
+
+test('o nome do bloco vai na cerca como title="nome" e a linguagem continua valendo', () => {
+  assert.deepEqual(code.parseInfo('js title="parser.js"'), { rest: 'js', title: 'parser.js' });
+  assert.deepEqual(code.parseInfo("ts title='a b'"), { rest: 'ts', title: 'a b' });
+  assert.deepEqual(code.parseInfo('title="só nome"'), { rest: '', title: 'só nome' });
+  assert.equal(code.composeInfo('js', 'parser.js'), 'js title="parser.js"');
+  assert.equal(code.composeInfo('', 'só nome'), 'title="só nome"');
+  assert.equal(code.composeInfo('js', '  '), 'js');
+  assert.equal(code.composeInfo('js', 'com "aspas"'), 'js title="com aspas"');
+  assert.equal(code.labelFor('js title="parser.js"'), 'JavaScript');
+  assert.equal(code.labelFor('title="só nome"'), 'Texto');
+  const raw = doc.codeRaw('```', code.composeInfo('js', 'parser.js'), 'const a = 1;');
+  assert.equal(raw, '```js title="parser.js"\nconst a = 1;\n```\n');
+  assert.equal(doc.codeParts(raw).info, 'js title="parser.js"');
+  const block = doc.parseBody(raw).blocks.find((item) => item.type === 'code');
+  assert.equal(block.raw, raw);
+});

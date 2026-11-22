@@ -130,7 +130,24 @@ test('cartão de texto do canvas recebe o foco e formata negrito', async () => {
   await page.locator('#arvore [data-canvas="Estudos/Quadro.canvas"]').click();
   await expect(page.locator('.cv-texto strong')).toHaveText('negrito');
   await page.locator('[data-tool="rectangle"]').click();
-  await page.locator('.canvas-area').click({ position: { x: 80, y: 200 } });
+  // área livre do quadro: nada de coordenada fixa, a janela e o enquadramento mudam o que está onde
+  const free = await page.evaluate(() => {
+    const area = document.querySelector('.canvas-area').getBoundingClientRect();
+    const blockers = ['[data-node]', '.canvas-ferramentas', '.canvas-zoom', '.canvas-mini', '.cv-cores']
+      .flatMap((selector) => [...document.querySelectorAll(selector)])
+      .filter((el) => !el.hidden && el.getClientRects().length)
+      .map((el) => el.getBoundingClientRect());
+    const margin = 130;
+    for (let y = area.bottom - 60; y > area.top + 60; y -= 20) {
+      for (let x = area.left + 60; x < area.right - 60; x += 20) {
+        const clear = blockers.every((box) => x + margin < box.left || x - margin > box.right || y + margin < box.top || y - margin > box.bottom);
+        if (clear) return { x: x - area.left, y: y - area.top };
+      }
+    }
+    return null;
+  });
+  expect(free).not.toBeNull();
+  await page.locator('.canvas-area').click({ position: free });
   await expect(page.locator('.cv-texto').last()).toBeFocused();
   await app.close();
 });

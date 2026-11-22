@@ -15,6 +15,9 @@
     'entry.move',
     'entry.trash',
     'trash.restore',
+    'trash.purge',
+    'trash.empty',
+    'note.deletePermanent',
     'history.undo',
     'canvas.create',
     'canvas.update',
@@ -28,7 +31,10 @@
     'mention.link',
     'vault.import',
     'view.save',
+    'tag.rename',
+    'note.tags',
     'card.review',
+    'card.undo',
     'version.point',
     'version.restore',
     'site.export',
@@ -51,7 +57,20 @@
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
     if (/[\]\n]/.test(query)) return null;
+    // Um [[ esquecido no meio do parágrafo não pode sequestrar o Enter: só abre enquanto parece um nome de nota.
+    if (query.length > 60 || /[.!?]\s|\*\*|`/.test(query)) return null;
     return { start: marker, query };
+  }
+
+  function tagQuery(text, cursor) {
+    const before = text.slice(0, cursor);
+    const match = before.match(/(^|[\s(])#([\p{L}\p{N}_\-\/]*)$/u);
+    if (!match) return null;
+    const start = before.length - match[2].length - 1;
+    // "#" sozinho no começo da linha é título, não tag
+    if (!match[2] && !match[1]) return null;
+    if (match[2] && !/\D/.test(match[2])) return null;
+    return { start, query: match[2] };
   }
 
   function foldText(value) {
@@ -285,6 +304,7 @@
   }
 
   function previewInline(text) {
+    text = String(text || '').replace(/<\/?span\b[^>]*>/gi, '');
     const pattern = /!?\[\[([^\]\n]*)\]\]/g;
     let html = '';
     let last = 0;
@@ -375,6 +395,7 @@
     { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
+    { id: 'lixeira', rotulo: 'Lixeira', grupo: 'Navegar', icone: 'lixeira', atalho: '', quando: 'biblioteca' },
     { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
@@ -602,6 +623,7 @@
     SLASH_ITEMS,
     slashQuery,
     wikiQuery,
+    tagQuery,
     foldText,
     fuzzyScore,
     parseWikiDraft,

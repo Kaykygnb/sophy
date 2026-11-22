@@ -110,6 +110,7 @@
     let mode = config.mode || 'global';
     let depth = config.depth || 1;
     let showOrphans = saved.showOrphans !== false;
+    let until = 0;
     let showLabels = saved.showLabels !== false;
     let paused = !!config.reducedMotion;
     let disposed = false;
@@ -177,6 +178,11 @@
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     };
     let miniMapTransform = null;
+    /* Linha do tempo pelo createdAt (mesma regra do `to` de graph.query); sem ele, cai no modifiedAt. */
+    const createdMs = (node) => {
+      const created = Date.parse(node.createdAt);
+      return Number.isNaN(created) ? node.modifiedAt || 0 : created;
+    };
     const rebuildVisible = (subset = baseGraph) => {
       const allowed = new Set(subset.nodes.map((node) => node.path));
       const subsetDegree = new Map();
@@ -185,7 +191,9 @@
         subsetDegree.set(edge.to, (subsetDegree.get(edge.to) || 0) + 1);
       }
       let nodes = subset.nodes.filter(
-        (node) => showOrphans || (subsetDegree.get(node.path) || 0) > 0,
+        (node) =>
+          (showOrphans || (subsetDegree.get(node.path) || 0) > 0) &&
+          (!until || !createdMs(node) || createdMs(node) <= until),
       );
       if (mode === 'local' && selected)
         nodes = localGraph(
@@ -982,6 +990,11 @@
       setSelected(path) {
         selected = path;
         if (mode === 'local') rebuildVisible();
+        scheduleDraw();
+      },
+      setUntil(value) {
+        until = Number(value) || 0;
+        rebuildVisible();
         scheduleDraw();
       },
       setShowOrphans(value) {

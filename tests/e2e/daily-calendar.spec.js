@@ -110,14 +110,13 @@ test('nota do dia travada, grade e painel', async () => {
   }
 });
 
-test('diálogo de conflito chama merge e asNote', async () => {
+test('restaurar com o caminho ocupado usa o sufixo (restaurado)', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-restore-ui-'));
-  const trashHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-restore-trash-'));
   fs.mkdirSync(path.join(root, 'Diário'), { recursive: true });
   fs.writeFileSync(path.join(root, 'Diário', '2026-11-21.md'), 'velha\n');
-  const { app, page } = await launch(root, { XDG_DATA_HOME: trashHome });
+  const { app, page } = await launch(root);
   try {
-    const env = { ...process.env, XDG_DATA_HOME: trashHome };
+    const env = { ...process.env };
     delete env.SOPHY_LIBRARY;
     delete env.ELECTRON_RUN_AS_NODE;
     const removed = spawnSync(
@@ -126,33 +125,15 @@ test('diálogo de conflito chama merge e asNote', async () => {
       { encoding: 'utf8', env, cwd: os.tmpdir() },
     );
     expect(removed.status, removed.stderr).toBe(0);
-    const id = path.basename(JSON.parse(removed.stdout).trashPath);
+    const id = JSON.parse(removed.stdout).id;
     await page.evaluate(async () => {
       await tool('note.create', { path: 'Diário/2026-11-21.md', body: 'nova\n' });
     });
-    const pending = page.evaluate((trashId) => restoreTrashed(trashId), id);
-    await page.getByRole('button', { name: 'Juntar conteúdo' }).click();
-    await pending;
-    const merged = fs.readFileSync(path.join(root, 'Diário', '2026-11-21.md'), 'utf8');
-    expect(merged).toContain('nova');
-    expect(merged).toContain('velha');
-
-    const again = spawnSync(
-      process.execPath,
-      ['--experimental-strip-types', bin, 'lixeira', 'Diário/2026-11-21.md', '--json', '--biblioteca', root],
-      { encoding: 'utf8', env, cwd: os.tmpdir() },
-    );
-    expect(again.status, again.stderr).toBe(0);
-    const second = path.basename(JSON.parse(again.stdout).trashPath);
-    await page.evaluate(async () => {
-      await tool('note.create', { path: 'Diário/2026-11-21.md', body: 'ocupado\n' });
-    });
-    const other = page.evaluate((trashId) => restoreTrashed(trashId), second);
-    await page.getByRole('button', { name: 'Restaurar como nota comum' }).click();
-    const restored = await other;
+    const restored = await page.evaluate((trashId) => restoreTrashed(trashId), id);
     expect(restored.path).toMatch(/ \(restaurado\)\.md$/);
-    expect(fs.readFileSync(path.join(root, ...restored.path.split('/')), 'utf8')).toContain('nova');
-    expect(fs.readFileSync(path.join(root, 'Diário', '2026-11-21.md'), 'utf8')).toContain('ocupado');
+    expect(fs.readFileSync(path.join(root, 'Diário', '2026-11-21.md'), 'utf8')).toContain('nova');
+    expect(fs.readFileSync(path.join(root, ...restored.path.split('/')), 'utf8')).toContain('velha');
+    await expect(page.getByRole('button', { name: 'Juntar conteúdo' })).toHaveCount(0);
   } finally {
     await app.close();
   }

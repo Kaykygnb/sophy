@@ -149,3 +149,18 @@ Para desenvolvimento, `npm run format` organiza os arquivos e `npm run format:ch
 Ao abrir uma área, o cabeçalho fica compacto para privilegiar a escrita. A árvore mantém busca e criação; as ações de cada arquivo ficam no menu `⋯` (ou no clique direito).
 
 O editor inicia com propriedades, informações e referências recolhidas. O menu “Página” reúne ícone, capa e comentários. Status de salvamento, alternância para Markdown e modo de foco ficam no rodapé, liberando o topo para a nota.
+
+## Lixeira, cartões e datas
+
+Excluir um item da biblioteca guarda a cópia em `.sophy/lixeira/<id>/`, com `id`, `originalPath`, `title`, `kind`, `deletedAt` e `size`. Restaurar devolve o caminho original; se ele já existe, o nome ganha ` (restaurado)`. A pasta que sumiu é recriada. Esvaziar a lixeira não mexe no resto de `.sophy` nem na lixeira do sistema. `.sophy` fica fora da árvore, da busca, do grafo e do vigia de pasta.
+
+O cartão guarda `{ due, interval, ease, lapses }` (ease inicial 2.5, mínimo 1.3). A primeira revisão boa dura 1 dia e a segunda, 3 dias.
+
+| Nota | Efeito |
+| ---- | ------ |
+| 1 errei | intervalo de 1 dia, lapses + 1, ease − 0.2 |
+| 2 difícil | intervalo × 1.2, ease − 0.15 |
+| 3 bom | 1 dia na primeira, 3 dias se o intervalo ainda é 1, senão intervalo × ease |
+| 4 fácil | intervalo × ease × 1.3, ease + 0.15 |
+
+`knew: true` conta como 3 e `knew: false` como 1. O id estável é `c_` e 8 hex da frente com o id da nota. `card.undo` desfaz uma revisão. Nota nova grava `criada: AAAA-MM-DDTHH:mm:ss` junto do `id`, sem reordenar os outros campos. `graph.query` filtra essa data com `from` e `to`.
