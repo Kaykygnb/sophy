@@ -13,4 +13,12 @@ test('preload abre o anexo e o main prende o caminho à biblioteca', () => {
   assert.match(main, /resolveAttachmentPath/);
   assert.match(main, /shell\.openPath/);
   assert.match(main, /Nenhuma biblioteca aberta/);
+  assert.match(
+    preload,
+    /exportMarkdown:\s*\(result\)\s*=>\s*ipcRenderer\.invoke\('sophy:export-markdown',\s*result\)/,
+  );
+  assert.match(main, /ipcMain\.handle\('sophy:export-markdown'/);
+  assert.match(main, /planMarkdownExport/);
+  assert.match(main, /showMessageBox/);
+  assert.match(main, /Manter os dois/);
 });
