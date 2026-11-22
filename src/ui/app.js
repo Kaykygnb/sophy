@@ -1094,7 +1094,14 @@ function paintTree() {
           ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
       const shelfUnsafe = workspace.unsafe ? ' title="Nome inválido no Windows"' : '';
-      const group = expanded ? `<ul role="group">${children}${boards}</ul>` : '';
+      const folders = emptyFolders(workspace.name)
+        .filter((folder) => !filter || folder.toLocaleLowerCase().includes(filter))
+        .map(
+          (folder) =>
+            `<li role="treeitem"><button type="button" class="arvore__linha arvore__pasta" style="--nivel:${Cmd.noteIndent(folder)}" data-pasta="${escapeHtml(folder)}" aria-selected="${state.selectedFolder === folder ? 'true' : 'false'}" title="Pasta vazia. Clique com o botão direito para criar uma nota dentro.">${icon('pasta')}<span class="arvore__nome">${escapeHtml(folder.split('/').pop())}</span><span class="arvore__conta">vazia</span></button></li>`,
+        )
+        .join('');
+      const group = expanded ? `<ul role="group">${folders}${children}${boards}</ul>` : '';
       return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="${expanded}"${color}${shelfUnsafe}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
           <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button>${group}</li>`;
@@ -1133,6 +1140,9 @@ function paintTree() {
       openNote(button.dataset.open).catch((error) => toast(error.message, 'erro'));
     };
     button.oncontextmenu = (event) => openTreeMenu(event, 'note', button.dataset.open);
+    button.addEventListener('click', () => {
+      state.selectedFolder = null;
+    });
   });
   host.querySelectorAll('[data-canvas]').forEach((button) => {
     button.onclick = () => openCanvas(button.dataset.canvas);
@@ -1159,6 +1169,14 @@ function paintTree() {
       paintCenter();
     };
     button.oncontextmenu = (event) => openTreeMenu(event, 'shelf', button.dataset.shelf);
+  });
+  host.querySelectorAll('[data-pasta]').forEach((button) => {
+    button.onclick = () => {
+      state.selectedFolder = button.dataset.pasta;
+      state.selectedShelf = button.dataset.pasta.split('/')[0];
+      paintTree();
+    };
+    button.oncontextmenu = (event) => openTreeMenu(event, 'folder', button.dataset.pasta);
   });
   bindTreeDnD(host);
   bindNameField(
@@ -1968,7 +1986,7 @@ function paintSettings(center) {
   const libraryRows = libraries
     .map((folder) => {
       const current = folder === state.libraryPath;
-      return `<li class="config__biblioteca${current ? ' is-atual' : ''}">${icon('biblioteca')}<div><b>${escapeHtml(folder.split(/[/\\]/).pop())}</b><span>${escapeHtml(folder)}</span></div>${current ? '<span class="chip chip--acento">Aberta agora</span>' : '<button type="button" class="btn btn--fantasma btn--pequeno" disabled title="Em breve">Abrir <span class="em-breve">em breve</span></button>'}</li>`;
+      return `<li class="config__biblioteca${current ? ' is-atual' : ''}">${icon('biblioteca')}<div><b>${escapeHtml(folder.split(/[/\\]/).pop())}</b><span>${escapeHtml(folder)}</span></div>${current ? '<span class="chip chip--acento">Aberta agora</span>' : `<button type="button" class="btn btn--secundario btn--pequeno" data-abrir-lib="${escapeHtml(folder)}" aria-label="Abrir a biblioteca ${escapeHtml(folder.split(/[/\\]/).pop())}">Abrir</button>`}</li>`;
     })
     .join('');
   const shortcuts = Cmd.COMMANDS.filter((item) => item.atalho)
@@ -2018,6 +2036,8 @@ function paintSettings(center) {
         <h4>Versões e exportação</h4>
         ${cfgRow('Pontos de restauração', 'Um ponto é gravado antes de cada ação do agente e do MCP. Ficam 90 dias ou 1 GB, apagando os mais antigos.', '<button type="button" class="btn btn--secundario" id="cfg-versao">Gravar ponto agora</button>')}
         ${cfgRow('Exportar a biblioteca', 'Gera um site estático ou um PDF com as notas escolhidas.', '<button type="button" class="btn btn--secundario" id="cfg-site">Exportar site</button><button type="button" class="btn btn--secundario" id="cfg-pdf">Exportar PDF</button>')}
+        <h4>Manutenção</h4>
+        ${cfgRow('Links quebrados', 'Acha os [[links]] que apontam para notas que não existem ou para mais de uma nota, e ajuda a consertar.', `<button type="button" class="btn btn--secundario" id="cfg-quebrados">${icon('link-quebrado')} Ver links quebrados</button>`)}
       </section>
       <section class="config__secao" id="cfg-sofi" data-secao="sofi"><h3>Sofi e IA</h3>
         <div class="config__sofi">${ilustracao('agente-desconectado', 120)}<div><b id="cfg-agente-estado">Verificando a Sofi…</b><p>A Sofi lê só esta biblioteca, usa as mesmas ferramentas que você e grava um ponto antes de agir.</p></div></div>
@@ -2151,6 +2171,11 @@ function paintSettings(center) {
   if (reveal) reveal.onclick = () => sophy.libraryReveal?.(state.libraryPath);
   const importer = $('#cfg-importar');
   if (importer) importer.onclick = () => importObsidian();
+  const broken = $('#cfg-quebrados');
+  if (broken) broken.onclick = () => runCommand('links-quebrados');
+  center.querySelectorAll('[data-abrir-lib]').forEach((button) => {
+    button.onclick = () => switchLibrary(button.dataset.abrirLib);
+  });
   const feedback = (text) => {
     const out = $('#cfg-agente-retorno');
     if (out) out.textContent = text;
@@ -2581,8 +2606,12 @@ function paintNotifications() {
           )
           .join('')}</ul>`
       : `<div class="notif__vazio">${icon('notificacao')}<b>Tudo em dia</b><p>Nada novo por aqui. Os avisos aparecem neste sino.</p></div>`
-  }<footer class="notif__rodape"><button type="button" class="btn btn--fantasma btn--pequeno" id="notif-config">Configurar avisos</button></footer>`;
+  }<footer class="notif__rodape"><button type="button" class="btn btn--secundario btn--pequeno" id="notif-revisao">${icon('calendario')} Revisão da semana</button><button type="button" class="btn btn--fantasma btn--pequeno" id="notif-config">Configurar avisos</button></footer>`;
   $('#notif-todas').onclick = () => markNotifications(list, 'read');
+  $('#notif-revisao').onclick = () => {
+    closeNotifications();
+    runCommand('revisao');
+  };
   $('#notif-config').onclick = () => {
     closeNotifications();
     state.configSection = 'notificacoes';
@@ -3167,6 +3196,10 @@ function paintCenterBody(center) {
     paintReview(center);
     return;
   }
+  if (state.view === 'broken') {
+    paintBroken(center);
+    return;
+  }
   if (state.view === 'settings') {
     paintSettings(center);
     return;
@@ -3551,7 +3584,7 @@ function renderCodeBlock(block, index) {
     : '';
   return `<div class="codigo${linesOn ? ' codigo--linhas' : ''}${mermaid ? ' codigo--mermaid' : ''}"${mermaid ? ` data-vista="${view}"` : ''}>
     <div class="codigo__barra">
-      <label class="codigo__nome">${icon('codigo')}<input type="text" class="codigo__nome-campo" data-code-name="${index}" value="${escapeHtml(blockName)}" maxlength="80" placeholder="Nome do bloco" aria-label="Nome do bloco de código" spellcheck="false"></label>
+      <label class="codigo__nome">${icon('codigo')}<input type="text" class="codigo__nome-campo" data-code-name="${index}" value="${escapeHtml(blockName)}" maxlength="80" placeholder="Nome do bloco" aria-label="Nome do bloco de código" spellcheck="false"></label>${blockName ? `<button type="button" class="codigo__acao" data-code-rename="${index}" title="Renomear o bloco e atualizar os links que apontam para ele">${icon('renomear')} Renomear</button>` : ''}
       ${toggle}
       <button type="button" class="codigo__acao" data-code-lines aria-pressed="${linesOn ? 'true' : 'false'}">Linhas</button>
       <button type="button" class="codigo__acao" data-code-copy="${index}">Copiar</button>
@@ -3605,6 +3638,12 @@ function onCodeChromeClick(event) {
   if (view) {
     event.preventDefault();
     setMermaidView(view.closest('.codigo--mermaid'), view.dataset.mermaidView);
+    return;
+  }
+  const rename = event.target.closest('[data-code-rename]');
+  if (rename) {
+    event.preventDefault();
+    renameNamedBlock(Number(rename.dataset.codeRename));
     return;
   }
   const lang = event.target.closest('[data-code-lang]');
@@ -3885,7 +3924,16 @@ function scrollToSection(anchor) {
   const heading = [...document.querySelectorAll('#coluna .bloco--titulo')].find(
     (el) => foldText(el.textContent || '') === wanted,
   );
-  if (!heading) return false;
+  if (!heading) {
+    const named = [...document.querySelectorAll('#coluna pre.bloco--codigo[data-info]')].find(
+      (pre) => foldText(Code.parseInfo(pre.dataset.info || '').title) === wanted,
+    );
+    const box = named?.closest('.codigo') || named;
+    if (!box) return false;
+    box.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
+    box.classList.add('is-secao-alvo');
+    return true;
+  }
   heading.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
   heading.classList.add('is-secao-alvo');
   return true;
@@ -4907,14 +4955,32 @@ function showWiki(el, found) {
         (id) =>
           `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#^${escapeHtml(id)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('nota')}<span><span class="menu__titulo">^${escapeHtml(id)}</span><span class="menu__caminho">Bloco</span></span></button>`,
       );
+    if (target && !Array.isArray(target.blocks) && !target.blocksLoading) {
+      target.blocksLoading = true;
+      tool('links.scan', { path: target.path })
+        .then((result) => {
+          target.blocks = result?.blocks || [];
+          if (document.activeElement === el && Cmd.wikiQuery(readEditable(el), modelOffset(el))) showWiki(el, found);
+        })
+        .catch(() => {
+          target.blocks = [];
+        });
+    }
+    const namedRows = (target?.blocks || [])
+      .filter((block) => block.title && (!anchorNeedle || foldText(block.title).includes(anchorNeedle)))
+      .slice(0, 8)
+      .map(
+        (block) =>
+          `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}#${escapeHtml(block.title)}${draft.alias != null ? `|${escapeHtml(draft.alias)}` : ''}]]">${icon('bloco-codigo')}<span><span class="menu__titulo">${highlight(block.title, draft.anchor)}</span><span class="menu__caminho">Bloco nomeado${block.lang ? ` · ${escapeHtml(block.lang)}` : ''}</span></span></button>`,
+      );
     const aliasHint = draft.hasPipe
       ? ''
       : `<button type="button" class="menu__item" role="option" data-insert="[[${escapeHtml(draft.note)}${draft.anchor ? `#${escapeHtml(draft.anchor)}` : ''}|]]">${icon('link')}<span><span class="menu__titulo">Definir texto do link</span><span class="menu__caminho">Adiciona |apelido</span></span></button>`;
-    const hashHtml = sectionRows.join('') + blockRows.join('') + aliasHint;
+    const hashHtml = sectionRows.join('') + namedRows.join('') + blockRows.join('') + aliasHint;
     openMenu(
       el,
       'menu menu--wiki menu-flutuante',
-      hashHtml || '<p class="menu__nota">Nenhuma seção nesta nota.</p>',
+      hashHtml || '<p class="menu__nota">Nenhuma seção ou bloco nesta nota.</p>',
       (button) => {
         insertAt(el, found.start, found.start + 2 + found.query.length, button.dataset.insert);
       },
@@ -5313,7 +5379,8 @@ function renderPreviewBody(body) {
 async function showWikiPreview(link) {
   if (!link?.isConnected) return;
   const target = link.dataset.target || '';
-  const draft = Cmd.parseWikiDraft(target);
+  const full = String(link.dataset.raw || target).replace(/^!?\[\[|\]\]$/g, '').split('|')[0];
+  const draft = Cmd.parseWikiDraft(full);
   const notePath =
     state.outgoing.find((item) => item.path && item.raw.includes(target))?.path ||
     state.notes.find(
@@ -5328,8 +5395,23 @@ async function showWikiPreview(link) {
   } catch {
     return;
   }
+  let focused = null;
+  if (draft.anchor && state.active) {
+    try {
+      focused = await tool('links.preview', { path: state.active, target: draft.note ? full : `${notePath.replace(/\.md$/i, '')}${full}` });
+    } catch {
+      focused = null;
+    }
+  }
   if (wikiPreviewLink !== link) return;
   wikiPreviewPath = notePath;
+  const focusKind = focused?.kind === 'block' || focused?.kind === 'section' ? focused.kind : '';
+  const focusBody =
+    focusKind === 'block'
+      ? `<div class="wiki-previa__bloco"><span class="wiki-previa__lingua">${escapeHtml(focused.lang || 'código')}</span><pre class="bloco bloco--codigo">${escapeHtml(focused.code || '')}</pre></div>`
+      : focusKind === 'section'
+        ? renderPreviewBody(focused.text || '')
+        : '';
   const cover = Cmd.resolveCover(note.frontmatter);
   let coverFileSrc = cover?.kind === 'arquivo' ? cover.src : null;
   if (coverFileSrc && !/^(https?:|data:|file:|blob:)/i.test(coverFileSrc)) {
@@ -5361,12 +5443,12 @@ async function showWikiPreview(link) {
   card.setAttribute('aria-label', 'Prévia da nota');
   card.innerHTML = `${coverHtml}
     <header class="wiki-previa__topo">
-      <strong class="wiki-previa__titulo">${escapeHtml(baseName(notePath))}</strong>
+      <strong class="wiki-previa__titulo">${escapeHtml(baseName(notePath))}${focusKind ? ` <span class="wiki-previa__ancora">› ${escapeHtml(focused.title || draft.anchor)}</span>` : ''}</strong>
       <span class="wiki-previa__caminho">${escapeHtml(notePath.replace(/\.md$/i, ''))}</span>
     </header>
-    <div class="wiki-previa__corpo coluna">${renderPreviewBody(note.body)}</div>
+    <div class="wiki-previa__corpo${focusKind === 'block' ? ' wiki-previa__corpo--bloco' : ' coluna'}">${focusKind ? focusBody : renderPreviewBody(note.body)}</div>
     <footer class="wiki-previa__rodape">
-      <button type="button" class="btn btn--secundario btn--pequeno" data-abrir>Abrir nota</button>
+      <button type="button" class="btn btn--secundario btn--pequeno" data-abrir>${focusKind === 'block' ? 'Ir para o bloco' : focusKind === 'section' ? 'Ir para a seção' : 'Abrir nota'}</button>
       <span class="wiki-previa__dica">Segure o mouse · Esc fecha</span>
     </footer>`;
   document.body.append(card);
@@ -5395,7 +5477,7 @@ async function showWikiPreview(link) {
   card.querySelector('[data-abrir]')?.addEventListener('click', async () => {
     const path = wikiPreviewPath;
     closeWikiPreview();
-    if (path) await openNote(path);
+    if (path) await openNote(path, focusKind ? { anchor: draft.anchor } : {});
   });
   card.querySelectorAll('a.wikilink[data-target]').forEach((anchor) => {
     anchor.addEventListener('click', (event) => {
@@ -6085,7 +6167,8 @@ function paintLinks() {
     .join('');
   const outlineBlock = `<h3 class="conexoes__titulo">Sumário</h3><div class="sumario">${outline || '<p class="nota-privacidade">Nenhuma seção H1–H3.</p>'}</div>`;
   host.innerHTML = `${head}<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3>${outlineBlock}<h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}${mentionBlock}
-    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
+    <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer a última</button><div class="historico-lista" id="historico-lista"><p class="nota-privacidade">Carregando o histórico…</p></div>`;
+  paintHistoryList();
   $('#fechar-conexoes').onclick = () => closeConnections();
   host.querySelectorAll('[data-sumario]').forEach((button) => {
     button.onclick = () => scrollToSection(button.dataset.sumario);
@@ -6147,6 +6230,7 @@ function openNewMenu(anchor) {
   menu.innerHTML = [
     ['nota', 'nota-nova', 'Nova nota'],
     ['estante', 'pasta-nova', 'Nova estante'],
+    ['pasta', 'pasta', 'Nova pasta'],
     ['novo-canvas', 'canvas', 'Novo canvas'],
     ['modelo', 'modelo', 'A partir de modelo'],
   ]
@@ -6167,6 +6251,10 @@ function openNewMenu(anchor) {
   menu.querySelector('[data-novo="estante"]').onclick = () => {
     closeMenus();
     createWorkspace();
+  };
+  menu.querySelector('[data-novo="pasta"]').onclick = () => {
+    closeMenus();
+    openNewFolder();
   };
   menu.querySelector('[data-novo="novo-canvas"]').onclick = () => {
     closeMenus();
@@ -6730,7 +6818,7 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
-  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'lixeira', 'config', 'visoes', 'mencoes'].includes(id);
+  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'lixeira', 'config', 'visoes', 'mencoes', 'revisao', 'links-quebrados'].includes(id);
   if (leaving && ((state.view === 'note' && state.doc) || state.view === 'canvas')) {
     flushNote().then((saved) => { if (saved) runCommandNow(id); });
     return;
@@ -6781,6 +6869,15 @@ function runCommandNow(id) {
     tarefas: () => showTasks(),
     calendario: () => showCalendar(),
     sofi: () => openAgent(),
+    revisao: () => showReview(),
+    'links-quebrados': () => showBroken(),
+    'nova-pasta': () => openNewFolder(),
+    negrito: () => runEditorCommand('negrito'),
+    italico: () => runEditorCommand('italico'),
+    riscado: () => runEditorCommand('riscado'),
+    destacar: () => runEditorCommand('destacar'),
+    link: () => runEditorCommand('link'),
+    tarefa: () => runEditorCommand('tarefa'),
   };
   return runs[id]?.();
 }
@@ -7451,16 +7548,487 @@ function textDialog({ title, label, placeholder = '', value = '', confirm = 'Cri
   });
 }
 
-async function showReview() {
+/* ------------------------------------------------------- Revisão da semana */
+function isoOfDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function shiftIso(iso, days) {
+  const date = new Date(`${iso}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return isoOfDate(date);
+}
+
+function localWeek(anchor) {
+  const date = new Date(`${anchor}T12:00:00`);
+  const shift = weekStartsOn() === 1 ? (date.getDay() + 6) % 7 : date.getDay();
+  const from = shiftIso(anchor, -shift);
+  return { from, to: shiftIso(from, 6) };
+}
+
+async function showReview(offset = 0) {
   state.view = 'review';
-  state.taskRows = await tool('task.query', { today: isoToday() });
+  state.reviewOffset = Math.min(0, Number(offset) || 0);
+  const today = isoToday();
+  const anchor = shiftIso(today, state.reviewOffset * 7);
+  let week = null;
+  try {
+    week = await tool('review.weekly', { today: anchor, weekStartsOn: weekStartsOn() });
+  } catch {
+    week = null;
+  }
+  const { from, to } = week?.from ? week : localWeek(anchor);
+  const nextFrom = shiftIso(to, 1);
+  const nextTo = shiftIso(to, 7);
+  const [tasks, created, graph, cards] = await Promise.all([
+    tool('task.query', { today }).catch(() => []),
+    tool('graph.query', { from, to }).catch(() => ({ nodes: [] })),
+    tool('graph.query', {}).catch(() => ({ nodes: [] })),
+    tool('card.list', { today }).catch(() => []),
+  ]);
+  const start = new Date(`${from}T00:00:00`).getTime();
+  const end = new Date(`${to}T23:59:59.999`).getTime();
+  const inWeek = (iso) => Boolean(iso) && iso >= from && iso <= to;
+  const modified = new Map((graph?.nodes || []).map((node) => [node.path, Number(node.modifiedAt) || 0]));
+  const editedInWeek = (path) => {
+    const at = modified.get(path) || 0;
+    return at >= start && at <= end;
+  };
+  const rows = visibleTaskRows(tasks || []);
+  const open = (task) => task.status === 'aberta' || task.status === 'andamento';
+  const createdNodes = (created?.nodes || []).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const createdPaths = new Set(createdNodes.map((node) => node.path));
+  state.review = {
+    from,
+    to,
+    nextFrom,
+    nextTo,
+    done: rows.filter((task) => task.status === 'feita' && (inWeek(task.due) || inWeek(task.scheduled) || editedInWeek(task.path))),
+    late: state.reviewOffset === 0 ? rows.filter((task) => open(task) && task.due && task.due < today) : [],
+    next: rows.filter((task) => open(task) && ((task.due && task.due >= nextFrom && task.due <= nextTo) || (task.scheduled && task.scheduled >= nextFrom && task.scheduled <= nextTo))),
+    created: createdNodes,
+    edited: (graph?.nodes || [])
+      .filter((node) => !createdPaths.has(node.path) && editedInWeek(node.path))
+      .sort((a, b) => (b.modifiedAt || 0) - (a.modifiedAt || 0)),
+    cardsToday: state.reviewOffset === 0 ? (cards || []).filter((card) => card.due <= today) : [],
+    cardsNext: state.reviewOffset === 0 ? (cards || []).filter((card) => card.due > today && card.due <= nextTo) : [],
+  };
   paintCenter();
 }
 
+function reviewCard({ id, title, sub, glyph, tone, items, empty, more = '' }) {
+  const shown = items.slice(0, 8).join('');
+  const rest = items.length > 8 ? `<p class="revisao-cartao__mais">e mais ${items.length - 8}</p>` : '';
+  return `<article class="revisao-cartao" data-revisao="${id}" style="--tom: ${tone}">
+    <div class="revisao-cartao__topo"><span class="revisao-cartao__icone">${icon(glyph)}</span><strong class="revisao-cartao__titulo">${title}</strong><span class="revisao-cartao__sub">${sub}</span><span class="revisao-cartao__num">${items.length}</span></div>
+    ${items.length ? `<ul>${shown}</ul>${rest}` : `<p class="revisao-cartao__vazio">${empty}</p>`}${more}
+  </article>`;
+}
+
+function reviewTaskItem(task, when) {
+  return `<li><button type="button" class="revisao-item" data-abrir-nota="${escapeHtml(task.path)}"><span class="revisao-item__titulo">${escapeHtml(taskTitlePlain(task.title))}</span><small>${escapeHtml([when, task.workspace || baseName(task.path)].filter(Boolean).join(' · '))}</small></button></li>`;
+}
+
+function reviewNoteItem(node, label) {
+  return `<li><button type="button" class="revisao-item" data-abrir-nota="${escapeHtml(node.path)}">${icon('nota')}<span class="revisao-item__titulo">${escapeHtml(baseName(node.path))}</span><small>${escapeHtml([label, node.workspace || 'Biblioteca'].filter(Boolean).join(' · '))}</small></button></li>`;
+}
+
 function paintReview(center) {
-  const rows = visibleTaskRows(state.taskRows);
-  const items = rows.map((task) => `<li>${escapeHtml(taskTitlePlain(task.title))}<small>${escapeHtml(task.workspace || '')}</small></li>`).join('') || '<li>Nada para revisar.</li>';
-  center.innerHTML = `<div class="inicio"><h2>Revisão da semana</h2><div class="revisao"><article class="revisao-cartao"><div class="revisao-cartao__topo"><strong class="revisao-cartao__titulo">Nesta semana</strong><span class="revisao-cartao__num">${rows.length}</span></div><ul>${items}</ul></article></div></div>`;
+  const review = state.review;
+  if (!review) {
+    center.innerHTML = '<div class="vazio-ensina"><h2>Revisão da semana</h2><p>Juntando a semana…</p></div>';
+    return;
+  }
+  const offset = state.reviewOffset || 0;
+  const range = `${readableDate(review.from)} a ${readableDate(review.to)}`;
+  const label = offset === 0 ? 'Esta semana' : offset === -1 ? 'Semana passada' : `${-offset} semanas atrás`;
+  const nav = `<div class="revisao-tela__nav" role="group" aria-label="Escolher a semana">
+      <button type="button" class="btn btn--icone" data-semana="${offset - 1}" aria-label="Semana anterior" title="Semana anterior">${icon('chevron-esquerda')}</button>
+      <button type="button" class="btn btn--fantasma btn--pequeno" data-semana="0" ${offset === 0 ? 'disabled' : ''}>Esta semana</button>
+      <button type="button" class="btn btn--icone" data-semana="${offset + 1}" aria-label="Próxima semana" title="Próxima semana" ${offset >= 0 ? 'disabled' : ''}>${icon('chevron-direita')}</button>
+    </div>`;
+  const total = review.done.length + review.late.length + review.next.length + review.created.length + review.edited.length + review.cardsToday.length + review.cardsNext.length;
+  const head = `<header class="revisao-tela__topo"><div><p class="revisao-tela__rotulo">${label}</p><h2>Revisão da semana</h2><p class="revisao-tela__periodo">${range}</p></div>${nav}</header>`;
+  if (!total) {
+    center.innerHTML = `<div class="revisao-tela">${head}<div class="vazio-ensina revisao-tela__vazio">${ilustracao('nenhuma-tarefa', 180)}<h3>Semana tranquila</h3><p>Nada foi criado, editado ou concluído entre ${range}. Quando você escrever notas ou marcar tarefas, elas aparecem aqui.</p><button type="button" class="btn btn--primario" id="revisao-nova-nota">${icon('nota-nova')} Nova nota</button></div></div>`;
+  } else {
+    const due = (task) => (task.due ? `prazo ${readableDate(task.due)}` : task.scheduled ? `agendada ${readableDate(task.scheduled)}` : '');
+    const summary = [
+      [review.done.length, 'feitas', 'var(--success)'],
+      [review.late.length, 'atrasadas', 'var(--danger)'],
+      [review.next.length, 'na próxima semana', 'var(--accent)'],
+      [review.created.length, 'notas criadas', 'var(--cor-roxo)'],
+      [review.edited.length, 'notas editadas', 'var(--cor-laranja)'],
+    ]
+      .map(([count, text, tone]) => `<li style="--tom: ${tone}"><b>${count}</b><span>${text}</span></li>`)
+      .join('');
+    const cardsMore = review.cardsToday.length
+      ? '<div class="revisao-cartao__rodape"><button type="button" class="btn btn--secundario btn--pequeno" id="revisao-cartoes">Revisar cartões agora</button></div>'
+      : '';
+    center.innerHTML = `<div class="revisao-tela">${head}<ul class="revisao-resumo" aria-label="Resumo da semana">${summary}</ul><div class="revisao">
+      ${reviewCard({ id: 'feitas', title: 'Tarefas feitas', sub: 'Concluídas na semana', glyph: 'tarefa-feita', tone: 'var(--success)', items: review.done.map((task) => reviewTaskItem(task, due(task))), empty: 'Nenhuma tarefa concluída nesta semana.' })}
+      ${reviewCard({ id: 'atrasadas', title: 'Atrasadas', sub: offset === 0 ? 'Prazo já passou' : 'Só aparece na semana atual', glyph: 'alerta', tone: 'var(--danger)', items: review.late.map((task) => reviewTaskItem(task, due(task))), empty: offset === 0 ? 'Nada atrasado. Boa!' : 'Volte para esta semana para ver os atrasos.' })}
+      ${reviewCard({ id: 'proxima', title: 'Próxima semana', sub: `${readableDate(review.nextFrom)} a ${readableDate(review.nextTo)}`, glyph: 'prazo', tone: 'var(--accent)', items: review.next.map((task) => reviewTaskItem(task, due(task))), empty: 'Nenhuma tarefa com prazo na semana que vem.' })}
+      ${reviewCard({ id: 'criadas', title: 'Notas criadas', sub: 'Novas nesta semana', glyph: 'nota-nova', tone: 'var(--cor-roxo)', items: review.created.map((node) => reviewNoteItem(node, node.createdAt ? readableDate(String(node.createdAt).slice(0, 10)) : '')), empty: 'Nenhuma nota nova nesta semana.' })}
+      ${reviewCard({ id: 'editadas', title: 'Notas editadas', sub: 'Mexidas nesta semana', glyph: 'editar', tone: 'var(--cor-laranja)', items: review.edited.map((node) => reviewNoteItem(node, node.modifiedAt ? readableDate(isoOfDate(new Date(node.modifiedAt))) : '')), empty: 'Nenhuma nota antiga foi editada.' })}
+      ${reviewCard({ id: 'cartoes', title: 'Cartões', sub: `${review.cardsNext.length} voltam até ${readableDate(review.nextTo)}`, glyph: 'flashcard', tone: 'var(--cor-azul)', items: review.cardsToday.map((card) => `<li><button type="button" class="revisao-item" data-abrir-nota="${escapeHtml(card.path)}"><span class="revisao-item__titulo">${escapeHtml(card.front)}</span><small>${escapeHtml(card.workspace || baseName(card.path))}</small></button></li>`), empty: 'Nenhum cartão para hoje.', more: cardsMore })}
+    </div></div>`;
+  }
+  center.querySelectorAll('[data-semana]').forEach((button) => {
+    button.onclick = () => showReview(Number(button.dataset.semana));
+  });
+  center.querySelectorAll('[data-abrir-nota]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.abrirNota).catch((error) => toast(error.message, 'erro'));
+  });
+  const cardsButton = $('#revisao-cartoes');
+  if (cardsButton) cardsButton.onclick = () => runCommand('cartas');
+  const create = $('#revisao-nova-nota');
+  if (create) create.onclick = () => createNote();
+}
+
+/* ---------------------------------------------------------- Links quebrados */
+async function showBroken() {
+  state.view = 'broken';
+  state.brokenRows = null;
+  paintCenter();
+  try {
+    state.brokenRows = await tool('links.broken', {});
+  } catch (error) {
+    state.brokenRows = [];
+    toast(error.message, 'erro');
+  }
+  if (state.view === 'broken') paintCenter();
+}
+
+function brokenTargetOf(raw) {
+  return Doc.linkTarget(String(raw || '').replace(/^!?\[\[|\]\]$/g, ''));
+}
+
+function missingNotePath(from, target) {
+  const name = Cmd.parseWikiDraft(target).note.replace(/\.md$/i, '').trim();
+  if (!name) return null;
+  if (name.includes('/')) return `${name}.md`;
+  const folder = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : '';
+  return `${folder}${name}.md`;
+}
+
+function paintBroken(center) {
+  const rows = state.brokenRows;
+  if (!rows) {
+    center.innerHTML = '<div class="quebrados"><header class="quebrados__topo"><div><h2>Links quebrados</h2><p>Procurando links que não acham a nota…</p></div></header></div>';
+    return;
+  }
+  const groups = new Map();
+  for (const row of rows) {
+    if (!groups.has(row.from)) groups.set(row.from, []);
+    groups.get(row.from).push(row);
+  }
+  const top = `<header class="quebrados__topo"><div><h2>Links quebrados</h2><p>${rows.length ? `${rows.length} ${rows.length === 1 ? 'link aponta' : 'links apontam'} para notas que não existem ou para mais de uma nota com o mesmo nome. ${groups.size === 1 ? 'Está em 1 nota.' : `Estão em ${groups.size} notas.`}` : 'Todos os [[links]] desta biblioteca acham a nota certa.'}</p></div><button type="button" class="btn btn--secundario" id="quebrados-atualizar">${icon('sincronizar')} Verificar de novo</button></header>`;
+  if (!rows.length) {
+    center.innerHTML = `<div class="quebrados">${top}<div class="vazio-ensina quebrados__vazio">${ilustracao('busca-sem-resultado', 160)}<h3>Nenhum link quebrado</h3><p>Quando um link apontar para uma nota que não existe, ele aparece aqui com a opção de criar a nota.</p></div></div>`;
+  } else {
+    const sections = [...groups.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+      .map(([from, links]) => {
+        const items = links
+          .map((link) => {
+            const target = brokenTargetOf(link.raw);
+            const draft = Cmd.parseWikiDraft(target);
+            const missingPath = missingNotePath(from, target);
+            const exists = missingPath && state.notes.some((note) => note.path === missingPath);
+            const reason =
+              link.status === 'ambiguous'
+                ? `Ambíguo: ${(link.candidates || []).length} notas com esse nome`
+                : draft.anchor && exists
+                  ? `A nota existe, mas não tem a seção ou o bloco “${draft.anchor}”`
+                  : `A nota “${draft.note || target}” não existe`;
+            const actions =
+              link.status === 'ambiguous'
+                ? (link.candidates || [])
+                    .map((path) => `<button type="button" class="btn btn--fantasma btn--pequeno" data-abrir-nota="${escapeHtml(path)}">${icon('nota')} ${escapeHtml(path.replace(/\.md$/i, ''))}</button>`)
+                    .join('')
+                : missingPath && !exists
+                  ? `<button type="button" class="btn btn--secundario btn--pequeno" data-criar-faltante="${escapeHtml(missingPath)}">${icon('nota-nova')} Criar “${escapeHtml(baseName(missingPath))}”</button>`
+                  : '';
+            return `<li class="quebrados__link"><code class="quebrados__raw">${escapeHtml(link.raw)}</code><span class="quebrados__motivo">${escapeHtml(reason)}</span><span class="quebrados__acoes">${actions}</span></li>`;
+          })
+          .join('');
+        return `<section class="quebrados__nota" data-quebrado-nota="${escapeHtml(from)}"><header>${icon('nota')}<div><b>${escapeHtml(baseName(from))}</b><span>${escapeHtml(from)}</span></div><span class="chip">${links.length}</span><button type="button" class="btn btn--fantasma btn--pequeno" data-abrir-nota="${escapeHtml(from)}">Abrir nota</button></header><ul>${items}</ul></section>`;
+      })
+      .join('');
+    center.innerHTML = `<div class="quebrados">${top}${sections}</div>`;
+  }
+  $('#quebrados-atualizar').onclick = () => showBroken();
+  center.querySelectorAll('[data-abrir-nota]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.abrirNota).catch((error) => toast(error.message, 'erro'));
+  });
+  center.querySelectorAll('[data-criar-faltante]').forEach((button) => {
+    button.onclick = async () => {
+      const path = button.dataset.criarFaltante;
+      try {
+        await tool('note.create', { path, body: `# ${baseName(path)}\n` });
+        await refreshLibrary();
+        paintTree();
+        toast(`Nota “${baseName(path)}” criada. O link já funciona.`, 'ok', { label: 'Desfazer', onClick: async () => { await undoLastAction('Nota desfeita.'); if (state.view === 'broken') showBroken(); } });
+        await showBroken();
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
+    };
+  });
+}
+
+/* ----------------------------------------------------- Histórico de ações */
+const HISTORY_ORIGINS = { ui: 'Você', agent: 'Sofi', mcp: 'Agente externo (MCP)', cli: 'Terminal' };
+
+async function paintHistoryList() {
+  const host = $('#historico-lista');
+  if (!host) return;
+  let rows = [];
+  try {
+    rows = await tool('history.list', {});
+  } catch {
+    rows = [];
+  }
+  if (!host.isConnected) return;
+  state.historyRows = rows || [];
+  const shown = state.historyRows.slice(0, 12);
+  host.innerHTML = shown.length
+    ? `<ol class="historico">${shown
+        .map(
+          (row, index) => `<li class="historico__item${index === 0 ? ' is-ultima' : ''}"><span class="historico__texto"><b>${escapeHtml(row.summary || row.tool)}</b><small>${escapeHtml(HISTORY_ORIGINS[row.origin] || row.origin || '')} · ${escapeHtml(trashWhen(row.at) || '')}</small></span><button type="button" class="btn btn--fantasma btn--pequeno" data-desfazer-id="${escapeHtml(row.id)}" aria-label="Desfazer: ${escapeHtml(row.summary || row.tool)}">${icon('desfazer')} Desfazer</button></li>`,
+        )
+        .join('')}</ol>${state.historyRows.length > shown.length ? `<p class="nota-privacidade">e mais ${state.historyRows.length - shown.length} ações antigas.</p>` : ''}`
+    : '<p class="nota-privacidade">Nada para desfazer por enquanto.</p>';
+  host.querySelectorAll('[data-desfazer-id]').forEach((button) => {
+    button.onclick = () => undoHistoryItem(button.dataset.desfazerId);
+  });
+}
+
+async function undoHistoryItem(id) {
+  const rows = state.historyRows || [];
+  const index = rows.findIndex((row) => row.id === id);
+  const row = rows[index];
+  if (!row) return;
+  try {
+    if (index === 0) await tool('history.undo', {});
+    else {
+      const touched = new Set(row.paths || []);
+      const newer = rows.slice(0, index).filter((other) => (other.paths || []).some((path) => touched.has(path)));
+      if (
+        newer.length &&
+        !(await confirmDialog(
+          `${newer.length === 1 ? 'Uma ação mais nova mexeu' : `${newer.length} ações mais novas mexeram`} nos mesmos arquivos. Desfazer “${row.summary}” volta esses arquivos para antes dela e pode perder o que veio depois.`,
+          { confirm: 'Desfazer assim mesmo', danger: true },
+        ))
+      )
+        return;
+      await tool('agent.undo', { versionId: id });
+    }
+    await refreshLibrary();
+    if (state.active && state.notes.some((note) => note.path === state.active)) await openNote(state.active, { force: true });
+    else {
+      paintTree();
+      paintLinks();
+    }
+    toast(`Desfeito: ${row.summary}`);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+/* ------------------------------------------------- Formatação pela paleta */
+const PALETTE_FORMATS = {
+  negrito: ['**', '**'],
+  italico: ['*', '*'],
+  riscado: ['~~', '~~'],
+  destacar: ['==', '=='],
+  link: ['[', '](https://)'],
+};
+
+function rememberEditorSelection() {
+  const selection = getSelection();
+  const node = selection?.rangeCount ? selection.anchorNode : null;
+  const el = (node?.nodeType === 1 ? node : node?.parentElement)?.closest?.('#centro [data-block][contenteditable="true"]');
+  state.paletteEditor = el ? { el, index: Number(el.dataset.block), range: selection.getRangeAt(0).cloneRange() } : null;
+}
+
+function runEditorCommand(id) {
+  const saved = state.paletteEditor;
+  state.paletteEditor = null;
+  const el = saved?.el?.isConnected
+    ? saved.el
+    : saved
+      ? document.querySelector(`#centro [data-block="${saved.index}"][contenteditable="true"]`)
+      : null;
+  if (state.view !== 'note' || !el) {
+    toast('Abra uma nota e selecione um trecho para formatar.', 'erro');
+    return;
+  }
+  el.focus();
+  if (saved.range && saved.el === el) {
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(saved.range);
+  }
+  if (id === 'tarefa') {
+    const index = Number(el.dataset.block);
+    const text = readEditable(el).replace(/\n$/, '');
+    checkpoint(true);
+    state.doc = Doc.replaceBlock(state.doc, index, `- [ ] ${text}\n`);
+    state.caret = { index, offset: text.length };
+    paintCenter();
+    scheduleSave();
+    return;
+  }
+  const [prefix, suffix] = PALETTE_FORMATS[id] || [];
+  if (prefix) formatBlock(el, prefix, suffix);
+}
+
+/* -------------------------------------------------------------- Pastas */
+function folderMemoryKey() {
+  return `sophy.pastas:${state.libraryPath || ''}`;
+}
+
+function rememberedFolders() {
+  try {
+    const list = JSON.parse(localStorage.getItem(folderMemoryKey()) || '[]');
+    return Array.isArray(list) ? list.filter((item) => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRememberedFolders(list) {
+  localStorage.setItem(folderMemoryKey(), JSON.stringify([...new Set(list)]));
+}
+
+function emptyFolders(shelf) {
+  return rememberedFolders()
+    .filter((folder) => folder.startsWith(`${shelf}/`))
+    .filter((folder) => !state.notes.some((note) => note.path.startsWith(`${folder}/`)) && !state.canvases.some((file) => file.path.startsWith(`${folder}/`)))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function folderChoices() {
+  const set = new Set(state.workspaces.map((workspace) => workspace.name));
+  for (const note of state.notes) {
+    const parts = note.path.split('/');
+    for (let depth = 2; depth < parts.length; depth += 1) set.add(parts.slice(0, depth).join('/'));
+  }
+  for (const folder of rememberedFolders()) if (set.has(folder.split('/')[0])) set.add(folder);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+async function openNewFolder(parent) {
+  if (!state.workspaces.length) {
+    toast('Crie uma estante primeiro. A pasta nasce dentro dela.', 'erro');
+    return;
+  }
+  const choices = folderChoices();
+  const guess =
+    parent ||
+    state.selectedFolder ||
+    state.selectedShelf ||
+    (state.active?.includes('/') ? state.active.slice(0, state.active.lastIndexOf('/')) : '') ||
+    choices[0];
+  const initial = choices.includes(guess) ? guess : choices[0];
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<form class="menu menu-flutuante dialogo" role="dialog" aria-modal="true" aria-labelledby="dialogo-titulo" id="dialogo-pasta"><h3 id="dialogo-titulo" class="dialogo__titulo">Nova pasta</h3><label class="dialogo__campo"><span>Nome</span><input id="pasta-nome" type="text" autocomplete="off" placeholder="Ex.: Aulas" /></label><label class="dialogo__campo"><span>Dentro de</span><select id="pasta-destino">${choices.map((folder) => `<option value="${escapeHtml(folder)}" ${folder === initial ? 'selected' : ''}>${escapeHtml(folder.split('/').join(' › '))}</option>`).join('')}</select></label><p class="dialogo__erro" id="pasta-erro" role="status"></p><div class="dialogo__acoes"><button type="button" class="btn btn--fantasma" id="dialogo-cancelar">Cancelar</button><button type="submit" class="btn btn--primario" id="pasta-criar">Criar pasta</button></div></form>`;
+  const input = $('#pasta-nome');
+  const error = (text) => {
+    $('#pasta-erro').textContent = text;
+    input.focus();
+  };
+  $('#dialogo-cancelar').onclick = () => closeDialog();
+  overlay.onkeydown = (event) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      closeDialog();
+    }
+  };
+  $('#dialogo-pasta').onsubmit = async (event) => {
+    event.preventDefault();
+    const name = input.value.trim();
+    const destination = $('#pasta-destino').value;
+    if (!name) return error('Dê um nome para a pasta.');
+    if (name === '.' || name === '..' || /[\\/:*?"<>|]/.test(name) || reservedName(name) || name.startsWith('.'))
+      return error('Use um nome simples, sem barras, dois-pontos, aspas nem ponto no começo.');
+    const path = `${destination}/${name}`;
+    if (folderChoices().includes(path)) return error('Já existe uma pasta com esse nome aqui.');
+    try {
+      await tool('directory.create', { path });
+    } catch (failure) {
+      return error(failure.message);
+    }
+    closeDialog();
+    saveRememberedFolders([...rememberedFolders(), path]);
+    const shelf = path.split('/')[0];
+    state.collapsedShelves.delete(shelf);
+    state.selectedShelf = shelf;
+    state.selectedFolder = path;
+    saveTreeUi();
+    await refreshLibrary();
+    paintTree();
+    toast(`Pasta “${name}” criada em ${destination.split('/').join(' › ')}.`, 'ok', {
+      label: 'Desfazer',
+      onClick: async () => {
+        saveRememberedFolders(rememberedFolders().filter((item) => item !== path));
+        await undoLastAction('Pasta desfeita.');
+      },
+    });
+  };
+  input.focus();
+}
+
+/* ------------------------------------------------------- Blocos nomeados */
+function namedBlockOf(index) {
+  const block = state.doc?.blocks[index];
+  if (!block || block.type !== 'code') return '';
+  return Code.parseInfo(Doc.codeParts(block.raw).info || '').title || '';
+}
+
+async function renameNamedBlock(index) {
+  const de = namedBlockOf(index);
+  if (!de || !state.active) return;
+  const para = await textDialog({ title: 'Renomear bloco', label: 'Novo nome do bloco', value: de, confirm: 'Renomear' });
+  if (!para || para.trim() === de) return;
+  const next = para.trim();
+  if (/["'#|/\\[\]\n]/.test(next)) {
+    toast('O nome do bloco não pode ter aspas, #, |, barras nem colchetes.', 'erro');
+    return;
+  }
+  if (!(await flushNote())) return;
+  const notePath = state.active;
+  try {
+    const result = await tool('block.rename', { notePath, de, para: next });
+    await refreshLibrary();
+    await openNote(notePath, { force: true });
+    const updated = Array.isArray(result?.updated) ? result.updated.length : Number(result?.updated) || 0;
+    const others = Array.isArray(result?.updated) ? result.updated.filter((path) => path !== notePath).length : Math.max(0, updated - 1);
+    const undo = result?.versionId
+      ? {
+          label: 'Desfazer',
+          onClick: async () => {
+            try {
+              await tool('agent.undo', { versionId: result.versionId });
+              await refreshLibrary();
+              if (state.active) await openNote(state.active, { force: true });
+              toast('Renomeação desfeita.');
+            } catch (error) {
+              toast(error.message, 'erro');
+            }
+          },
+        }
+      : null;
+    if (result?.shadowed)
+      toast(`Bloco renomeado para “${next}”. Uma seção desta nota também se chama “${de}”, então os links [[…#${de}]] continuam indo para a seção e não foram trocados.`, 'ok', undo);
+    else
+      toast(`Bloco renomeado para “${next}”. ${others ? `${others} ${others === 1 ? 'outra nota teve' : 'outras notas tiveram'} os links atualizados.` : 'Nenhum link de outra nota precisou mudar.'}`, 'ok', undo);
+  } catch (error) {
+    toast(error.code === 'nome_em_uso' ? error.message || 'Esse nome já é uma seção ou um bloco desta nota.' : error.message, 'erro');
+  }
 }
 
 async function showVersions() {
@@ -7579,7 +8147,16 @@ function openExport(kind) {
   const overlay = $('#overlay');
   overlay.hidden = false;
   const title = state.active ? baseName(state.active) : 'Biblioteca';
-  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Exportar"><h3>Exportar</h3><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="nota" checked><b>Esta nota</b><small>${escapeHtml(title)}</small></label><label class="opcao-cartao"><input type="radio" name="exp-alvo" value="estante"><b>A estante</b><small>${escapeHtml(state.selectedShelf || 'Biblioteca')}</small></label>${exportPreview(kind)}<button type="button" class="btn btn--primario" id="exportar-seguir">Continuar</button></div>`;
+  const shelf = state.selectedShelf || (state.active?.includes('/') ? state.active.split('/')[0] : '');
+  const option = (value, label, detail, { checked = false, disabled = false, hint = '' } = {}) =>
+    `<label class="opcao-cartao${disabled ? ' is-desabilitada' : ''}"${hint ? ` title="${escapeHtml(hint)}"` : ''}><input type="radio" name="exp-alvo" value="${value}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><b>${label}${disabled ? ' <span class="em-breve">em breve</span>' : ''}</b><small>${escapeHtml(disabled && hint ? hint : detail)}</small></label>`;
+  const options =
+    kind === 'pdf'
+      ? option('nota', 'Esta nota', state.active ? title : 'Abra uma nota para exportar', { checked: true, disabled: !state.active, hint: state.active ? '' : 'Abra uma nota para exportar o PDF.' }) +
+        option('estante', 'A estante', shelf || 'Biblioteca', { disabled: true, hint: 'O PDF da estante inteira ainda não existe. Por enquanto, exporte nota por nota.' })
+      : option('biblioteca', 'A biblioteca inteira', state.libraryName || 'Biblioteca', { checked: true }) +
+        option('estante', 'Só a estante', shelf || 'Biblioteca', { disabled: true, hint: 'O site sai com a biblioteca inteira. Exportar só uma estante ainda não existe.' });
+  overlay.innerHTML = `<div class="seletor-capa" role="dialog" aria-label="Exportar"><h3>${kind === 'pdf' ? 'Exportar PDF' : 'Exportar site'}</h3>${options}${exportPreview(kind)}<button type="button" class="btn btn--primario" id="exportar-seguir" ${kind === 'pdf' && !state.active ? 'disabled' : ''}>Continuar</button></div>`;
   $('#exportar-seguir').onclick = async () => {
     overlay.hidden = true;
     if (kind === 'pdf') {
@@ -7882,13 +8459,20 @@ function openTreeMenu(event, kind, target) {
     kind === 'shelf'
       ? [
           ['nota', 'Nova nota aqui'],
+          ['pasta', 'Nova pasta aqui…'],
           ['cor', 'Cor e ícone…'],
           ['renomear', 'Renomear'],
           ['lixo', 'Excluir…'],
         ]
       : kind === 'canvas'
         ? [['lixo', 'Excluir…']]
-        : [
+        : kind === 'folder'
+          ? [
+              ['nota', 'Nova nota aqui'],
+              ['pasta', 'Nova pasta aqui…'],
+              ['lixo', 'Excluir…'],
+            ]
+          : [
             ['renomear', 'Renomear'],
             ['lixo', 'Excluir…'],
           ].filter(([id]) => !(id === 'renomear' && dailyPathDate(target)));
@@ -7911,8 +8495,15 @@ function openTreeMenu(event, kind, target) {
   if (note)
     note.onclick = () => {
       closeMenus();
-      state.selectedShelf = target;
+      state.selectedShelf = target.split('/')[0];
+      state.selectedFolder = kind === 'folder' ? target : null;
       createNote();
+    };
+  const folder = menu.querySelector('[data-arvore="pasta"]');
+  if (folder)
+    folder.onclick = () => {
+      closeMenus();
+      openNewFolder(target);
     };
   const color = menu.querySelector('[data-arvore="cor"]');
   if (color)
@@ -7929,7 +8520,9 @@ function openTreeMenu(event, kind, target) {
           ? target
           : baseName(target);
       const detail =
-        kind === 'shelf'
+        kind === 'folder'
+          ? `Excluir a pasta vazia ${escapeHtml(label)}? Ela vai para a lixeira.`
+          : kind === 'shelf'
           ? `Excluir a estante ${escapeHtml(label)}, com ${state.notes.filter((item) => item.workspace === target || item.path.startsWith(`${target}/`)).length} nota(s)? Os arquivos vão para a lixeira.`
           : `Excluir ${escapeHtml(label)}? O arquivo vai para a lixeira.`;
       overlay.hidden = false;
@@ -7952,7 +8545,10 @@ function openTreeMenu(event, kind, target) {
       )
         if (!(await flushNote())) return;
       const trashed = await tool('entry.trash', { path: target });
-      if (kind === 'shelf') {
+      if (kind === 'folder') {
+        saveRememberedFolders(rememberedFolders().filter((item) => item !== target && !item.startsWith(`${target}/`)));
+        if (state.selectedFolder === target) state.selectedFolder = null;
+      } else if (kind === 'shelf') {
         state.collapsedShelves.delete(target);
         delete state.treeOrder[target];
       } else removeFromTreeOrder(target);
@@ -8265,6 +8861,7 @@ function openTransformMenu(anchor, index, selected) {
 }
 
 function openCommands() {
+  rememberEditorSelection();
   const overlay = $('#overlay');
   overlay.hidden = false;
   const commands = Cmd.COMMANDS.map((item) => [item.rotulo, item.atalho, () => runCommand(item.id)]).concat([
@@ -8335,11 +8932,12 @@ async function createNote() {
     state.selectedShelf ||
     (state.active && state.active.includes('/') ? state.active.split('/')[0] : null) ||
     'Entrada';
+  const folder = state.selectedFolder && state.selectedFolder.startsWith(`${shelf}/`) ? state.selectedFolder : shelf;
   const taken = state.notes
-    .filter((note) => note.workspace === shelf)
+    .filter((note) => note.path.startsWith(`${folder}/`) && !note.path.slice(folder.length + 1).includes('/'))
     .map((note) => baseName(note.path));
   const name = Cmd.uniqueTitle(taken);
-  const path = `${shelf}/${name}.md`;
+  const path = `${folder}/${name}.md`;
   try {
     await tool('note.create', { path, body: `# ${name}\n` });
     state.selectedShelf = shelf;
@@ -8798,6 +9396,7 @@ async function focusGraphNote(path) {
 }
 
 function openPalette() {
+  rememberEditorSelection();
   const overlay = $('#overlay');
   overlay.hidden = false;
   overlay.innerHTML = `<div class="paleta" role="dialog" aria-label="Busca">
@@ -8852,6 +9451,22 @@ function openPalette() {
         unique.push(hit);
       }
       hits = unique;
+      if (state.settings.semantic && !tagTokens.length && query.length >= 2) {
+        try {
+          const similar = await tool('search.semantic', { query });
+          const known = new Set(hits.map((hit) => hit.path));
+          hits = hits.concat(
+            (similar?.hits || [])
+              .filter((hit) => !known.has(hit.path))
+              .map((hit) => state.notes.find((note) => note.path === hit.path))
+              .filter(Boolean)
+              .slice(0, 6)
+              .map((note) => ({ path: note.path, title: baseName(note.path), workspace: note.workspace, segments: [], similar: true })),
+          );
+        } catch {
+          /* sem índice local: fica só a busca normal */
+        }
+      }
     }
     const list = $('#paleta-lista');
     const commands = tagTokens.length ? [] : (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
@@ -8868,7 +9483,7 @@ function openPalette() {
       const dot = shelf?.color
         ? `<span class="arvore__ponto" style="background: var(--shelf-${shelf.color})"></span>`
         : '';
-      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
+      return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}${hit.similar ? ' <span class="selo-parecido" title="Achada pela busca local: tem palavras parecidas com a sua busca">parecido</span>' : ''}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
     };
     list.innerHTML =
       (tagTokens.length ? `<div class="paleta__filtros" id="paleta-filtro-tag">Filtrando por ${tagTokens.map((tag) => `<span class="tag-inline" style="--tag-h:${tagHue(tag)}">#${escapeHtml(tag)}</span>`).join(' ')}</div>` : '') +
