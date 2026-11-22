@@ -91,7 +91,8 @@ async function mockSofi(app, config = {}) {
       ativo: config.ativo ?? null,
       perfis: config.perfis ?? [],
       chaves: config.chaves ?? {},
-      modo: config.modo ?? null,
+      armazenamento: config.armazenamento ?? 'cofre',
+      modos: config.modos ?? {},
       fonte: config.fonte ?? 'api',
       ritmo: 120,
       calls: [],
@@ -99,12 +100,21 @@ async function mockSofi(app, config = {}) {
       seq: 1,
       resposta,
     });
-    const publico = () => ({ ativo: estado.ativo, perfis: estado.perfis.map((item) => ({ ...item, temChave: Boolean(estado.chaves[item.id]) })), ...(estado.modo ? { modo: estado.modo } : {}) });
+    // contrato do #43: `armazenamento` no topo; no perfil, só quando há chave
+    const publico = () => ({
+      ativo: estado.ativo,
+      armazenamento: estado.armazenamento,
+      perfis: estado.perfis.map((item) => {
+        const temChave = Boolean(estado.chaves[item.id]);
+        return { ...item, temChave, ...(temChave ? { armazenamento: estado.modos[item.id] || estado.armazenamento } : {}) };
+      }),
+    });
+    const sugeridos = (id) => (estado.providers.find((item) => item.id === id)?.modelosSugeridos || []).map((mid) => (catalogo[id] || []).find((m) => m.id === mid) || { id: mid, nome: mid, raciocinio: false, esforcos: null, pensamentoOrcamento: false });
     const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     ipcMain.removeHandler('sophy:tool');
     ipcMain.handle('sophy:tool', async (event, name, input) => {
       if (typeof name === 'string' && /^agent\.(providers|config\.|models|testConnection|systemPrompt)/.test(name)) {
-        estado.calls.push({ name, input });
+        estado.calls.push({ name, input, perfisAntes: JSON.stringify(estado.perfis) });
         const wrap = (value) => ({ ok: true, value });
         if (name === 'agent.providers') return wrap(estado.providers);
         if (name === 'agent.config.get') return wrap(publico());
@@ -135,15 +145,23 @@ async function mockSofi(app, config = {}) {
           return wrap(publico());
         }
         if (name === 'agent.models') {
-          const perfil = estado.perfis.find((item) => item.id === input.id);
-          const models = catalogo[perfil.provider] || (estado.providers.find((item) => item.id === perfil.provider).modelosSugeridos || []).map((id) => ({ id, nome: id, raciocinio: false, esforcos: null, pensamentoOrcamento: false }));
-          return wrap({ models, fonte: estado.fonte });
+          // {id} usa a chave daquele perfil; {provider, endpoint?, apiKey?} nunca usa a de outro perfil
+          const perfil = input.id ? estado.perfis.find((item) => item.id === input.id) : null;
+          if (input.id && !perfil) return { ok: false, error: 'Perfil não encontrado.' };
+          const provider = perfil ? perfil.provider : input.provider;
+          const meta = estado.providers.find((item) => item.id === provider);
+          const chave = perfil ? estado.chaves[perfil.id] : input.apiKey;
+          if (meta.precisaChave && !chave) return wrap({ models: sugeridos(provider), fonte: 'sugeridos' });
+          if (estado.fonte === 'sugeridos') return wrap({ models: sugeridos(provider), fonte: 'sugeridos' });
+          return wrap({ models: catalogo[provider] || sugeridos(provider), fonte: 'api' });
         }
         if (name === 'agent.testConnection') {
           await pause(estado.atrasoTeste || 80);
-          const chave = input.apiKey ?? (input.id ? estado.chaves[input.id] : '');
-          const prov = input.provider || estado.perfis.find((item) => item.id === input.id)?.provider;
-          const model = input.model || estado.perfis.find((item) => item.id === input.id)?.model;
+          // com {id}, os campos informados valem só nesta chamada e nada é gravado
+          const salvo = input.id ? estado.perfis.find((item) => item.id === input.id) : null;
+          const chave = 'apiKey' in input ? input.apiKey : salvo ? estado.chaves[salvo.id] : '';
+          const prov = salvo ? salvo.provider : input.provider;
+          const model = input.model || salvo?.model;
           const precisa = estado.providers.find((item) => item.id === prov)?.precisaChave;
           if (precisa && !chave) return wrap({ ok: false, error: 'sem_chave', latencyMs: 2, model });
           if (chave === 'chave-ruim') return wrap({ ok: false, error: 'chave_invalida', mensagem: 'Incorrect API key', latencyMs: 90, model });

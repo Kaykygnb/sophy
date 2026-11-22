@@ -72,12 +72,18 @@ function sofiPerfilAtivo() {
   return config?.perfis?.find((item) => item.id === config.ativo) || null;
 }
 
+/* O motor informa `armazenamento` no topo (como uma chave nova seria guardada agora) e, em cada perfil que tem chave,
+ * como a chave daquele perfil está guardada. O aviso aparece se qualquer um dos dois for “arquivo”. */
 function sofiModoCofre(config) {
-  const raw = config?.modo ?? config?.modoChave ?? config?.armazenamento ?? null;
-  const perfis = config?.perfis || [];
-  if (raw === 'arquivo') return 'arquivo';
-  if (perfis.some((item) => item.temChave && (item.modo === 'arquivo' || item.modoChave === 'arquivo'))) return 'arquivo';
-  return raw || null;
+  if (!config) return null;
+  const perfis = config.perfis || [];
+  if (perfis.some((item) => item.temChave && item.armazenamento === 'arquivo')) return 'arquivo';
+  return config.armazenamento === 'arquivo' ? 'arquivo' : config.armazenamento || null;
+}
+
+function sofiAplicarConfig(feito) {
+  sofiCfg.config = { ...sofiCfg.config, ativo: feito.ativo, perfis: feito.perfis, ...(feito.armazenamento ? { armazenamento: feito.armazenamento } : {}) };
+  sofiCfg.modo = sofiModoCofre(sofiCfg.config);
 }
 
 async function sofiCarregarConfig() {
@@ -99,7 +105,7 @@ function sofiPerfisHtml() {
       const ativo = item.id === config.ativo;
       const meta = sofiProvMeta(item.provider);
       const precisa = (sofiCfg.providers || []).find((p) => p.id === item.provider)?.precisaChave !== false;
-      const chave = !precisa ? 'sem chave, local' : item.temChave ? 'chave salva ✓' : 'sem chave';
+      const chave = !precisa ? 'sem chave, local' : item.temChave ? `chave salva ✓${item.armazenamento === 'arquivo' ? ' · em arquivo' : ''}` : 'sem chave';
       const rac = item.raciocinio?.ativo ? ` · raciocínio${item.raciocinio.esforco ? ` ${SOFI_ESFORCOS.find((e) => e[0] === item.raciocinio.esforco)?.[1].toLowerCase() || ''}` : ''}` : '';
       return `<li class="sofi-perfil${ativo ? ' is-ativo' : ''}" data-perfil="${escapeHtml(item.id)}">${sofiMarca(item.provider)}<div class="sofi-perfil__texto"><b>${escapeHtml(item.nome)}${ativo ? ' <span class="chip chip--acento">Ativo</span>' : ''}</b><span>${escapeHtml(meta.nome)} · ${escapeHtml(item.model)}${escapeHtml(rac)}</span><span class="sofi-perfil__chave${item.temChave || !precisa ? ' is-ok' : ''}">${escapeHtml(chave)}</span></div><div class="sofi-perfil__acoes">${ativo ? '' : `<button type="button" class="btn btn--secundario btn--pequeno" data-perfil-ativar="${escapeHtml(item.id)}">Ativar</button>`}<button type="button" class="btn btn--icone" data-perfil-editar="${escapeHtml(item.id)}" aria-label="Editar o perfil ${escapeHtml(item.nome)}" title="Editar">${icon('editar')}</button><button type="button" class="btn btn--icone" data-perfil-remover="${escapeHtml(item.id)}" aria-label="Remover o perfil ${escapeHtml(item.nome)}" title="Remover">${icon('lixeira')}</button></div></li>`;
     })
@@ -165,12 +171,13 @@ function sofiAbrirForm({ id = null, provider = null, recemSalvo = false }) {
   sofiCfg.fonte = null;
   paintSofiConfig();
   $('#sofi-form-slot')?.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'nearest' });
-  if (perfil) sofiCarregarModelos(perfil.id);
-  else {
+  if (!perfil) {
+    // enquanto o motor responde, mostra as sugestões do provedor
     sofiCfg.models = (prov.modelosSugeridos || []).map((modelo) => ({ id: modelo, nome: modelo, raciocinio: false, esforcos: null, pensamentoOrcamento: false }));
-    sofiCfg.fonte = 'novo';
+    sofiCfg.fonte = 'sugeridos';
     paintSofiModelo();
   }
+  sofiCarregarModelos();
   $('#sofi-f-nome')?.focus({ preventScroll: true });
 }
 
@@ -239,6 +246,9 @@ function paintSofiForm() {
   };
   $('#sofi-f-testar').onclick = () => sofiTestarForm();
   const endpoint = $('#sofi-f-endpoint');
+  endpoint.onchange = () => {
+    if (sofiCfg.form && (sofiLerForm().chave || sofiCfg.form.provider === 'ollama')) sofiCarregarModelos();
+  };
   endpoint.oninput = () => {
     const reset = $('#sofi-f-endpoint-padrao');
     if (reset) reset.hidden = endpoint.value.trim() === prov.endpointPadrao;
@@ -259,12 +269,20 @@ function sofiChaveHtml(form) {
   const salva = form.temChave;
   return `<span>Chave de acesso ${salva ? '<span class="chip chip--acento sofi-chave-ok" id="sofi-f-chave-ok">chave salva ✓</span>' : ''}</span>
     <span class="sofi-campo-cfg__linha"><span class="sofi-senha"><input id="cfg-agente-chave" type="password" autocomplete="new-password" spellcheck="false" aria-label="Chave de acesso" placeholder="${salva ? 'Cole uma nova chave para trocar' : 'Cole a chave aqui'}" /><button type="button" class="btn btn--icone sofi-senha__ver" id="sofi-f-ver" aria-label="Mostrar a chave" aria-pressed="false" title="Mostrar ou ocultar">${icon('visivel')}</button></span>${salva ? '<button type="button" class="btn btn--fantasma btn--pequeno" id="sofi-f-chave-apagar">Apagar chave</button>' : ''}</span>
-    <p class="sofi-campo-cfg__nota">${salva ? 'A chave guardada não aparece mais aqui. Deixe em branco para manter.' : 'Fica no cofre do sistema e nunca entra na biblioteca.'}</p>`;
+    <p class="sofi-campo-cfg__nota">${salva ? 'A chave guardada não aparece mais aqui. Deixe em branco para manter.' : (sofiCfg.modo === 'arquivo' ? 'Fica num arquivo da sua pasta de usuário, fora da biblioteca.' : 'Fica no cofre do sistema e nunca entra na biblioteca.')}</p>`;
 }
 
 function bindSofiChave() {
   const ver = $('#sofi-f-ver');
   const input = $('#cfg-agente-chave');
+  if (input && input.type !== 'hidden') {
+    let espera = 0;
+    // ao colar ou digitar uma chave nova, busca a lista do provedor com ela (antes de salvar)
+    input.addEventListener('input', () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => sofiCfg.form && sofiCarregarModelos(), 600);
+    });
+  }
   if (ver && input)
     ver.onclick = () => {
       const show = input.type === 'password';
@@ -278,12 +296,12 @@ function bindSofiChave() {
     apagar.onclick = async () => {
       const form = sofiCfg.form;
       if (!form?.id) return;
-      if (!(await confirmDialog('Apagar a chave deste perfil do cofre? Você pode colar outra depois.', { confirm: 'Apagar chave', danger: true }))) return;
+      if (!(await confirmDialog('Apagar a chave deste perfil? Você pode colar outra depois.', { confirm: 'Apagar chave', danger: true }))) return;
       try {
         const feito = await tool('agent.config.set', { id: form.id, provider: form.provider, model: form.model, apiKey: '' });
-        sofiCfg.config = { ...sofiCfg.config, ...feito };
+        sofiAplicarConfig(feito);
         form.temChave = false;
-        toast('Chave apagada do cofre.');
+        toast('Chave apagada.');
         paintSofiConfig();
         sofiDepoisDeMudar();
       } catch (error) {
@@ -292,15 +310,32 @@ function bindSofiChave() {
     };
 }
 
-async function sofiCarregarModelos(id) {
+/* Perfil salvo sem chave nova: pergunta pelo `id` (o motor usa a chave guardada). Perfil novo, ou chave nova digitada:
+ * pergunta pelo provedor com o endpoint e a chave do formulário. Sem chave, o motor devolve só as sugestões. */
+let sofiModelosSeq = 0;
+async function sofiCarregarModelos() {
+  const form = sofiCfg.form;
+  if (!form) return;
+  const lido = sofiLerForm();
+  const payload = form.id && !lido.chave ? { id: form.id } : { provider: form.provider };
+  if (!payload.id) {
+    if (lido.endpoint) payload.endpoint = lido.endpoint;
+    if (lido.chave) payload.apiKey = lido.chave;
+  }
+  const seq = ++sofiModelosSeq;
   sofiCfg.loadingModels = true;
   paintSofiModelo();
+  let feito = null;
   try {
-    const feito = await tool('agent.models', { id });
-    if (sofiCfg.form?.id !== id) return;
-    sofiCfg.models = feito.models || [];
-    sofiCfg.fonte = feito.fonte || 'sugeridos';
+    feito = await tool('agent.models', payload);
   } catch {
+    feito = null;
+  }
+  if (seq !== sofiModelosSeq || sofiCfg.form !== form) return;
+  if (feito?.models) {
+    sofiCfg.models = feito.models;
+    sofiCfg.fonte = feito.fonte || 'sugeridos';
+  } else {
     sofiCfg.models = sofiCfg.models || [];
     sofiCfg.fonte = 'sugeridos';
   }
@@ -320,16 +355,16 @@ function paintSofiModelo() {
   const models = sofiCfg.models || [];
   const naLista = models.some((item) => item.id === form.model);
   const manual = form.modelManual || (!naLista && Boolean(form.model)) || !models.length;
-  const selo = sofiCfg.fonte === 'sugeridos' ? '<span class="sofi-selo" title="Não consegui consultar o provedor agora. Estes são os modelos que o Sophy sugere.">lista sugerida</span>' : '';
+  const selo = sofiCfg.fonte === 'sugeridos' ? '<span class="sofi-selo" title="Esta é a lista que o Sophy sugere. Com a chave, eu mostro a lista do provedor.">lista sugerida</span>' : '';
   const dica =
-    sofiCfg.fonte === 'novo'
-      ? 'Salve o perfil e eu busco a lista completa do provedor, com as opções de raciocínio de cada modelo.'
+    sofiCfg.fonte === 'sugeridos' && models.length > 0 && !form.id && !form.temChave && !sofiCfg.loadingModels && sofiLerForm()?.chave === '' && (sofiCfg.providers || []).find((item) => item.id === form.provider)?.precisaChave !== false
+      ? 'Cole a chave e eu busco a lista do provedor, com as opções de raciocínio de cada modelo.'
       : form.recemSalvo && !sofiCfg.loadingModels
         ? 'Perfil salvo. Esta é a lista do provedor: se o seu modelo raciocina, as opções aparecem logo abaixo.'
         : '';
   const opcoes = models.map((item) => `<option value="${escapeHtml(item.id)}" ${!manual && item.id === form.model ? 'selected' : ''}>${escapeHtml(sofiModeloRotulo(item))}</option>`).join('');
   bloco.innerHTML = `<span>Modelo ${selo}${sofiCfg.loadingModels ? '<span class="sofi-selo sofi-selo--carregando">buscando a lista…</span>' : ''}</span>
-    <span class="sofi-campo-cfg__linha">${models.length ? `<select id="sofi-f-modelo" aria-label="Modelo">${opcoes}<option value="__outro__" ${manual ? 'selected' : ''}>Outro modelo… (digitar)</option></select>` : ''}${form.id ? `<button type="button" class="btn btn--fantasma btn--pequeno" id="sofi-f-modelos-atualizar" ${sofiCfg.loadingModels ? 'disabled' : ''}>${icon('sincronizar')} Atualizar lista</button>` : ''}</span>
+    <span class="sofi-campo-cfg__linha">${models.length ? `<select id="sofi-f-modelo" aria-label="Modelo">${opcoes}<option value="__outro__" ${manual ? 'selected' : ''}>Outro modelo… (digitar)</option></select>` : ''}<button type="button" class="btn btn--fantasma btn--pequeno" id="sofi-f-modelos-atualizar" ${sofiCfg.loadingModels ? 'disabled' : ''}>${icon('sincronizar')} Atualizar lista</button></span>
     <input id="sofi-f-modelo-manual" type="text" spellcheck="false" aria-label="Nome do modelo" placeholder="Nome do modelo, como o provedor escreve" value="${escapeHtml(manual ? form.model : '')}" ${manual ? '' : 'hidden'} />
     ${dica ? `<p class="sofi-campo-cfg__nota">${escapeHtml(dica)}</p>` : ''}`;
   const select = $('#sofi-f-modelo');
@@ -353,7 +388,7 @@ function paintSofiModelo() {
     paintSofiRacio();
   };
   const refresh = $('#sofi-f-modelos-atualizar');
-  if (refresh) refresh.onclick = () => sofiCarregarModelos(form.id);
+  if (refresh) refresh.onclick = () => sofiCarregarModelos();
   paintSofiRacio();
 }
 
@@ -415,7 +450,7 @@ function paintSofiTeste() {
   }
   if (state_.ok) {
     box.className = 'sofi-teste is-ok';
-    box.innerHTML = `<span class="sofi-teste__icone">${icon('check')}</span><div><b>Conectou</b><p>${escapeHtml(state_.model || 'O modelo')} respondeu em ${Number(state_.latencyMs) >= 1000 ? `${(state_.latencyMs / 1000).toFixed(1).replace('.', ',')} s` : `${Math.round(state_.latencyMs || 0)} ms`}.${state_.salvou ? ' As alterações foram salvas antes do teste.' : ''}</p></div>`;
+    box.innerHTML = `<span class="sofi-teste__icone">${icon('check')}</span><div><b>Conectou</b><p>${escapeHtml(state_.model || 'O modelo')} respondeu em ${Number(state_.latencyMs) >= 1000 ? `${(state_.latencyMs / 1000).toFixed(1).replace('.', ',')} s` : `${Math.round(state_.latencyMs || 0)} ms`}.</p></div>`;
     return;
   }
   const mensagem = sofiMensagemTeste(state_);
@@ -438,7 +473,7 @@ async function sofiGravarPerfil(form, { ativar }) {
   if (racio) payload.raciocinio = racio;
   if (form.chave) payload.apiKey = form.chave;
   const feito = await tool('agent.config.set', payload);
-  sofiCfg.config = { ...sofiCfg.config, ativo: feito.ativo, perfis: feito.perfis };
+  sofiAplicarConfig(feito);
   return feito;
 }
 
@@ -490,28 +525,14 @@ async function sofiTestarForm() {
   sofiCfg.testing = true;
   sofiCfg.result = null;
   paintSofiTeste();
+  // nada é gravado: o motor aplica estes campos só nesta chamada
   const racio = sofiRaciocinioDoForm();
-  let salvou = false;
   try {
-    let result;
-    const salvo = form.id ? sofiCfg.config.perfis.find((item) => item.id === form.id) : null;
-    if (!salvo || form.chave) {
-      const payload = { provider: form.provider, model: form.model };
-      if (form.endpoint) payload.endpoint = form.endpoint;
-      if (form.chave) payload.apiKey = form.chave;
-      if (racio) payload.raciocinio = racio;
-      result = await tool('agent.testConnection', payload);
-    } else {
-      if (form.endpoint !== salvo.endpoint || form.model !== salvo.model) {
-        await sofiGravarPerfil(form, {});
-        salvou = true;
-        sofiDepoisDeMudar();
-      }
-      const payload = { id: form.id };
-      if (racio) payload.raciocinio = racio;
-      result = await tool('agent.testConnection', payload);
-    }
-    sofiCfg.result = { ...result, salvou };
+    const payload = form.id ? { id: form.id, raciocinio: racio || { ativo: false } } : { provider: form.provider, ...(racio ? { raciocinio: racio } : {}) };
+    payload.model = form.model;
+    if (form.endpoint) payload.endpoint = form.endpoint;
+    if (form.chave) payload.apiKey = form.chave;
+    sofiCfg.result = await tool('agent.testConnection', payload);
   } catch (error) {
     sofiCfg.result = { ok: false, error: 'erro_desconhecido', mensagem: error.message };
   }
@@ -524,7 +545,7 @@ async function sofiTestarForm() {
 async function sofiAtivarPerfil(id) {
   try {
     const feito = await tool('agent.config.activate', { id });
-    sofiCfg.config = { ...sofiCfg.config, ativo: feito.ativo, perfis: feito.perfis };
+    sofiAplicarConfig(feito);
     const perfil = sofiPerfilAtivo();
     toast(`${perfil ? `“${perfil.nome}”` : 'O perfil'} agora é o da Sofi.`);
     paintSofiConfig();
@@ -540,7 +561,7 @@ async function sofiRemoverPerfil(id) {
   if (!(await confirmDialog(`Remover o perfil “${perfil.nome}”? A chave guardada para ele também é apagada.`, { confirm: 'Remover perfil', danger: true }))) return;
   try {
     const feito = await tool('agent.config.remove', { id });
-    sofiCfg.config = { ...sofiCfg.config, ativo: feito.ativo, perfis: feito.perfis };
+    sofiAplicarConfig(feito);
     if (sofiCfg.form?.id === id) sofiCfg.form = null;
     toast(`Perfil “${perfil.nome}” removido.`);
     paintSofiConfig();

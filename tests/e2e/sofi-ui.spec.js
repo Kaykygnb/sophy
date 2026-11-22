@@ -35,23 +35,18 @@ test('escolher o provedor, salvar o perfil, ver “chave salva ✓” e ligar o 
     await expect(page.locator('#sofi-f-endpoint')).toHaveValue('https://api.openai.com/v1');
     await expect(page.locator('#cfg-agente-chave')).toHaveAttribute('type', 'password');
     await expect(page.locator('#sofi-f-racio')).toBeHidden();
+    // perfil novo, sem chave: o motor responde só com as sugestões (nada de chave de outro perfil)
+    await expect(page.locator('.sofi-selo', { hasText: 'lista sugerida' })).toBeVisible();
+    await expect(page.locator('#sofi-f-modelo-bloco')).toContainText('Cole a chave e eu busco a lista do provedor');
+    const sem = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.models').at(-1).input);
+    expect(sem).toEqual({ provider: 'openai', endpoint: 'https://api.openai.com/v1' });
+    // cola a chave: a lista do provedor chega ANTES de salvar, com o raciocínio de cada modelo
     await page.locator('#cfg-agente-chave').fill('sk-teste-123');
-    await page.locator('#sofi-f-salvar').click();
-
-    // salvou, ativou, e voltou no modo de edição com a lista do provedor
-    const row = page.locator('.sofi-perfil.is-ativo');
-    await expect(row).toContainText('OpenAI');
-    await expect(row).toContainText('chave salva ✓');
-    await expect(page.locator('#sofi-f-chave-ok')).toHaveText('chave salva ✓');
-    await expect(page.locator('#cfg-agente-chave')).toHaveValue('');
-    const saved = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.set').at(-1).input);
-    expect(saved).toMatchObject({ provider: 'openai', model: 'gpt-4o-mini', apiKey: 'sk-teste-123', ativar: true });
-    // a chave nunca volta do motor
-    const dump = await app.evaluate(() => JSON.stringify(globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.get')));
-    expect(dump).not.toContain('sk-teste-123');
-
-    // lista de modelos do provedor; gpt-4o-mini não raciocina
     await expect(page.locator('#sofi-f-modelo option')).toHaveCount(4);
+    await expect(page.locator('.sofi-selo', { hasText: 'lista sugerida' })).toHaveCount(0);
+    const com = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.models').at(-1).input);
+    expect(com).toMatchObject({ provider: 'openai', apiKey: 'sk-teste-123' });
+    expect(await app.evaluate(() => globalThis.__sofi.perfis.length)).toBe(0);
     await expect(page.locator('#sofi-f-racio')).toBeHidden();
     // o4-mini declara raciocínio e esforço (sem orçamento)
     await page.locator('#sofi-f-modelo').selectOption('o4-mini');
@@ -61,11 +56,26 @@ test('escolher o provedor, salvar o perfil, ver “chave salva ✓” e ligar o 
     await page.locator('[data-esforco="alto"]').click();
     await expect(page.locator('[data-esforco="alto"]')).toHaveAttribute('aria-checked', 'true');
     await page.locator('#sofi-f-salvar').click();
-    const withReasoning = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.set').at(-1).input);
-    expect(withReasoning).toMatchObject({ model: 'o4-mini', raciocinio: { ativo: true, esforco: 'alto' } });
-    expect(withReasoning.apiKey).toBeUndefined();
-    await expect(row).toContainText('o4-mini');
+
+    // salvou, ativou, e voltou no modo de edição
+    const row = page.locator('.sofi-perfil.is-ativo');
+    await expect(row).toContainText('OpenAI');
+    await expect(row).toContainText('chave salva ✓');
+    await expect(page.locator('#sofi-f-chave-ok')).toHaveText('chave salva ✓');
+    await expect(page.locator('#cfg-agente-chave')).toHaveValue('');
+    const saved = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.set').at(-1).input);
+    expect(saved).toMatchObject({ provider: 'openai', model: 'o4-mini', apiKey: 'sk-teste-123', ativar: true, raciocinio: { ativo: true, esforco: 'alto' } });
     await expect(row).toContainText('raciocínio alto');
+    // a chave nunca volta do motor
+    const dump = await app.evaluate(() => JSON.stringify(globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.get')));
+    expect(dump).not.toContain('sk-teste-123');
+
+    // editar sem trocar a chave: salvar não reenvia a chave, e a lista vem pelo {id}
+    await page.locator('#sofi-f-salvar').click();
+    const again = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.set').at(-1).input);
+    expect(again.apiKey).toBeUndefined();
+    const byId = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.models').at(-1).input);
+    expect(byId).toEqual({ id: 'perfil-1' });
 
     // volta para um modelo sem raciocínio: os controles somem
     await page.locator('[data-perfil-editar]').click();
@@ -83,8 +93,9 @@ test('Anthropic mostra o orçamento de pensamento; modelo digitado à mão não 
     await mockSofi(app);
     await openSofiSettings(page);
     await page.locator('.sofi-prov[data-provedor="anthropic"]').click();
+    // sem salvar: com a chave colada, o modelo raciocina e as opções aparecem
     await page.locator('#cfg-agente-chave').fill('sk-ant-1');
-    await page.locator('#sofi-f-salvar').click();
+    await expect(page.locator('#sofi-f-modelo option')).toHaveCount(3);
     await expect(page.locator('#sofi-f-modelo')).toBeVisible();
     await expect(page.locator('#sofi-f-racio')).toBeVisible();
     // as opções só aparecem com o raciocínio ligado
@@ -180,9 +191,10 @@ test('perfis: ativar, editar e remover; personalizado exige endpoint; Ollama nã
 test('aviso discreto quando a chave está em arquivo e não no cofre; prompt da Sofi num painel', async () => {
   const { app, page } = await launch();
   try {
-    await mockSofi(app, { modo: 'arquivo', ativo: 'p1', perfis: [{ id: 'p1', provider: 'openai', nome: 'OpenAI', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }], chaves: { p1: 'x' } });
+    await mockSofi(app, { armazenamento: 'arquivo', modos: { p1: 'arquivo' }, ativo: 'p1', perfis: [{ id: 'p1', provider: 'openai', nome: 'OpenAI', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }], chaves: { p1: 'x' } });
     await openSofiSettings(page);
     await expect(page.locator('.sofi-cfg__aviso')).toContainText('não tem cofre do sistema');
+    await expect(page.locator('.sofi-perfil')).toContainText('em arquivo');
     await page.locator('#sofi-ver-prompt').click();
     const dialog = page.getByRole('dialog', { name: 'Prompt da Sofi' });
     await expect(dialog).toBeVisible();
@@ -441,6 +453,67 @@ test('escuro: formulário, chat e abinha mantêm contraste legível', async () =
     expect(await contrast(panel.locator('.sofi-md .sofi-p').first())).toBeGreaterThan(4.5);
     expect(await contrast(panel.locator('.sofi-pensa__titulo'))).toBeGreaterThan(4.5);
     expect(await contrast(panel.locator('#agente-modo-dica'))).toBeGreaterThan(4.5);
+  } finally {
+    await app.close();
+  }
+});
+
+test('aviso do arquivo: cofre no topo mas perfil em arquivo avisa; tudo no cofre não avisa', async () => {
+  const perfis = [{ id: 'p1', provider: 'openai', nome: 'OpenAI', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }];
+  let run = await launch();
+  try {
+    await mockSofi(run.app, { armazenamento: 'cofre', modos: { p1: 'arquivo' }, ativo: 'p1', perfis, chaves: { p1: 'x' } });
+    await openSofiSettings(run.page);
+    await expect(run.page.locator('.sofi-cfg__aviso')).toContainText('não tem cofre do sistema');
+  } finally {
+    await run.app.close();
+  }
+  run = await launch();
+  try {
+    await mockSofi(run.app, { armazenamento: 'cofre', ativo: 'p1', perfis, chaves: { p1: 'x' } });
+    await openSofiSettings(run.page);
+    await expect(run.page.locator('.sofi-perfil')).toContainText('chave salva ✓');
+    await expect(run.page.locator('.sofi-perfil')).not.toContainText('em arquivo');
+    await expect(run.page.locator('.sofi-cfg__aviso')).toHaveCount(0);
+  } finally {
+    await run.app.close();
+  }
+});
+
+test('testar um perfil salvo aplica os campos só naquela chamada e não grava nada', async () => {
+  const { app, page } = await launch();
+  try {
+    await mockSofi(app, { ativo: 'p1', perfis: [{ id: 'p1', provider: 'openai', nome: 'OpenAI', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }], chaves: { p1: 'x' } });
+    await openSofiSettings(page);
+    await page.locator('[data-perfil-editar="p1"]').click();
+    await expect(page.locator('#sofi-f-modelo option')).toHaveCount(4);
+    await page.locator('#sofi-f-modelo').selectOption('o4-mini');
+    await page.locator('#sofi-f-rac-ativo').check();
+    await page.locator('#sofi-f-endpoint').fill('https://proxy.exemplo/v1');
+    await page.locator('#sofi-f-testar').click();
+    await expect(page.locator('#sofi-f-teste.is-ok')).toContainText('o4-mini respondeu');
+    await expect(page.locator('#sofi-f-teste')).not.toContainText('salvas antes do teste');
+    const call = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.testConnection').at(-1));
+    expect(call.input).toMatchObject({ id: 'p1', model: 'o4-mini', endpoint: 'https://proxy.exemplo/v1', raciocinio: { ativo: true } });
+    expect(call.input.apiKey).toBeUndefined();
+    expect(await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.config.set').length)).toBe(0);
+    expect(JSON.parse(await app.evaluate(() => JSON.stringify(globalThis.__sofi.perfis)))[0]).toMatchObject({ model: 'gpt-4o-mini', endpoint: 'https://api.openai.com/v1' });
+  } finally {
+    await app.close();
+  }
+});
+
+test('Ollama lista os modelos sem chave, antes de salvar', async () => {
+  const { app, page } = await launch();
+  try {
+    await mockSofi(app);
+    await openSofiSettings(page);
+    await page.locator('.sofi-prov[data-provedor="ollama"]').click();
+    await expect(page.locator('.sofi-selo', { hasText: 'lista sugerida' })).toHaveCount(0);
+    await expect(page.locator('#sofi-f-modelo')).toBeVisible();
+    const call = await app.evaluate(() => globalThis.__sofi.calls.filter((c) => c.name === 'agent.models').at(-1).input);
+    expect(call).toMatchObject({ provider: 'ollama' });
+    expect(call.apiKey).toBeUndefined();
   } finally {
     await app.close();
   }
