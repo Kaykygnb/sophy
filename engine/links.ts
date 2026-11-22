@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 import { parseCanvas, serializeCanvas } from './canvas.ts';
-import { listEntries, listFiles, listNotes, assertEntryMove, moveEntry, readText, type Library } from './library.ts';
+import { createdAtFrom, listEntries, listFiles, listNotes, assertEntryMove, moveEntry, readText, type Library } from './library.ts';
 import { splitMarkdown } from './markdown.ts';
 import { isMother, listChildren, moveMotherTree, registerMother } from './children.ts';
 import { findNoteByRememberedName } from './note-id.ts';
@@ -72,6 +72,7 @@ type CachedNote = {
   plain: string;
   frontmatterText: string;
   mtime: number;
+  createdAt: string;
   size: number;
   scanned: ScannedLink[];
   linkSnippets: Map<string, string>;
@@ -297,6 +298,15 @@ export function linkGeneration(root: string) {
   return generations.get(root) ?? 0;
 }
 
+/** `.sophy` e qualquer segmento oculto ficam fora do vigia. */
+export function ignoredByWatch(relative: string) {
+  return String(relative)
+    .split('\\')
+    .join('/')
+    .split('/')
+    .some((part) => part.startsWith('.'));
+}
+
 export function watchLibrary(library: Library, enabled: boolean) {
   const current = watchers.get(library.root);
   if (!enabled) {
@@ -309,7 +319,7 @@ export function watchLibrary(library: Library, enabled: boolean) {
   const watcher = fs.watch(library.root, { recursive: true }, (_event, filename) => {
     if (!filename) return;
     const relative = String(filename).split(path.sep).join('/');
-    if (relative.split('/').some((part) => part.startsWith('.'))) return;
+    if (ignoredByWatch(relative)) return;
     const lower = relative.toLowerCase();
     if (!lower.endsWith('.md') && !lower.endsWith('.canvas')) return;
     caches.get(library.root)?.delete(relative);
@@ -343,6 +353,7 @@ function loadNote(
     plain: plainText(parts.body),
     frontmatterText: frontmatterText(parts.frontmatter),
     mtime,
+    createdAt: createdAtFrom(parts.frontmatter, fs.statSync(resolveInside(library.root, relative))),
     size,
     scanned,
     linkSnippets: snippetsFor(content, scanned),
@@ -515,6 +526,7 @@ function loadCanvas(
     plain: plainText(texts.join('\n')),
     frontmatterText: '',
     mtime,
+    createdAt: createdAtFrom(null, fs.statSync(resolveInside(library.root, relative))),
     size,
     scanned,
     linkSnippets: snippetsFor(texts.join('\n'), scanned),

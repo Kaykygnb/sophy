@@ -8,7 +8,6 @@ import { assertBody, composeMarkdown, prefixFromFrontmatter, splitMarkdown } fro
 import { ensureNoteIdentity, newNoteId, updateNoteIdPath } from './note-id.ts';
 import { contains, openLibraryRoot, resolveInside, validateSegment, type OpenOptions } from './paths.ts';
 import { mask, scan } from './wikilinks.ts';
-import { moveToTrash, restoreFromTrash, type TrashOptions } from './trash.ts';
 
 /**
  * Motor da biblioteca.
@@ -74,6 +73,32 @@ export function createWorkspace(library: Library, name: string) {
   if (fs.existsSync(target)) throw new EngineError('exists', 'Já existe um item com esse nome.');
   fs.mkdirSync(target);
   return { name, path: name };
+}
+
+/** `AAAA-MM-DDTHH:mm:ss` no fuso local, sem sufixo de fuso. */
+export function formatCreatedStamp(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
+/**
+ * Data de criação da nota. `criada` do frontmatter ganha; senão o birthtime
+ * do arquivo; se o birthtime não existe, o mtime.
+ */
+export function createdAtFrom(
+  frontmatter: Record<string, unknown> | null | undefined,
+  stat: { birthtimeMs: number; mtimeMs: number },
+) {
+  const raw = frontmatter?.criada;
+  if (typeof raw === 'string') {
+    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/.exec(raw.trim());
+    if (match) return match[1];
+  }
+  const ms = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
+  return formatCreatedStamp(new Date(ms));
 }
 
 export function createDirectory(library: Library, relative: string) {
@@ -443,10 +468,7 @@ export function createNote(
   if (fs.existsSync(full) && dailyDate(relative))
     throw new EngineError('daily-exists', 'Esse dia já tem nota');
   if (fs.existsSync(full)) throw new EngineError('exists', 'A nota já existe.');
-  const meta =
-    frontmatter === undefined || frontmatter === null
-      ? { id: newNoteId() }
-      : { ...frontmatter, id: typeof frontmatter.id === 'string' && frontmatter.id ? frontmatter.id : newNoteId() };
+  const meta = withCreatedIdentity(frontmatter);
   const prefix = prefixFromFrontmatter(meta);
   const content = composeMarkdown({ bom: '', prefix, body });
   assertSize(content);
@@ -521,24 +543,13 @@ export function moveEntry(library: Library, source: string, target: string) {
   return { from: source, path: target };
 }
 
-export function restoreEntry(
-  library: Library,
-  id: string,
-  options?: TrashOptions & { mode?: 'merge' | 'asNote' },
-) {
-  return restoreFromTrash(library.root, id, options);
-}
-
-export function trashEntry(library: Library, relative: string, options?: TrashOptions) {
-  const full = resolveInside(library.root, relative);
-  const before = fs.lstatSync(full);
-  if (before.isSymbolicLink())
-    throw new EngineError('symlink', 'Links simbólicos não são permitidos.');
-  const again = fs.lstatSync(full);
-  if (again.dev !== before.dev || again.ino !== before.ino)
-    throw new EngineError('conflict', 'O item mudou durante a operação.');
-  const trashed = moveToTrash(full, options);
-  return { path: relative, trashed: true, trashPath: trashed.trashPath, infoPath: trashed.infoPath };
+function withCreatedIdentity(frontmatter?: Record<string, unknown> | null) {
+  const criada = formatCreatedStamp();
+  if (frontmatter === undefined || frontmatter === null) return { id: newNoteId(), criada };
+  const next: Record<string, unknown> = { ...frontmatter };
+  if (typeof next.id !== 'string' || !next.id.trim()) next.id = newNoteId();
+  if (typeof next.criada !== 'string' || !next.criada.trim()) next.criada = criada;
+  return next;
 }
 
 function atomicWrite(
@@ -655,7 +666,7 @@ function assertMarkdown(relative: string) {
     throw new EngineError('invalid-note', 'Somente arquivos Markdown podem ser editados.');
 }
 
-function assertRelativeParts(relative: string) {
+export function assertRelativeParts(relative: string) {
   if (
     typeof relative !== 'string' ||
     !relative ||
