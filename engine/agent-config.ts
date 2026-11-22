@@ -20,6 +20,8 @@ export type Cofre = {
   decifrar(dados: string): string;
 };
 
+export type Armazenamento = 'cofre' | 'arquivo';
+
 export type PerfilPublico = {
   id: string;
   provider: string;
@@ -27,10 +29,19 @@ export type PerfilPublico = {
   endpoint: string;
   model: string;
   temChave: boolean;
+  /** Como esta chave está guardada. Só existe quando `temChave` é verdadeiro. */
+  armazenamento?: Armazenamento;
   raciocinio?: Raciocinio;
 };
 
-type Perfil = Omit<PerfilPublico, 'temChave'>;
+export type ConfigPublico = {
+  ativo: string | null;
+  /** Modo em que uma chave nova seria guardada agora. */
+  armazenamento: Armazenamento;
+  perfis: PerfilPublico[];
+};
+
+type Perfil = Omit<PerfilPublico, 'temChave' | 'armazenamento'>;
 
 type Segredo = { modo: 'cofre' | 'arquivo'; dados: string };
 
@@ -137,18 +148,21 @@ function endpointDe(providerId: string, informado: unknown) {
   return url.toString().replace(/\/$/, '');
 }
 
-function publico(estado: Estado): { ativo: string | null; perfis: PerfilPublico[] } {
+function publico(estado: Estado, cofre: Cofre): ConfigPublico {
   return {
     ativo: estado.ativo,
+    armazenamento: cofre.disponivel ? 'cofre' : 'arquivo',
     perfis: estado.perfis.map((item) => {
+      const segredo = estado.chaves[item.id];
       const perfil: PerfilPublico = {
         id: item.id,
         provider: item.provider,
         nome: item.nome,
         endpoint: item.endpoint,
         model: item.model,
-        temChave: Boolean(estado.chaves[item.id]),
+        temChave: Boolean(segredo),
       };
+      if (segredo) perfil.armazenamento = segredo.modo;
       if (item.raciocinio) perfil.raciocinio = item.raciocinio;
       return perfil;
     }),
@@ -175,7 +189,7 @@ export function abrirAgentConfig(dir: string, cofre: Cofre) {
       return estado.perfis.length > 0;
     },
     get() {
-      return publico(estado);
+      return publico(estado, cofre);
     },
     segredo(id: string) {
       const item = estado.chaves[id];
@@ -232,7 +246,7 @@ export function abrirAgentConfig(dir: string, cofre: Cofre) {
       }
       if (input.ativar === true || !estado.ativo) estado.ativo = perfil.id;
       salvar();
-      return { ...publico(estado), id: perfil.id };
+      return { ...publico(estado, cofre), id: perfil.id };
     },
     remove(id: unknown) {
       if (typeof id !== 'string' || !estado.perfis.some((item) => item.id === id))
@@ -241,14 +255,14 @@ export function abrirAgentConfig(dir: string, cofre: Cofre) {
       delete estado.chaves[id];
       if (estado.ativo === id) estado.ativo = null;
       salvar();
-      return publico(estado);
+      return publico(estado, cofre);
     },
     activate(id: unknown) {
       if (typeof id !== 'string' || !estado.perfis.some((item) => item.id === id))
         throw new EngineError('not-found', 'Perfil não encontrado.');
       estado.ativo = id;
       salvar();
-      return publico(estado);
+      return publico(estado, cofre);
     },
     importarLegado(key: string) {
       if (estado.perfis.length) return false;
@@ -263,5 +277,68 @@ export function abrirAgentConfig(dir: string, cofre: Cofre) {
       });
       return true;
     },
+  };
+}
+
+type Loja = {
+  get(): { perfis: PerfilPublico[] };
+  segredo(id: string): string | null;
+};
+
+function texto(valor: unknown) {
+  return typeof valor === 'string' ? valor.trim() : '';
+}
+
+/** Lista modelos de um perfil salvo ou de um provedor ainda não gravado. Não lê chave de outro perfil. */
+export function resolverModelos(loja: Loja, input: Record<string, unknown>) {
+  const id = texto(input.id);
+  if (id) {
+    const perfil = loja.get().perfis.find((item) => item.id === id);
+    if (!perfil) throw new EngineError('not-found', 'Perfil não encontrado.');
+    return {
+      provider: perfil.provider,
+      endpoint: perfil.endpoint,
+      apiKey: loja.segredo(perfil.id) || '',
+    };
+  }
+  const provider = texto(input.provider);
+  if (!provider || !provedor(provider))
+    throw new EngineError('invalid-path', 'Informe o perfil ou o provedor.');
+  const endpoint = texto(input.endpoint);
+  const apiKey =
+    Object.prototype.hasOwnProperty.call(input, 'apiKey') && typeof input.apiKey === 'string'
+      ? input.apiKey.trim()
+      : '';
+  return { provider, ...(endpoint ? { endpoint } : {}), apiKey };
+}
+
+/** Monta o teste de conexão. Com `id`, os campos informados só substituem o perfil nesta chamada. */
+export function resolverTeste(loja: Loja, input: Record<string, unknown>) {
+  const id = texto(input.id);
+  if (id) {
+    const perfil = loja.get().perfis.find((item) => item.id === id);
+    if (!perfil) throw new EngineError('not-found', 'Perfil não encontrado.');
+    const endpoint = texto(input.endpoint) || perfil.endpoint;
+    const model = texto(input.model) || perfil.model;
+    const apiKey = Object.prototype.hasOwnProperty.call(input, 'apiKey')
+      ? texto(input.apiKey)
+      : loja.segredo(perfil.id) || '';
+    const raciocinio = Object.prototype.hasOwnProperty.call(input, 'raciocinio')
+      ? input.raciocinio
+      : perfil.raciocinio;
+    return { provider: perfil.provider, endpoint, model, apiKey, raciocinio };
+  }
+  const provider = texto(input.provider);
+  const model = texto(input.model);
+  if (!provider || !model)
+    throw new EngineError('invalid-path', 'Informe o perfil ou o provedor e o modelo.');
+  const item = provedor(provider);
+  if (!item) throw new EngineError('invalid-path', 'Provedor desconhecido.');
+  return {
+    provider,
+    endpoint: texto(input.endpoint) || item.endpointPadrao,
+    model,
+    apiKey: texto(input.apiKey),
+    raciocinio: input.raciocinio,
   };
 }
