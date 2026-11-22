@@ -653,6 +653,7 @@ function paintShell() {
       <div class="titulo__acoes">
         <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
         <button type="button" class="btn btn--fantasma btn--pequeno titulo__sofi" id="abrir-sofi" title="Pedir à Sofi (Ctrl+J)" aria-label="Pedir à Sofi (Ctrl+J)" aria-pressed="false">${icon('faisca')}<span>Sofi</span></button>
+        <button type="button" class="btn btn--icone titulo__sino" id="notificacoes" title="Notificações" aria-label="Notificações" aria-haspopup="dialog" aria-expanded="false">${icon('notificacao')}<span class="sino__contador" id="notificacoes-contador" hidden></span></button>
         <button type="button" class="btn btn--icone" id="busca" title="Buscar (Ctrl+K)" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
         <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
         <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('painel-direito')}</button>
@@ -682,6 +683,7 @@ function paintShell() {
         </nav>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
+        <section class="tags-painel" id="tags-painel" aria-label="Tags" hidden></section>
         <div class="lateral__rodape"><button type="button" class="nav__item" data-nav="lixeira" title="Lixeira">${icon('lixeira')} Lixeira</button><button type="button" class="nav__item" data-nav="config" title="Configurações (Ctrl+,)">${icon('configuracoes')} Configurações</button></div>
       </aside>
       <main class="centro" id="centro"></main>
@@ -694,6 +696,7 @@ function paintShell() {
       <span class="status__fim" id="st-tema"></span>
     </footer>`;
   $('#busca').onclick = () => openPalette();
+  $('#notificacoes').onclick = () => toggleNotifications();
   $('#abrir-sofi').onclick = () => {
     if (state.sofiOpen) closeSofi();
     else openAgent();
@@ -751,6 +754,7 @@ async function refreshLibrary() {
   } catch {
     state.linkCatalog = [];
   }
+  refreshTags();
 }
 
 function treeUiStorageKey() {
@@ -1339,6 +1343,12 @@ const PROPERTY_TYPES = {
   url: 'URL',
 };
 
+const PROPERTY_ICONS = { text: 'texto', number: 'hash', select: 'lista', multi: 'tag', date: 'calendario', checkbox: 'check', url: 'link' };
+
+function propertyTypeIcon(type) {
+  return `<span class="propriedade__tipo" title="Tipo: ${escapeHtml(PROPERTY_TYPES[type] || 'Texto')}" aria-hidden="true">${icon(PROPERTY_ICONS[type] || 'texto')}</span>`;
+}
+
 function noteLayout() {
   const layout = state.frontmatter?.layout;
   return {
@@ -1700,14 +1710,14 @@ function notePropertiesHtml() {
   const properties = noteProperties();
   const daily = dailyPathDate(state.active);
   const locked = daily
-    ? `<div class="propriedade propriedade--travada"><span class="propriedade__nome">data</span><input class="propriedade__valor" value="${escapeHtml(daily)}" readonly aria-readonly="true" tabindex="-1" aria-label="data">${icon('cadeado', 'icon--14')}</div>`
+    ? `<div class="propriedade propriedade--travada"><span class="propriedade__nome">${propertyTypeIcon('date')}<span>data</span></span><input class="propriedade__valor" value="${escapeHtml(daily)}" readonly aria-readonly="true" tabindex="-1" aria-label="data">${icon('cadeado', 'icon--14')}</div>`
     : '';
-  const rows = locked + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
+  const rows = locked + noteTagsRowHtml() + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}" title="${escapeHtml(PROPERTY_TYPES[property.type] || 'Texto')}: renomear">${propertyTypeIcon(property.type)}<span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
   const noteId = typeof state.frontmatter?.id === 'string' ? state.frontmatter.id : '';
   const advanced = noteId
-    ? `<details class="nota-avancado"><summary>Avançado</summary><div class="propriedade propriedade--id"><span class="propriedade__nome">id</span><input class="propriedade__valor" value="${escapeHtml(noteId)}" readonly aria-readonly="true" tabindex="-1" aria-label="id da nota"></div></details>`
+    ? `<details class="nota-avancado"><summary>Avançado</summary><div class="propriedade propriedade--id"><span class="propriedade__nome"><span class="propriedade__tipo" aria-hidden="true">${icon('chave')}</span><span>id</span></span><input class="propriedade__valor" value="${escapeHtml(noteId)}" readonly aria-readonly="true" tabindex="-1" aria-label="id da nota">${icon('cadeado', 'icon--14')}<small class="propriedade__dica">Somente leitura. É o que mantém os links da nota ao renomear.</small></div></details>`
     : '';
-  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button>${advanced}</div></details>`;
+  return `<details class="nota-propriedades" ${properties.length || noteTagList().length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="propriedade-adicionar" id="adicionar-propriedade">${icon('mais')}<span>Adicionar propriedade</span></button>${advanced}</div></details>`;
 }
 
 function openPropertyValuePicker(propertyId, anchor) {
@@ -1821,13 +1831,25 @@ function openNoteMenu(anchor) {
   menu.className = 'menu menu-flutuante nota-menu';
   menu.setAttribute('role', 'dialog');
   menu.setAttribute('aria-label', 'Opções da nota');
-  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button><button type="button" class="menu__item" id="menu-filha">Nova página filha</button><hr><h4>Exportar</h4><button type="button" class="menu__item" disabled aria-disabled="true" title="Em breve"><span>${icon('exportar')} Exportar como PDF</span><span class="em-breve">em breve</span></button><button type="button" class="menu__item" disabled aria-disabled="true" title="Em breve"><span>${icon('exportar')} Exportar como Markdown</span><span class="em-breve">em breve</span></button>`;
+  menu.innerHTML = `<h4>Fonte</h4><div class="nota-menu__fontes">${[['default', 'Padrão'], ['serif', 'Serifada'], ['sans', 'Sem serifa'], ['mono', 'Mono']].map(([value, label]) => `<button type="button" class="opcao-cartao ${layout.font === value ? 'is-escolhida' : ''}" data-note-font="${value}"><b>Ag</b><span>${label}</span></button>`).join('')}</div><h4>Aparência</h4><button type="button" class="menu__item" data-note-toggle="small" aria-pressed="${layout.small}"><span>Texto pequeno</span><span>${layout.small ? 'Ativo' : ''}</span></button><button type="button" class="menu__item" data-note-toggle="wide" aria-pressed="${layout.wide}"><span>Largura total</span><span>${layout.wide ? 'Ativa' : ''}</span></button><hr><button type="button" class="menu__item" id="menu-properties">Propriedades</button><button type="button" class="menu__item" id="menu-cover">${Cmd.resolveCover(state.frontmatter) ? 'Alterar capa' : 'Adicionar capa'}</button><button type="button" class="menu__item" data-focus-toggle>${state.focusMode ? 'Sair do foco' : 'Modo foco'}</button><button type="button" class="menu__item" id="menu-filha">Nova página filha</button><hr><h4>Exportar</h4><button type="button" class="menu__item" id="menu-exportar-pdf"><span>${icon('exportar')} Exportar como PDF</span></button><button type="button" class="menu__item" id="menu-exportar-md"><span>${icon('exportar')} Exportar como Markdown</span></button>`;
   document.body.append(menu);
   anchor.setAttribute('aria-expanded', 'true');
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
   menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
   menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 8)}px`;
+  const exportMd = menu.querySelector('#menu-exportar-md');
+  if (exportMd)
+    exportMd.onclick = () => {
+      closeMenus();
+      exportNoteMarkdown().catch((error) => toast(error.message, 'erro'));
+    };
+  const exportPdf = menu.querySelector('#menu-exportar-pdf');
+  if (exportPdf)
+    exportPdf.onclick = () => {
+      closeMenus();
+      exportNotePdf().catch((error) => toast(error.message, 'erro'));
+    };
   menu.addEventListener('mousedown', (event) => event.stopPropagation());
   menu.querySelectorAll('[data-note-font]').forEach((button) => {
     button.onclick = (event) => {
@@ -1896,6 +1918,8 @@ const CONFIG_SECTIONS = [
   ['geral', 'configuracoes', 'Geral'],
   ['aparencia', 'aparencia', 'Aparência'],
   ['editor', 'editar', 'Editor'],
+  ['anexos', 'anexo', 'Anexos'],
+  ['notificacoes', 'notificacao', 'Notificações'],
   ['bibliotecas', 'biblioteca', 'Bibliotecas'],
   ['sofi', 'faisca', 'Sofi e IA'],
   ['atalhos', 'teclado', 'Atalhos'],
@@ -1964,7 +1988,14 @@ function paintSettings(center) {
         ${cfgRow('Números de linha no código', 'Mostra a numeração nos blocos de código.', cfgSwitch('cfg-linhas', codeLines, codeLines ? 'Ligado' : 'Desligado'))}
         ${cfgRow('Seções recolhidas', folded ? `${folded} ${folded === 1 ? 'seção está recolhida' : 'seções estão recolhidas'} nas suas notas.` : 'Nenhuma seção recolhida agora.', `<button type="button" class="btn btn--secundario" id="cfg-abrir-secoes" ${folded ? '' : 'disabled'}>Abrir todas</button>`)}
         ${cfgSoon('Verificar ortografia', 'Sublinhar palavras com erro enquanto você escreve.', cfgSwitch('cfg-ortografia', false, 'Desligado', true))}
-        ${cfgSoon('Anexos', 'Arrastar imagens e arquivos para dentro da nota.', '<button type="button" class="btn btn--secundario" disabled>Escolher pasta</button>')}
+      </section>
+      <section class="config__secao" id="cfg-anexos" data-secao="anexos"><h3>Anexos</h3>
+        <p class="config__ajuda">Arquivos da pasta Anexos/ da biblioteca: imagens e documentos que você arrastou ou anexou nas notas. Arrastar para a nota funciona em qualquer arquivo, até 25 MB.</p>
+        <div id="cfg-anexos-conteudo" class="anexos" aria-live="polite"><p class="config__ajuda">Carregando…</p></div>
+      </section>
+      <section class="config__secao" id="cfg-notificacoes" data-secao="notificacoes"><h3>Notificações</h3>
+        <p class="config__ajuda">O sino na barra de título junta os avisos. Escolha quais tipos entram nele e no contador.</p>
+        ${NOTIF_TYPES.map(([type, label, , help]) => cfgRow(label, help, cfgSwitch(`cfg-notif-${type}`, notifEnabled(type), notifEnabled(type) ? 'Ligado' : 'Desligado'))).join('')}
       </section>
       <section class="config__secao" id="cfg-bibliotecas" data-secao="bibliotecas"><h3>Bibliotecas</h3>
         <p class="config__ajuda">Uma biblioteca é uma pasta com suas notas em Markdown. Você pode ter várias.</p>
@@ -2064,6 +2095,15 @@ function paintSettings(center) {
       localStorage.setItem('sophy-code-lines', lines.checked ? '1' : '0');
       lines.nextElementSibling.textContent = lines.checked ? 'Ligado' : 'Desligado';
     };
+  paintAttachmentsSettings();
+  NOTIF_TYPES.forEach(([type]) => {
+    const input = $(`#cfg-notif-${type}`);
+    if (!input) return;
+    input.onchange = () => {
+      setNotifEnabled(type, input.checked);
+      input.nextElementSibling.textContent = input.checked ? 'Ligado' : 'Desligado';
+    };
+  });
   const unfold = $('#cfg-abrir-secoes');
   if (unfold)
     unfold.onclick = async () => {
@@ -2285,6 +2325,7 @@ async function loadTrash() {
 }
 
 async function afterTrashChange() {
+  state.notifTrashAt = 0;
   await refreshLibrary();
   paintTree();
   paintTabs();
@@ -2340,6 +2381,7 @@ async function emptyTrashFromView() {
 
 /* Aviso depois de mandar algo para a lixeira, com Desfazer que devolve só esse item. */
 function toastTrashed(message, id) {
+  state.notifTrashAt = 0;
   toast(message, 'ok', id
     ? {
         label: 'Desfazer',
@@ -2385,29 +2427,395 @@ function paintTrash(center) {
   });
 }
 
-function syncWeekly() {
-  const existing = $('#revisao-semana');
-  if (new Date().getDay() !== 0) {
-    existing?.remove();
+/* A faixa fixa da revisão saiu do topo das telas: o aviso mora no sino de notificações. */
+/* ------------------------------------------------------------ Notificações */
+const NOTIF_TYPES = [
+  ['revisao', 'Revisão da semana', 'calendario', 'Aviso no domingo, quando a revisão da semana está pronta.'],
+  ['lixeira', 'Lixeira', 'lixeira', 'Lembra que há itens na lixeira para restaurar ou esvaziar.'],
+  ['conflito', 'Conflitos de edição', 'alerta', 'Quando uma nota mudou fora do Sophy e precisa da sua escolha.'],
+  ['exportacao', 'Exportações concluídas', 'exportar', 'PDF, Markdown ou site salvos, com atalho para a pasta.'],
+  ['sofi', 'Avisos da Sofi', 'faisca', 'Quando a Sofi termina um pedido com o painel fechado.'],
+];
+const NOTIF_KEY = 'sophy.notificacoes';
+
+function notifStore() {
+  try {
+    const data = JSON.parse(localStorage.getItem(NOTIF_KEY) || '{}');
+    return { prefs: data.prefs || {}, items: data.items || [], dismissed: data.dismissed || {}, read: data.read || {} };
+  } catch {
+    return { prefs: {}, items: [], dismissed: {}, read: {} };
+  }
+}
+
+function notifSave(store) {
+  store.items = store.items.slice(0, 30);
+  localStorage.setItem(NOTIF_KEY, JSON.stringify(store));
+}
+
+function notifEnabled(type) {
+  return notifStore().prefs[type] !== false;
+}
+
+function setNotifEnabled(type, on) {
+  const store = notifStore();
+  store.prefs[type] = on;
+  notifSave(store);
+  refreshNotifications();
+}
+
+/* Avisos que acontecem uma vez (exportação, Sofi) ficam guardados; os de estado (revisão, lixeira, conflito) são calculados. */
+function pushNotification({ type, title, body, action }) {
+  const store = notifStore();
+  store.items.unshift({ id: `${type}:${Date.now()}`, type, title, body, action: action || null, at: Date.now() });
+  notifSave(store);
+  refreshNotifications();
+}
+
+async function computeNotifications() {
+  const store = notifStore();
+  const list = [];
+  const today = isoToday();
+  if (new Date().getDay() === 0 && state.libraryPath)
+    list.push({ id: `revisao:${today}`, type: 'revisao', title: 'Revisão da semana pronta', body: 'A Sofi juntou o que você escreveu. Ela não altera as notas sozinha.', action: { label: 'Abrir revisão', kind: 'revisao' }, at: new Date().setHours(0, 0, 0, 0) });
+  if (state.libraryPath && Date.now() - (state.notifTrashAt || 0) > 4000) {
+    state.notifTrashAt = Date.now();
+    try {
+      state.notifTrash = await tool('trash.list', {});
+    } catch {
+      state.notifTrash = [];
+    }
+  }
+  const trash = state.notifTrash || [];
+  if (trash.length) {
+    const size = trash.reduce((sum, item) => sum + (item.size || 0), 0);
+    list.push({ id: `lixeira:${trash.length}:${trash[0].id}`, type: 'lixeira', title: `Lixeira com ${trash.length} ${trash.length === 1 ? 'item' : 'itens'}`, body: `${sizeLabel(size)} guardados. Restaure o que precisar ou esvazie.`, action: { label: 'Abrir lixeira', kind: 'lixeira' }, at: Date.parse(trash[0].deletedAt) || Date.now() });
+  }
+  if (state.conflict && state.active)
+    list.push({ id: `conflito:${state.active}`, type: 'conflito', title: 'Nota mudou fora do app', body: `“${baseName(state.active)}” foi alterada em outro programa. Escolha qual versão manter.`, action: { label: 'Abrir nota', kind: 'note', arg: state.active }, at: Date.now() });
+  for (const item of store.items) list.push(item);
+  return list
+    .filter((item) => store.prefs[item.type] !== false && !store.dismissed[item.id])
+    .map((item) => ({ ...item, read: Boolean(store.read[item.id]) }))
+    .sort((a, b) => b.at - a.at);
+}
+
+/* exportPdf devolve { ok, value }, com value vazio quando a pessoa cancela o diálogo. */
+function exportDone(saved) {
+  return Boolean(saved && typeof saved === 'object' && 'value' in saved ? saved.value : saved);
+}
+
+function scheduleNotifRefresh() {
+  clearTimeout(state.notifTimer);
+  state.notifTimer = setTimeout(refreshNotifications, 250);
+}
+
+async function refreshNotifications() {
+  if (!$('#notificacoes')) return;
+  state.notifList = await computeNotifications();
+  const unread = state.notifList.filter((item) => !item.read).length;
+  const badge = $('#notificacoes-contador');
+  if (badge) {
+    badge.hidden = !unread;
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+  }
+  const button = $('#notificacoes');
+  if (button) button.setAttribute('aria-label', unread ? `Notificações, ${unread} ${unread === 1 ? 'não lida' : 'não lidas'}` : 'Notificações');
+  if ($('#notificacoes-painel')) paintNotifications();
+}
+
+function toggleNotifications() {
+  if ($('#notificacoes-painel')) {
+    closeNotifications();
     return;
   }
-  const dismissedKey = `sophy.revisaoDispensada:${isoToday()}`;
-  if (localStorage.getItem(dismissedKey) || state.view === 'review') {
-    existing?.remove();
-    return;
-  }
-  if (existing || !$('#centro')) return;
-  const bar = document.createElement('div');
-  bar.id = 'revisao-semana';
-  bar.className = 'aviso aviso--acao';
-  bar.setAttribute('role', 'status');
-  bar.innerHTML = `<span>Domingo: a revisão da semana está pronta. A Sofi não altera as notas sozinha.</span><button type="button" class="btn btn--secundario btn--pequeno" id="revisao-abrir">Abrir revisão</button><button type="button" class="btn btn--icone" id="revisao-dispensar" aria-label="Dispensar aviso até amanhã" title="Dispensar até amanhã">${icon('fechar')}</button>`;
-  $('#centro').prepend(bar);
-  $('#revisao-abrir').onclick = () => showReview();
-  $('#revisao-dispensar').onclick = () => {
-    localStorage.setItem(dismissedKey, '1');
-    bar.remove();
+  closeMenus();
+  const anchor = $('#notificacoes');
+  const panel = document.createElement('div');
+  panel.id = 'notificacoes-painel';
+  panel.className = 'menu menu-flutuante notif';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Notificações');
+  document.body.append(panel);
+  anchor.setAttribute('aria-expanded', 'true');
+  const rect = anchor.getBoundingClientRect();
+  panel.style.position = 'fixed';
+  panel.style.top = `${rect.bottom + 6}px`;
+  panel.style.right = `${Math.max(8, window.innerWidth - rect.right - 40)}px`;
+  panel.addEventListener('mousedown', (event) => event.stopPropagation());
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeNotifications();
+  });
+  paintNotifications();
+  refreshNotifications();
+  panel.querySelector('button')?.focus();
+}
+
+function closeNotifications() {
+  $('#notificacoes-painel')?.remove();
+  $('#notificacoes')?.setAttribute('aria-expanded', 'false');
+}
+
+function paintNotifications() {
+  const panel = $('#notificacoes-painel');
+  if (!panel) return;
+  const list = state.notifList || [];
+  const icons = Object.fromEntries(NOTIF_TYPES.map(([type, , glyph]) => [type, glyph]));
+  const unread = list.filter((item) => !item.read).length;
+  panel.innerHTML = `<header class="notif__topo"><h3>Notificações</h3><button type="button" class="btn btn--fantasma btn--pequeno" id="notif-todas" ${unread ? '' : 'disabled'}>Marcar todas como lidas</button></header>${
+    list.length
+      ? `<ul class="notif__lista">${list
+          .map(
+            (item, index) => `<li class="notif__item${item.read ? '' : ' is-nova'}" data-notif="${index}"><span class="notif__icone">${icon(icons[item.type] || 'notificacao')}</span><span class="notif__texto"><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.body || '')}</small>${item.action ? `<button type="button" class="btn btn--secundario btn--pequeno" data-notif-acao="${index}">${escapeHtml(item.action.label)}</button>` : ''}</span><span class="notif__lado"><time>${escapeHtml(trashWhen(new Date(item.at).toISOString()) || '')}</time><button type="button" class="btn btn--icone notif__fechar" data-notif-dispensar="${index}" aria-label="Dispensar: ${escapeHtml(item.title)}">${icon('fechar')}</button></span></li>`,
+          )
+          .join('')}</ul>`
+      : `<div class="notif__vazio">${icon('notificacao')}<b>Tudo em dia</b><p>Nada novo por aqui. Os avisos aparecem neste sino.</p></div>`
+  }<footer class="notif__rodape"><button type="button" class="btn btn--fantasma btn--pequeno" id="notif-config">Configurar avisos</button></footer>`;
+  $('#notif-todas').onclick = () => markNotifications(list, 'read');
+  $('#notif-config').onclick = () => {
+    closeNotifications();
+    state.configSection = 'notificacoes';
+    runCommand('config');
   };
+  panel.querySelectorAll('[data-notif-acao]').forEach((button) => {
+    button.onclick = () => runNotificationAction(list[Number(button.dataset.notifAcao)]);
+  });
+  panel.querySelectorAll('[data-notif-dispensar]').forEach((button) => {
+    button.onclick = () => markNotifications([list[Number(button.dataset.notifDispensar)]], 'dismiss');
+  });
+}
+
+function markNotifications(items, mode) {
+  const store = notifStore();
+  for (const item of items) {
+    if (mode === 'read') store.read[item.id] = 1;
+    else {
+      store.dismissed[item.id] = 1;
+      store.items = store.items.filter((stored) => stored.id !== item.id);
+    }
+  }
+  notifSave(store);
+  refreshNotifications();
+}
+
+function runNotificationAction(item) {
+  if (!item?.action) return;
+  markNotifications([item], 'read');
+  closeNotifications();
+  const { kind, arg } = item.action;
+  if (kind === 'revisao') showReview();
+  else if (kind === 'lixeira') runCommand('lixeira');
+  else if (kind === 'note') openNote(arg);
+  else if (kind === 'reveal') sophy.libraryReveal(arg);
+  else if (kind === 'sofi') openAgent();
+}
+
+/* ------------------------------------------------------------------- Tags */
+async function refreshTags() {
+  try {
+    const result = await tool('tags.list', {});
+    state.tagTree = result?.tags || [];
+  } catch {
+    state.tagTree = [];
+  }
+  paintTags();
+  if (state.view === 'tag' && state.tagFilter) loadTagNotes(false);
+}
+
+function scheduleTagsRefresh() {
+  clearTimeout(state.tagsTimer);
+  state.tagsTimer = setTimeout(refreshTags, 900);
+}
+
+function tagsOpen() {
+  return localStorage.getItem('sophy-tags-aberto') !== '0';
+}
+
+function paintTags() {
+  const host = $('#tags-painel');
+  if (!host) return;
+  const tree = state.tagTree || [];
+  host.hidden = !tree.length;
+  if (!tree.length) {
+    host.innerHTML = '';
+    return;
+  }
+  const open = tagsOpen();
+  const row = (node, depth) => `<li><div class="tag-linha${state.view === 'tag' && state.tagFilter === node.path ? ' is-atual' : ''}" style="--nivel:${depth}"><button type="button" class="tag-linha__abrir" data-tag="${escapeHtml(node.path)}" title="Ver as notas com #${escapeHtml(node.path)}">${icon('hash')}<span class="tag-linha__nome">${escapeHtml(node.name)}</span><span class="tag-linha__conta">${node.total}</span></button><button type="button" class="tag-linha__mais" data-tag-menu="${escapeHtml(node.path)}" aria-label="Opções da tag ${escapeHtml(node.name)}">${icon('mais-opcoes')}</button></div>${node.children?.length ? `<ul>${node.children.map((child) => row(child, depth + 1)).join('')}</ul>` : ''}</li>`;
+  host.innerHTML = `<button type="button" class="tags-painel__topo" id="tags-alternar" aria-expanded="${open}">${icon(open ? 'chevron-baixo' : 'chevron-direita')}<span>Tags</span></button>${open ? `<ul class="tags-painel__lista">${tree.map((node) => row(node, 0)).join('')}</ul>` : ''}`;
+  $('#tags-alternar').onclick = () => {
+    localStorage.setItem('sophy-tags-aberto', open ? '0' : '1');
+    paintTags();
+  };
+  host.querySelectorAll('[data-tag]').forEach((button) => {
+    button.onclick = () => showTag(button.dataset.tag);
+  });
+  host.querySelectorAll('[data-tag-menu]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      openTagMenu(button, button.dataset.tagMenu);
+    };
+  });
+  host.querySelectorAll('.tag-linha').forEach((line) => {
+    line.oncontextmenu = (event) => {
+      event.preventDefault();
+      openTagMenu(line, line.querySelector('[data-tag]').dataset.tag);
+    };
+  });
+}
+
+function openTagMenu(anchor, tag) {
+  closeMenus();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `<button type="button" class="menu__item" role="menuitem" data-acao="ver">${icon('hash')} Ver as notas</button><button type="button" class="menu__item" role="menuitem" data-acao="renomear">${icon('renomear')} Renomear tag…</button>`;
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.min(rect.right - 8, window.innerWidth - 220)}px`;
+  menu.style.top = `${rect.bottom + 2}px`;
+  menu.addEventListener('mousedown', (event) => event.stopPropagation());
+  menu.querySelector('[data-acao="ver"]').onclick = () => {
+    closeMenus();
+    showTag(tag);
+  };
+  menu.querySelector('[data-acao="renomear"]').onclick = () => {
+    closeMenus();
+    renameTag(tag);
+  };
+}
+
+async function renameTag(from) {
+  const to = await textDialog({ title: 'Renomear tag', label: `Novo nome para #${from}`, value: from, confirm: 'Renomear' });
+  if (!to || to.replace(/^#/, '').trim() === from) return;
+  const target = to.replace(/^#/, '').trim();
+  const existing = flatTags(state.tagTree || []).some((node) => node.path.toLocaleLowerCase() === target.toLocaleLowerCase());
+  if (existing && !(await confirmDialog(`Já existe #${target}. As notas das duas tags vão ficar juntas em #${target}.`, { confirm: 'Unir tags' }))) return;
+  try {
+    if (!(await flushNote())) return;
+    await tool('tag.rename', { from, to: target });
+    if (state.tagFilter === from) state.tagFilter = target;
+    await refreshLibrary();
+    if (state.active) await openNote(state.active, { force: true });
+    paintTree();
+    toast(existing ? `#${from} foi unida a #${target}.` : `#${from} agora é #${target}.`, 'ok', { label: 'Desfazer', onClick: () => undoLastAction('Renomeação desfeita.').then(refreshTags) });
+    if (state.view === 'tag') showTag(state.tagFilter);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+function flatTags(nodes) {
+  return nodes.flatMap((node) => [node, ...flatTags(node.children || [])]);
+}
+
+async function showTag(tag) {
+  state.view = 'tag';
+  state.nav = '';
+  state.tagFilter = tag;
+  state.tagNotes = null;
+  paintCenter();
+  paintTags();
+  await loadTagNotes(true);
+}
+
+async function loadTagNotes(repaint) {
+  const tag = state.tagFilter;
+  try {
+    const result = await tool('tags.notes', { tag, nested: true });
+    state.tagNotes = result?.notes || [];
+  } catch (error) {
+    state.tagNotes = [];
+    toast(error.message, 'erro');
+  }
+  if (repaint !== false || state.view === 'tag') paintCenter();
+}
+
+function paintTagView(center) {
+  const tag = state.tagFilter;
+  const notes = state.tagNotes;
+  if (!notes) {
+    center.innerHTML = `<div class="etiqueta-tela"><header class="etiqueta-tela__topo"><h2>#${escapeHtml(tag)}</h2></header><p class="lixeira__nota" role="status">Carregando…</p></div>`;
+    return;
+  }
+  center.innerHTML = `<div class="etiqueta-tela"><header class="etiqueta-tela__topo"><div><h2><span class="tag-selo">#${escapeHtml(tag)}</span></h2><p class="lixeira__nota">${notes.length} ${notes.length === 1 ? 'nota' : 'notas'}, com as tags filhas.</p></div><button type="button" class="btn btn--secundario" id="tag-renomear">${icon('renomear')} Renomear tag</button></header>${
+    notes.length
+      ? `<ul class="etiqueta-tela__lista">${notes.map((note) => `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('nota')}<span><b>${escapeHtml(note.title || baseName(note.path))}</b><small>${escapeHtml(trashFolder(note.path))}${note.source === 'text' ? ' · no texto' : note.source === 'frontmatter' ? ' · nas propriedades' : ''}</small></span></button></li>`).join('')}</ul>`
+      : '<p class="lixeira__nota">Nenhuma nota usa esta tag agora.</p>'
+  }</div>`;
+  $('#tag-renomear').onclick = () => renameTag(tag);
+  center.querySelectorAll('[data-abrir-nota]').forEach((button) => {
+    button.onclick = () => openNote(button.dataset.abrirNota);
+  });
+}
+
+/* Chips de tag nas Propriedades: o frontmatter é a fonte; o + abre um campo com sugestões. */
+function noteTagList() {
+  const raw = state.frontmatter?.tags;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map((tag) => String(tag).replace(/^#/, '')).filter(Boolean);
+}
+
+function noteTagsRowHtml() {
+  const chips = noteTagList()
+    .map((tag) => `<span class="tag-chip" data-tag-chip="${escapeHtml(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Ver as notas com #${escapeHtml(tag)}">#${escapeHtml(tag)}</button><button type="button" class="tag-chip__tirar" data-tag-tirar="${escapeHtml(tag)}" aria-label="Tirar a tag ${escapeHtml(tag)}">${icon('fechar')}</button></span>`)
+    .join('');
+  return `<div class="propriedade propriedade--tags"><span class="propriedade__nome"><span class="propriedade__tipo" aria-hidden="true">${icon('tag')}</span><span>tags</span></span><div class="propriedade__valor tag-chips">${chips}<span class="tag-chip-novo"><button type="button" class="tag-chip-mais" id="tag-adicionar" aria-label="Adicionar tag" title="Adicionar tag">${icon('mais')}</button></span></div><span></span></div>`;
+}
+
+function bindNoteTags() {
+  const column = $('#coluna');
+  if (!column) return;
+  column.querySelectorAll('[data-tag-ver]').forEach((button) => {
+    button.onclick = () => showTag(button.dataset.tagVer);
+  });
+  column.querySelectorAll('[data-tag-tirar]').forEach((button) => {
+    button.onclick = () => changeNoteTags({ remove: [button.dataset.tagTirar] });
+  });
+  const add = $('#tag-adicionar');
+  if (add)
+    add.onclick = () => {
+      const slot = add.parentElement;
+      slot.innerHTML = '<input id="tag-novo-campo" class="tag-chip-campo" list="tag-sugestoes" placeholder="nova-tag" aria-label="Nova tag" maxlength="60" autocomplete="off"><datalist id="tag-sugestoes"></datalist>';
+      const input = $('#tag-novo-campo');
+      input.focus();
+      const suggest = async () => {
+        try {
+          const result = await tool('tag.suggest', { prefix: input.value.replace(/^#/, ''), limit: 8 });
+          $('#tag-sugestoes').innerHTML = (result?.tags || []).map((item) => `<option value="${escapeHtml(item.name)}"></option>`).join('');
+        } catch {
+          /* sem sugestões, o campo continua valendo */
+        }
+      };
+      suggest();
+      input.oninput = suggest;
+      input.onkeydown = (event) => {
+        if (event.key === 'Escape') paintCenter();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const value = input.value.replace(/^#/, '').trim();
+          if (value) changeNoteTags({ add: [value] });
+          else paintCenter();
+        }
+      };
+      input.onblur = () => setTimeout(() => $('#tag-novo-campo') === input && !input.value.trim() && paintCenter(), 150);
+    };
+}
+
+async function changeNoteTags(change) {
+  if (!state.active) return;
+  try {
+    if (!(await flushNote())) return;
+    await tool('note.tags', { path: state.active, ...change });
+    await openNote(state.active, { force: true });
+    refreshTags();
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+function syncWeekly() {
+  $('#revisao-semana')?.remove();
+  scheduleNotifRefresh();
 }
 
 function paintCenter() {
@@ -2436,6 +2844,7 @@ function paintCenter() {
   }
   bindCodeChrome();
   ensureCodeGrammars();
+  fillMermaid();
   syncNav();
   bindBlockDrag();
   syncWeekly();
@@ -2661,6 +3070,10 @@ function paintCenterBody(center) {
     paintTrash(center);
     return;
   }
+  if (state.view === 'tag') {
+    paintTagView(center);
+    return;
+  }
   if (state.view === 'versions') {
     paintVersions(center);
     return;
@@ -2782,7 +3195,7 @@ function paintCenterBody(center) {
   const strip = dailyStrip(state.active);
   const layout = noteLayout();
   const layoutClasses = [`nota--font-${layout.font}`, layout.small ? 'nota--small' : '', layout.wide ? 'nota--wide' : ''].filter(Boolean).join(' ');
-  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-filha" title="Criar uma página dentro desta">${icon('nota-nova')}<span>Página filha</span></button><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" title="Opções da nota" aria-haspopup="true">${icon('mais-opcoes')}</button></div>`;
+  const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-filha" title="Criar uma página dentro desta">${icon('nota-nova')}<span>Página filha</span></button><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-anexar" title="Anexar imagem ou arquivo (ou arraste para a nota)">${icon('anexo')}<span>Anexar</span></button><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" title="Opções da nota" aria-haspopup="true">${icon('mais-opcoes')}</button></div>`;
   center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}<button type="button" class="nota-adicionar" id="nota-adicionar">${icon('mais')}<span>Adicionar bloco</span><span class="nota-adicionar__dica">ou digite <kbd class="kbd">/</kbd> numa linha vazia</span></button></article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
@@ -2797,9 +3210,12 @@ function paintCenterBody(center) {
   if (noteMore) noteMore.onclick = () => openNoteMenu(noteMore);
   const child = $('#nota-filha');
   if (child) child.onclick = () => createChildPage();
+  const attach = $('#nota-anexar');
+  if (attach) attach.onclick = () => pickAndInsertImages().catch((error) => toast(error.message, 'erro'));
   const addBlock = $('#nota-adicionar');
   if (addBlock) addBlock.onclick = () => insertBlockBelow(Math.max(0, state.doc.blocks.length - 1));
   $('#adicionar-propriedade')?.addEventListener('click', () => openPropertyEditor());
+  bindNoteTags();
   $('#coluna').querySelectorAll('[data-property-edit]').forEach((button) => {
     button.onclick = () => openPropertyEditor(button.dataset.propertyEdit);
   });
@@ -2872,7 +3288,7 @@ function paintCenterBody(center) {
         if (event.dataTransfer.files?.length) {
           event.preventDefault();
           event.stopPropagation();
-          ingestImageBlobs(event.dataTransfer.files).catch((error) => toast(error.message, 'erro'));
+          ingestFileBlobs(event.dataTransfer.files).catch((error) => toast(error.message, 'erro'));
           return;
         }
         const from = Number(event.dataTransfer.getData('application/x-sophy-block'));
@@ -2923,19 +3339,140 @@ function codeLinesOn() {
   }
 }
 
+const MERMAID_SRC = '../node_modules/mermaid/dist/mermaid.min.js';
+let mermaidPromise = null;
+let mermaidCounter = 0;
+
+function isMermaidInfo(info) {
+  return Code.resolveLanguage(info).token.toLowerCase() === 'mermaid';
+}
+
+/* A biblioteca só é baixada do disco quando a nota tem um bloco ```mermaid. */
+function loadMermaid() {
+  if (window.mermaid) return Promise.resolve(window.mermaid);
+  if (!mermaidPromise) {
+    mermaidPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = MERMAID_SRC;
+      script.onload = () => (window.mermaid ? resolve(window.mermaid) : reject(new Error('A biblioteca de diagramas não carregou.')));
+      script.onerror = () => {
+        mermaidPromise = null;
+        reject(new Error('A biblioteca de diagramas não está disponível.'));
+      };
+      document.head.append(script);
+    });
+  }
+  return mermaidPromise;
+}
+
+function mermaidTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const dark = themeName() === 'dark';
+  return {
+    darkMode: dark,
+    background: token('--surface', dark ? '#1c1b22' : '#ffffff'),
+    primaryColor: token('--accent-soft', dark ? '#2b2a4a' : '#e8e8fb'),
+    primaryTextColor: token('--ink', dark ? '#f2f1f6' : '#1c1b22'),
+    primaryBorderColor: token('--accent', '#4f46b8'),
+    secondaryColor: token('--hover', dark ? '#2a2931' : '#efeef3'),
+    tertiaryColor: token('--surface', dark ? '#1c1b22' : '#ffffff'),
+    lineColor: token('--ink-3', '#6e6c7a'),
+    textColor: token('--ink', dark ? '#f2f1f6' : '#1c1b22'),
+    noteBkgColor: token('--hover-subtle', dark ? '#25242b' : '#f6f5f9'),
+    noteTextColor: token('--ink', dark ? '#f2f1f6' : '#1c1b22'),
+    fontFamily: token('--font-ui', 'Inter, system-ui, sans-serif'),
+  };
+}
+
+async function fillMermaid() {
+  const hosts = [...document.querySelectorAll('.codigo--mermaid')];
+  if (!hosts.length) return;
+  let mermaid;
+  try {
+    mermaid = await loadMermaid();
+  } catch (error) {
+    for (const wrap of hosts) paintMermaidError(wrap, error.message);
+    return;
+  }
+  const theme = themeName();
+  if (state.mermaidTheme !== theme) {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: mermaidTheme(), suppressErrorRendering: true });
+    state.mermaidTheme = theme;
+    state.mermaidCache = {};
+  }
+  state.mermaidCache ||= {};
+  for (const wrap of hosts) {
+    const target = wrap.querySelector('.codigo__diagrama');
+    const pre = wrap.querySelector('pre.bloco--codigo');
+    if (!target || !pre || wrap.dataset.vista === 'codigo') continue;
+    const source = pre.textContent.trim();
+    if (!source) {
+      target.innerHTML = '<p class="diagrama__vazio">Diagrama vazio. Mostre o código e escreva a descrição para ver o desenho.</p>';
+      continue;
+    }
+    if (state.mermaidCache[source]) {
+      target.innerHTML = state.mermaidCache[source];
+      target.dataset.estado = 'pronto';
+      continue;
+    }
+    const id = `sophy-mmd-${++mermaidCounter}`;
+    try {
+      await mermaid.parse(source);
+      const { svg } = await mermaid.render(id, source);
+      state.mermaidCache[source] = svg;
+      target.innerHTML = svg;
+      target.dataset.estado = 'pronto';
+    } catch (error) {
+      document.getElementById(`d${id}`)?.remove();
+      document.getElementById(id)?.remove();
+      paintMermaidError(wrap, String(error?.message || error));
+    }
+  }
+}
+
+function paintMermaidError(wrap, detail) {
+  const target = wrap.querySelector('.codigo__diagrama');
+  if (!target) return;
+  target.dataset.estado = 'erro';
+  const first = String(detail || '').split('\n').find((line) => line.trim()) || '';
+  target.innerHTML = `<div class="diagrama__erro" role="alert"><b>Não deu para desenhar este diagrama.</b><p>Confira a sintaxe do bloco. O código continua intacto na nota.</p>${first ? `<small>${escapeHtml(first.slice(0, 160))}</small>` : ''}<button type="button" class="btn btn--secundario btn--pequeno" data-mermaid-view="codigo">Ver o código</button></div>`;
+}
+
+function setMermaidView(wrap, view) {
+  const index = Number(wrap.querySelector('pre.bloco--codigo')?.dataset.block);
+  state.mermaidView ||= {};
+  state.mermaidView[index] = view;
+  wrap.dataset.vista = view;
+  wrap.querySelectorAll('[data-mermaid-view]').forEach((button) => {
+    if (button.closest('.codigo__alternar')) button.setAttribute('aria-pressed', button.dataset.mermaidView === view ? 'true' : 'false');
+  });
+  if (view === 'diagrama') fillMermaid();
+  else wrap.querySelector('pre.bloco--codigo')?.focus();
+}
+
 function renderCodeBlock(block, index) {
   const parts = Doc.codeParts(block.raw);
   const source = parts.body;
   const info = parts.info || '';
+  const blockName = Code.parseInfo(info).title;
   const linesOn = codeLinesOn();
   const highlighted = Code.highlight(source, info, window.Prism);
   const nums = source.split('\n').map((_, line) => String(line + 1)).join('\n');
-  return `<div class="codigo${linesOn ? ' codigo--linhas' : ''}">
+  const mermaid = isMermaidInfo(info);
+  const view = mermaid ? (state.mermaidView?.[index] || 'diagrama') : '';
+  const toggle = mermaid
+    ? `<span class="codigo__alternar" role="group" aria-label="Mostrar"><button type="button" data-mermaid-view="diagrama" aria-pressed="${view === 'diagrama'}">Diagrama</button><button type="button" data-mermaid-view="codigo" aria-pressed="${view === 'codigo'}">Código</button></span>`
+    : '';
+  return `<div class="codigo${linesOn ? ' codigo--linhas' : ''}${mermaid ? ' codigo--mermaid' : ''}"${mermaid ? ` data-vista="${view}"` : ''}>
     <div class="codigo__barra">
+      <label class="codigo__nome">${icon('codigo')}<input type="text" class="codigo__nome-campo" data-code-name="${index}" value="${escapeHtml(blockName)}" maxlength="80" placeholder="Nome do bloco" aria-label="Nome do bloco de código" spellcheck="false"></label>
+      ${toggle}
       <button type="button" class="codigo__acao" data-code-lines aria-pressed="${linesOn ? 'true' : 'false'}">Linhas</button>
       <button type="button" class="codigo__acao" data-code-copy="${index}">Copiar</button>
       <button type="button" class="codigo__lingua" data-code-lang="${index}" aria-haspopup="listbox" aria-label="Linguagem do bloco" title="Trocar a linguagem">${icon('codigo')}<span class="codigo__lingua-nome">${escapeHtml(Code.labelFor(info))}</span>${icon('chevron-baixo')}</button>
     </div>
+    ${mermaid ? '<div class="codigo__diagrama" aria-label="Diagrama" role="img"><p class="diagrama__vazio">Desenhando…</p></div>' : ''}
     <div class="codigo__rolagem">
       <pre class="codigo__nums" aria-hidden="true">${escapeHtml(nums)}</pre>
       <div class="codigo__camada">
@@ -2961,9 +3498,30 @@ function bindCodeChrome() {
   if (!center || center.dataset.codeChrome) return;
   center.dataset.codeChrome = '1';
   center.addEventListener('click', onCodeChromeClick);
+  center.addEventListener('change', (event) => {
+    const field = event.target.closest?.('[data-code-name]');
+    if (field) setCodeName(Number(field.dataset.codeName), field.value);
+  });
+  center.addEventListener('keydown', (event) => {
+    const field = event.target.closest?.('[data-code-name]');
+    if (!field) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      field.blur();
+    } else if (event.key === 'Escape') {
+      field.value = Code.parseInfo(state.doc?.blocks[Number(field.dataset.codeName)] ? Doc.codeParts(state.doc.blocks[Number(field.dataset.codeName)].raw).info : '').title;
+      field.blur();
+    }
+  });
 }
 
 function onCodeChromeClick(event) {
+  const view = event.target.closest('[data-mermaid-view]');
+  if (view) {
+    event.preventDefault();
+    setMermaidView(view.closest('.codigo--mermaid'), view.dataset.mermaidView);
+    return;
+  }
   const lang = event.target.closest('[data-code-lang]');
   if (lang) {
     event.preventDefault();
@@ -3013,11 +3571,27 @@ async function copyCode(index) {
   toast('Copiado');
 }
 
-function setCodeLanguage(index, info) {
+/* Só o nome muda: linguagem e corpo ficam como estão na cerca. */
+function setCodeName(index, name) {
   const pre = document.querySelector(`pre.bloco--codigo[data-block="${index}"]`);
   const block = state.doc?.blocks[index];
   if (!pre || !block || block.type !== 'code') return;
   const parts = Doc.codeParts(rawFromEditor(pre, block));
+  const info = Code.composeInfo(Code.parseInfo(parts.info).rest, name);
+  if (info === parts.info) return;
+  state.doc = Doc.withBlockRaw(state.doc, index, Doc.codeRaw(parts.fence, info, parts.body));
+  pre.dataset.info = info;
+  const field = pre.closest('.codigo')?.querySelector('[data-code-name]');
+  if (field) field.value = Code.parseInfo(info).title;
+  scheduleSave();
+}
+
+function setCodeLanguage(index, language) {
+  const pre = document.querySelector(`pre.bloco--codigo[data-block="${index}"]`);
+  const block = state.doc?.blocks[index];
+  if (!pre || !block || block.type !== 'code') return;
+  const parts = Doc.codeParts(rawFromEditor(pre, block));
+  const info = Code.composeInfo(language, Code.parseInfo(parts.info).title);
   state.doc = Doc.withBlockRaw(state.doc, index, Doc.codeRaw(parts.fence, info, parts.body));
   pre.dataset.info = info;
   const button = pre.closest('.codigo')?.querySelector('.codigo__lingua');
@@ -4766,6 +5340,7 @@ document.addEventListener(
 );
 
 function markSaved() {
+  scheduleTagsRefresh();
   const status = $('#st-estado');
   if (status) status.textContent = 'Salvo';
   const mark = $('#st-anim');
@@ -5103,6 +5678,8 @@ function isImageEmbedTarget(target) {
   return /\.(png|jpe?g|webp|gif|svg)$/i.test(String(target || '').split('|')[0].trim());
 }
 
+const ATTACHMENT_FOLDER = 'Anexos';
+
 function attachmentFolderForActiveNote() {
   if (!state.active || !state.active.includes('/')) return '';
   return state.active.slice(0, state.active.lastIndexOf('/'));
@@ -5137,6 +5714,10 @@ async function fillEmbeds() {
       continue;
     }
     figure.classList.remove('embed--imagem');
+    if (/^Anexos\//.test(resolveEmbedPath(target)) && !/\.md$/i.test(target.split('|')[0])) {
+      paintAttachmentCard(figure, body, resolveEmbedPath(target));
+      continue;
+    }
     const path = target.endsWith('.md') ? target : `${target}.md`;
     try {
       const note = await tool('note.read', { path });
@@ -5145,6 +5726,144 @@ async function fillEmbeds() {
       body.textContent = 'Anexo ou nota ainda não encontrada.';
     }
   }
+}
+
+async function paintAttachmentsSettings() {
+  const host = $('#cfg-anexos-conteudo');
+  if (!host) return;
+  let list;
+  try {
+    list = await tool('attachment.list', {});
+  } catch (error) {
+    if ($('#cfg-anexos-conteudo') === host)
+      host.innerHTML = `<p class="config__ajuda">${/desconhecida/i.test(error.message) ? 'A lista de anexos chega com a atualização do motor (PR 32).' : escapeHtml(error.message)}</p>`;
+    return;
+  }
+  if ($('#cfg-anexos-conteudo') !== host) return;
+  const total = list.reduce((sum, item) => sum + (item.size || 0), 0);
+  const orphans = list.filter((item) => !item.usedBy?.length).length;
+  const bar = `<div class="anexos__barra"><span>${list.length ? `${list.length} ${list.length === 1 ? 'arquivo' : 'arquivos'} · ${sizeLabel(total)}${orphans ? ` · ${orphans} sem uso` : ''}` : 'Nenhum anexo ainda'}</span><button type="button" class="btn btn--secundario btn--pequeno" id="anexos-anexar">${icon('mais')} Anexar arquivo</button></div>`;
+  if (!list.length) {
+    host.innerHTML = `${bar}<p class="anexos__vazio">Arraste um arquivo para dentro de uma nota, ou use Anexar. Ele aparece aqui, com as notas que o usam.</p>`;
+  } else {
+    host.innerHTML = `${bar}<ul class="anexos__lista">${list
+      .map(
+        (item, index) => `<li class="anexos__item${item.usedBy?.length ? '' : ' is-orfao'}"><span class="anexos__icone">${icon(item.mime?.startsWith('image/') ? 'imagem' : 'anexo')}</span><span class="anexos__texto"><b title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</b><small>${item.usedBy?.length ? `Usado em: ${item.usedBy.map((note) => `<button type="button" class="anexos__nota" data-abrir-nota="${escapeHtml(note)}">${escapeHtml(baseName(note))}</button>`).join(', ')}` : 'Nenhuma nota usa este arquivo'}</small></span>${item.usedBy?.length ? '' : '<span class="chip anexos__selo">Sem uso</span>'}<span class="anexos__tamanho">${sizeLabel(item.size || 0)}</span><button type="button" class="btn btn--secundario" data-abrir-anexo="${index}">Abrir</button></li>`,
+      )
+      .join('')}</ul>`;
+    host.querySelectorAll('[data-abrir-anexo]').forEach((button) => {
+      button.onclick = () => openAttachmentFile(list[Number(button.dataset.abrirAnexo)].path).catch((error) => toast(error.message, 'erro'));
+    });
+    host.querySelectorAll('[data-abrir-nota]').forEach((button) => {
+      button.onclick = () => openNote(button.dataset.abrirNota);
+    });
+  }
+  const attach = $('#anexos-anexar');
+  if (attach)
+    attach.onclick = async () => {
+      try {
+        const picked = await sophy.chooseFiles();
+        if (!picked?.ok) throw new Error(picked?.error || 'Não foi possível abrir o seletor.');
+        const paths = picked.value || [];
+        if (!paths.length) return;
+        await importAttachmentFiles(paths.map((path) => ({ path })));
+        toast(paths.length === 1 ? 'Arquivo anexado à biblioteca.' : `${paths.length} arquivos anexados à biblioteca.`);
+        paintAttachmentsSettings();
+      } catch (error) {
+        toast(error.message, 'erro');
+      }
+    };
+}
+
+/* Markdown sem o id, com os anexos citados gravados ao lado (Anexos/…). Quem grava é o main. */
+async function exportNoteMarkdown() {
+  if (!state.active || !state.doc) {
+    toast('Abra uma nota para exportar o Markdown.', 'erro');
+    return;
+  }
+  if (typeof sophy.exportMarkdown !== 'function') {
+    toast('Exportar Markdown chega com a atualização do back (PR 32).', 'erro');
+    return;
+  }
+  if (!(await flushNote())) return;
+  const result = await tool('note.export', { path: state.active, format: 'md' });
+  const response = await sophy.exportMarkdown(result);
+  // O main devolve { ok, value } quando passa por handle(); o contrato do PR 32 descreve o próprio value.
+  const saved = response && typeof response.value === 'object' && response.value ? response.value : response;
+  if (response?.ok === false && !saved?.path) {
+    toast(response.error || 'Não deu para exportar o Markdown.', 'erro');
+    return;
+  }
+  if (saved?.canceled) return;
+  if (saved?.error || saved?.ok === false) {
+    toast(saved.error || 'Não deu para exportar o Markdown.', 'erro');
+    return;
+  }
+  const where = String(saved?.path || '');
+  const folder = where.replace(/[/\\][^/\\]*$/, '');
+  const extra = saved?.written > 1 ? ` e ${saved.written - 1} ${saved.written - 1 === 1 ? 'anexo' : 'anexos'}` : '';
+  toast(`Markdown exportado${extra}.`, 'ok', folder
+    ? { label: 'Mostrar na pasta', onClick: () => sophy.libraryReveal(folder) }
+    : null);
+  pushNotification({
+    type: 'exportacao',
+    title: 'Markdown exportado',
+    body: `“${baseName(state.active)}”${extra ? ` e anexos` : ''} foram gravados em ${folder || 'a pasta escolhida'}.`,
+    action: folder ? { label: 'Mostrar na pasta', kind: 'reveal', arg: folder } : null,
+  });
+}
+
+async function exportNotePdf() {
+  if (!state.active || !state.doc) {
+    toast('Abra uma nota para exportar o PDF.', 'erro');
+    return;
+  }
+  if (!(await flushNote())) return;
+  let result;
+  try {
+    result = await tool('note.export', { path: state.active, format: 'pdf' });
+  } catch (error) {
+    if (/desconhecida/i.test(error.message)) return openExport('pdf');
+    toast(error.message, 'erro');
+    return;
+  }
+  const saved = await sophy.exportPdf(result.content);
+  if (exportDone(saved)) {
+    toast('PDF em papel claro.');
+    pushNotification({ type: 'exportacao', title: 'PDF exportado', body: `“${baseName(state.active)}” foi salvo em papel claro.` });
+  }
+}
+
+async function openAttachmentFile(path) {
+  if (typeof sophy.openAttachment !== 'function') {
+    toast('Abrir anexos precisa da versão com o PR 32 do back.', 'erro');
+    return;
+  }
+  const result = await sophy.openAttachment(path);
+  if (result && result.ok === false) toast(result.error || 'Não deu para abrir o arquivo.', 'erro');
+}
+
+async function paintAttachmentCard(figure, body, path) {
+  figure.classList.add('embed--arquivo');
+  const name = baseNameOf(path);
+  let meta = 'Arquivo';
+  try {
+    const list = await tool('attachment.list', {});
+    const info = list.find((item) => item.path === path);
+    if (info) meta = `${attachmentKind(info)} · ${sizeLabel(info.size)}`;
+    else meta = 'Arquivo não encontrado';
+  } catch {
+    /* sem lista, o cartão mostra só o nome */
+  }
+  body.innerHTML = `<span class="arquivo__icone">${icon('anexo')}</span><span class="arquivo__texto"><b>${escapeHtml(name)}</b><small>${escapeHtml(meta)}</small></span><button type="button" class="btn btn--secundario" data-abrir-anexo="${escapeHtml(path)}">Abrir</button>`;
+  body.querySelector('[data-abrir-anexo]').onclick = () => openAttachmentFile(path).catch((error) => toast(error.message, 'erro'));
+}
+
+function attachmentKind(info) {
+  const ext = (info.name.split('.').pop() || '').toLowerCase();
+  if (info.mime?.startsWith('image/')) return 'Imagem';
+  if (ext === 'pdf') return 'PDF';
+  return ext ? ext.toUpperCase() : 'Arquivo';
 }
 
 function insertEmbedBlocks(paths) {
@@ -5168,8 +5887,7 @@ function insertEmbedBlocks(paths) {
 
 async function importAttachmentFiles(files) {
   if (!files.length) return [];
-  const folder = attachmentFolderForActiveNote();
-  const added = await tool('attachment.import', { folder, files });
+  const added = await tool('attachment.import', { folder: ATTACHMENT_FOLDER, files });
   await refreshLibrary();
   return added.map((item) => item.path);
 }
@@ -5187,27 +5905,46 @@ async function pickAndInsertImages() {
   insertEmbedBlocks(imported);
 }
 
-async function ingestImageBlobs(fileList) {
-  const images = [...fileList].filter((file) => /^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name || ''));
-  if (!images.length) return false;
+async function fileToImport(file, fallback) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { name: file.name || fallback, dataBase64: btoa(binary) };
+}
+
+async function ingestFiles(list, { onlyImages }) {
+  const all = [...list];
+  const files = onlyImages ? all.filter((file) => /^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name || '')) : all;
+  if (!files.length) return false;
   if (!state.active || !state.doc) {
-    toast('Abra uma nota para inserir imagens.', 'erro');
+    toast('Abra uma nota para anexar arquivos.', 'erro');
     return true;
   }
-  const files = [];
-  for (const file of images) {
-    const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    files.push({
-      name: file.name || `imagem-${Date.now()}.png`,
-      dataBase64: btoa(binary),
-    });
+  const tooBig = files.find((file) => file.size > 25 * 1024 * 1024);
+  if (tooBig) {
+    toast(`“${tooBig.name}” passa de 25 MB, o limite de um anexo.`, 'erro');
+    return true;
   }
-  const imported = await importAttachmentFiles(files);
+  const payload = [];
+  for (const file of files) payload.push(await fileToImport(file, `arquivo-${Date.now()}`));
+  const imported = await importAttachmentFiles(payload);
   insertEmbedBlocks(imported);
+  toast(imported.length === 1 ? `“${baseNameOf(imported[0])}” anexado.` : `${imported.length} arquivos anexados.`);
   return true;
+}
+
+function baseNameOf(file) {
+  return String(file).split('/').pop();
+}
+
+/* Colar só aceita imagem, para não sequestrar o texto copiado. Soltar aceita qualquer arquivo. */
+function ingestImageBlobs(fileList) {
+  return ingestFiles(fileList, { onlyImages: true });
+}
+
+function ingestFileBlobs(fileList) {
+  return ingestFiles(fileList, { onlyImages: false });
 }
 
 function paintLinks() {
@@ -6013,13 +6750,17 @@ function sofiNoteTitle() {
 
 function sofiStatusText() {
   if (state.sofiKey === false) return ['Sem chave', 'sem-chave'];
-  if (state.sofiBusy) return ['Pensando…', 'pensando'];
+  if (state.sofiBusy && state.sofiConfirms?.length) return ['Aguardando você…', 'pensando'];
+  if (state.sofiBusy) return [state.sofiPhase || 'Pensando…', 'pensando'];
   if (state.sofiMood === 'erro') return ['Algo deu errado', 'erro'];
   return ['Pronta', 'pronta'];
 }
 
 function syncSofiSend() {
   const send = $('#agente-enviar');
+  const stop = $('#agente-parar');
+  if (stop) stop.hidden = !state.sofiBusy;
+  if (send) send.hidden = Boolean(state.sofiBusy);
   if (send) send.disabled = Boolean(state.sofiBusy) || state.sofiKey === false || !($('#agente-pedido')?.value || '').trim();
 }
 
@@ -6068,7 +6809,7 @@ function sofiMessageHtml(message) {
   const actions = (message.actions || [])
     .map(
       (action, index) =>
-        `<div class="sofi-acao"><span class="sofi-acao__selo">${icon('check')}</span><span class="sofi-acao__texto"><b>${escapeHtml(action.label || 'Ação feita')}</b>${action.detail ? `<small>${escapeHtml(action.detail)}</small>` : ''}</span>${action.versionId ? `<button type="button" class="btn btn--fantasma btn--pequeno" data-desfazer="${escapeHtml(action.versionId)}" data-msg="${message.id}" data-acao="${index}">${icon('desfazer')} Desfazer</button>` : ''}</div>`,
+        `<div class="sofi-acao${action.ok === false ? ' is-falhou' : ''}"><span class="sofi-acao__selo">${icon(action.ok === false ? 'erro' : 'check')}</span><span class="sofi-acao__texto"><b>${escapeHtml(action.label || 'Ação feita')}</b>${action.error ? `<small>${escapeHtml(action.error)}</small>` : action.detail ? `<small>${escapeHtml(action.detail)}</small>` : ''}</span>${action.versionId && action.ok !== false ? `<button type="button" class="btn btn--fantasma btn--pequeno" data-desfazer="${escapeHtml(action.versionId)}" data-msg="${message.id}" data-acao="${index}">${icon('desfazer')} Desfazer</button>` : ''}</div>`,
     )
     .join('');
   return `<div class="sofi-msg sofi-msg--sofi${message.error ? ' is-erro' : ''}"><p>${escapeHtml(message.text)}</p>${actions}</div>`;
@@ -6083,8 +6824,20 @@ function renderSofiMessages() {
   list.innerHTML =
     chat.map(sofiMessageHtml).join('') +
     (state.sofiBusy
-      ? '<div class="sofi-msg sofi-msg--sofi sofi-msg--digitando" role="status" aria-label="A Sofi está escrevendo"><span class="digitando"><i></i><i></i><i></i></span></div>'
-      : '');
+      ? `<div class="sofi-msg sofi-msg--sofi sofi-msg--digitando" role="status" aria-label="A Sofi está escrevendo"><span class="digitando"><i></i><i></i><i></i></span>${state.sofiPhase && state.sofiPhase !== 'Pensando…' ? `<span class="sofi-fase">${escapeHtml(state.sofiPhase)}</span>` : ''}</div>`
+      : '') +
+    (state.sofiConfirms || [])
+      .map(
+        (ask) =>
+          `<div class="sofi-confirma" role="group" aria-label="Confirmação da Sofi" data-confirma="${escapeHtml(ask.confirmId)}"><span class="sofi-confirma__icone">${icon('cadeado')}</span><div class="sofi-confirma__texto"><b>${escapeHtml(ask.label || 'A Sofi quer fazer uma ação.')}</b><small>Ela só continua se você permitir.</small></div><div class="sofi-confirma__acoes"><button type="button" class="btn btn--secundario btn--pequeno" data-confirma-recusar="${escapeHtml(ask.confirmId)}">Recusar</button><button type="button" class="btn btn--primario btn--pequeno" data-confirma-permitir="${escapeHtml(ask.confirmId)}">Permitir</button></div></div>`,
+      )
+      .join('');
+  list.querySelectorAll('[data-confirma-permitir], [data-confirma-recusar]').forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.confirmaPermitir || button.dataset.confirmaRecusar;
+      answerSofiConfirm(id, Boolean(button.dataset.confirmaPermitir));
+    };
+  });
   list.querySelectorAll('[data-desfazer]').forEach((button) => {
     button.onclick = async () => {
       button.disabled = true;
@@ -6099,11 +6852,69 @@ function renderSofiMessages() {
       } catch (error) {
         button.disabled = false;
         toast(`Não deu para desfazer: ${error.message}`, 'erro');
+        if (/já foi desfeita/i.test(error.message)) {
+          button.closest('.sofi-acao')?.classList.add('is-desfeita');
+          button.remove();
+        }
       }
     };
   });
   const scroller = $('#agente-rolagem');
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
+}
+
+function answerSofiConfirm(confirmId, allow) {
+  state.sofiConfirms = (state.sofiConfirms || []).filter((ask) => ask.confirmId !== confirmId);
+  syncSofiHeader();
+  renderSofiMessages();
+  try {
+    sophy.agentConfirmReply?.(confirmId, allow);
+  } catch {
+    /* o turno resolve a recusa sozinho depois do prazo */
+  }
+}
+
+async function stopSofi() {
+  try {
+    await sophy.agentCancel?.();
+  } catch {
+    /* sem turno ativo */
+  }
+}
+
+let sofiHooked = false;
+function hookSofiEvents() {
+  if (sofiHooked) return;
+  sofiHooked = true;
+  sophy.onAgentProgress?.((event) => {
+    if (!state.sofiBusy) return;
+    state.sofiPhase = event.phase === 'tool' && event.label ? `${event.label}…`.replace(/…+$/, '…') : event.phase === 'thinking' ? state.sofiPhase || 'Pensando…' : state.sofiPhase;
+    syncSofiHeader();
+    renderSofiMessages();
+  });
+  sophy.onAgentConfirm?.((ask) => {
+    state.sofiConfirms = [...(state.sofiConfirms || []).filter((item) => item.confirmId !== ask.confirmId), ask];
+    if (!state.sofiOpen) openAgent();
+    syncSofiHeader();
+    renderSofiMessages();
+  });
+  // a seleção some quando o foco vai para o campo da Sofi, então guardo a última
+  document.addEventListener('selectionchange', () => {
+    const selection = getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const block = selection.anchorNode?.parentElement?.closest?.('.bloco[data-block]');
+    if (!block || !state.active) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    const blocks = [...document.querySelectorAll('.bloco[data-block]')];
+    const range = selection.getRangeAt(0);
+    const before = blocks.slice(0, blocks.indexOf(block)).reduce((sum, item) => sum + item.textContent.length + 1, 0);
+    const lead = document.createRange();
+    lead.selectNodeContents(block);
+    lead.setEnd(range.startContainer, range.startOffset);
+    const from = before + lead.toString().length;
+    state.editorSelection = { path: state.active, text, from, to: from + selection.toString().length };
+  });
 }
 
 async function sendSofi(raw) {
@@ -6120,18 +6931,37 @@ async function sendSofi(raw) {
   state.sofiMood = 'ocioso';
   syncSofiHeader();
   renderSofiMessages();
-  const withContext = state.active && state.sofiContext !== false ? `Contexto: a nota atual é “${state.active}”.\n\n${text}` : text;
+  const context = {};
+  if (state.active && state.sofiContext !== false) {
+    context.notePath = state.active;
+    if (state.editorSelection?.path === state.active && state.editorSelection.text) {
+      const { text: picked, from, to } = state.editorSelection;
+      context.selection = { text: picked, from, to };
+    }
+  }
+  state.sofiConfirms = [];
+  state.sofiPhase = '';
   let response;
   try {
-    response = await sophy.agentAsk(withContext);
+    response = await sophy.agentAsk(text, context);
   } catch (error) {
     response = { ok: false, error: error.message };
   }
   state.sofiBusy = false;
+  state.sofiConfirms = [];
+  state.sofiPhase = '';
+  const canceled = Boolean(response.ok && response.value?.canceled);
+  if (!response.ok && response.code === 'sem_chave') {
+    state.sofiKey = false;
+    state.sofiMood = 'ocioso';
+    const host = $('.sofi-chat')?.parentElement;
+    if (host) paintSofi(host, true);
+    return;
+  }
   state.sofiMood = response.ok ? 'pronta' : 'erro';
   state.sofiChat.push(
     response.ok
-      ? { role: 'sofi', id: Date.now(), text: response.value.text || 'Pronto.', actions: response.value.actions || [] }
+      ? { role: 'sofi', id: Date.now(), text: canceled ? 'Pedido cancelado.' : response.value.text || 'Pronto.', actions: response.value.actions || [] }
       : { role: 'sofi', id: Date.now(), error: true, text: `Não consegui responder: ${response.error || 'tente de novo em instantes.'}` },
   );
   if (response.ok) {
@@ -6141,6 +6971,13 @@ async function sendSofi(raw) {
   syncSofiHeader();
   renderSofiMessages();
   $('#agente-pedido')?.focus();
+  if (!state.sofiOpen && !canceled)
+    pushNotification({
+      type: 'sofi',
+      title: response.ok ? 'A Sofi terminou' : 'A Sofi não conseguiu responder',
+      body: response.ok ? String(response.value.text || 'Pedido concluído.').slice(0, 120) : String(response.error || 'Tente de novo em instantes.'),
+      action: { label: 'Abrir a Sofi', kind: 'sofi' },
+    });
 }
 
 function newSofiChat() {
@@ -6161,6 +6998,7 @@ function openSofiSettings() {
 }
 
 function paintSofi(host, force = false) {
+  hookSofiEvents();
   host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
   state.sofiChat ||= [];
@@ -6197,6 +7035,7 @@ function paintSofi(host, force = false) {
       <div class="sofi-campo">
         <textarea id="agente-pedido" rows="1" aria-label="Mensagem para a Sofi" placeholder="${noKey ? 'Conecte a Sofi para escrever…' : 'Pergunte ou peça algo à Sofi…'}" ${noKey ? 'disabled' : ''}></textarea>
         <button type="submit" class="btn btn--primario btn--icone sofi-campo__enviar" id="agente-enviar" aria-label="Enviar" title="Enviar (Enter)">${icon('enviar')}</button>
+        <button type="button" class="btn btn--secundario sofi-campo__parar" id="agente-parar" aria-label="Parar" title="Parar o pedido" hidden>${icon('fechar')} Parar</button>
       </div>
       <p class="sofi-chat__dica">Enter envia · Shift+Enter quebra a linha</p>
     </form>
@@ -6226,6 +7065,7 @@ function paintSofi(host, force = false) {
   host.querySelectorAll('[data-sugestao]').forEach((button) => {
     button.onclick = () => sendSofi(button.dataset.sugestao);
   });
+  $('#agente-parar').onclick = () => stopSofi();
   $('#agente-nova').onclick = () => newSofiChat();
   $('#agente-fechar').onclick = () => closeSofi();
   const connect = $('#agente-conectar');
@@ -6651,7 +7491,10 @@ function openExport(kind) {
       }
       const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>html{background:#fff;color:#1c1b22}body{font:18px/1.5 Georgia,serif;margin:48px auto;max-width:680px}h1,h2,h3{font-family:Georgia,serif}</style></head><body><h1>${escapeHtml(title)}</h1>${(state.doc?.blocks || []).map(blockPreview).join('')}</body></html>`;
       const saved = await sophy.exportPdf(html);
-      if (saved) toast('PDF em papel claro.');
+      if (exportDone(saved)) {
+        toast('PDF em papel claro.');
+        pushNotification({ type: 'exportacao', title: 'PDF exportado', body: `“${title}” foi salvo em papel claro.` });
+      }
       return;
     }
     const folder = await pickedFolder();
@@ -6660,6 +7503,7 @@ function openExport(kind) {
     try {
       const result = await tool('site.export', { destination: folder, theme });
       toast(`Site com ${result.pages} página(s), no tema ${theme}.`);
+      pushNotification({ type: 'exportacao', title: 'Site exportado', body: `${result.pages} página(s), no tema ${theme}.`, action: { label: 'Mostrar na pasta', kind: 'reveal', arg: folder } });
     } catch (error) {
       toast(error.message, 'erro');
     }
@@ -7980,6 +8824,7 @@ async function toggleTheme() {
   const button = $('#tema');
   if (button) button.innerHTML = icon(next === 'dark' ? 'tema-claro' : 'tema-escuro');
   paintStatus();
+  fillMermaid();
 }
 
 async function applyCommand(command) {
