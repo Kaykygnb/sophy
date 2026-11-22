@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { withAuthor } from './call-context.ts';
 import { EngineError } from './errors.ts';
+import { isReadOnlyTool } from './permissions.ts';
 import { callTool, tools, trackedVersionId, type Tool } from './tools.ts';
 
 type FetchInit = {
@@ -107,9 +109,17 @@ const DEFAULT_STEPS = 8;
 
 type Phrase = { progress: string; done: string; failed: string; denied: string };
 
-export function agentTools() {
+/**
+ * Modo da Sofi. O PR 8 (`fernando/pr8-sofi-provedores`) ainda não está nesta base:
+ * `runAgentTurn` continua no modo agente. Quando o modo Pergunta existir, ele deve
+ * oferecer `sofiTools('pergunta')` — a mesma lista somente leitura de `isReadOnlyTool`,
+ * sem `ui.*` e sem nomes de segredo. `activity.undo` fica só no modo agente.
+ */
+export type SofiMode = 'pergunta' | 'agente';
+
+export function sofiTools(mode: SofiMode = 'agente') {
   return tools
-    .filter((tool) => offered(tool.name))
+    .filter((tool) => (mode === 'pergunta' ? pergunta(tool.name) : offered(tool.name)))
     .map((tool) => ({
       type: 'function' as const,
       function: {
@@ -118,6 +128,14 @@ export function agentTools() {
         parameters: parametersOf(tool),
       },
     }));
+}
+
+export function agentTools() {
+  return sofiTools('agente');
+}
+
+function pergunta(name: string) {
+  return isReadOnlyTool(name) && !name.startsWith('ui.') && !blocked.test(name);
 }
 
 function offered(name: string) {
@@ -132,6 +150,7 @@ export function agentConfirmation(name: string, args: Record<string, unknown>) {
   if (name === 'version.restore') return 'Restaurar um ponto antigo por cima da biblioteca?';
   if (name === 'history.undo') return 'Desfazer a última ação da biblioteca?';
   if (name === 'agent.undo') return 'Desfazer essa ação da biblioteca?';
+  if (name === 'activity.undo') return 'Desfazer essa atividade da biblioteca?';
   if (name === 'trash.restore') return 'Restaurar este item da lixeira?';
   if (name === 'trash.purge') return 'Apagar de vez este item da lixeira?';
   if (name === 'trash.empty') return 'Esvaziar a lixeira da biblioteca?';
@@ -200,6 +219,12 @@ export function agentActionPhrase(tool: string, input: Record<string, unknown>):
     return said('Desfazendo', 'Desfez', 'Não desfez', 'Recusou desfazer', 'a última ação');
   if (tool === 'agent.undo')
     return said('Desfazendo', 'Desfez', 'Não desfez', 'Recusou desfazer', 'uma ação');
+  if (tool === 'activity.undo')
+    return said('Desfazendo', 'Desfez', 'Não desfez', 'Recusou desfazer', 'uma atividade');
+  if (tool === 'activity.list')
+    return said('Listando', 'Listou', 'Não listou', 'Recusou listar', 'a atividade');
+  if (tool === 'activity.diff')
+    return said('Comparando', 'Comparou', 'Não comparou', 'Recusou comparar', 'uma atividade');
   if (tool === 'site.export')
     return said('Exportando', 'Exportou', 'Não exportou', 'Recusou exportar', 'o site');
   if (tool === 'vault.import')
@@ -445,7 +470,11 @@ async function runCall(
   }
   options.onProgress?.({ phase: 'tool', label: phrase.progress, tool: name, actionId: id });
   try {
-    const value = callTool(name, bindInput(known, call.args, options.libraryPath));
+    const value = withAuthor('sofi', () =>
+      callTool(name, bindInput(known, call.args, options.libraryPath)),
+    );
+    if (value && typeof value === 'object' && 'erro' in value && typeof value.erro === 'string')
+      return failure(id, name, phrase, input, `${value.erro} ${JSON.stringify(value)}`);
     const versionId = trackedVersionId(value);
     const action: AgentAction = { id, tool: name, label: phrase.done, input, ok: true };
     if (versionId) action.versionId = versionId;

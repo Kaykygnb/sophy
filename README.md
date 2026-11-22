@@ -89,9 +89,21 @@ Limites iniciais: notas até 8 MB, prévias de imagens até 20 MB, árvore até 
 
 ## MCP local
 
-O servidor MCP da engine usa transporte stdio e a biblioteca indicada. Por padrão ele é somente leitura: lista, lê e busca, e recusa gravar, mover, importar, exportar e os comandos de interface. Para gravar, passe `--escrita`. Execute `npm run mcp -- --biblioteca /caminho/da/biblioteca` ou, para alterar a biblioteca, `npm run mcp -- --biblioteca /caminho/da/biblioteca --escrita`. O cliente pode iniciar `node --experimental-strip-types` com `engine/cli.ts` e os argumentos `mcp --biblioteca` (e `--escrita` quando a gravação for intencional). O protocolo usa stdin/stdout; mensagens de diagnóstico vão para stderr.
+O servidor vivo é o da engine (`engine/mcp.ts`, comando `sophy mcp`). O `src/mcp.js` antigo não faz parte deste contrato. O transporte padrão continua stdio; `--http [porta]` sobe HTTP em `127.0.0.1` (porta 8734 se omitida) no caminho `/mcp`.
 
-No modo `--escrita`, as tools criam e editam notas, canvas, tarefas e links. Escritas exigem a revisão obtida na leitura. O servidor não apaga de forma permanente: a lixeira é a do sistema quando a janela está aberta, e uma cópia para a lixeira local quando o arquivo está em outro disco.
+Cada cliente (Codex, Claude, outro) tem a própria chave e o próprio nome. A atividade grava o autor `mcp:<nome>`, então os dois não aparecem como o mesmo agente. A chave sai uma vez em `mcp.clients.create` (`sph_` + 32 bytes em base64url). O Sophy guarda só o SHA-256, em `mcp-clients.json` na pasta userData do Electron (`appData/Sophy`, ou `SOPHY_USER_DATA`), fora da biblioteca e fora de sincronização. A comparação da chave é em tempo constante.
+
+Sem chave válida a conexão e a chamada são recusadas (`chave_invalida`). Cliente desativado responde `cliente_desativado`. Revogar ou desativar derruba as sessões abertas. No stdio a chave vai em `SOPHY_MCP_KEY`. No HTTP vai no header `Authorization: Bearer`.
+
+**Isto desliga a configuração atual.** Codex e Claude que subiam o MCP só com o comando, sem chave, deixam de conectar. O modo legado (`mcp.legacy`) volta a aceitar essa entrada e nasce desligado. `mcp.legacy.get` e `mcp.legacy.set` devolvem um `aviso` com esse efeito. `--escrita` não concede mais gravação: a permissão é a da chave (`leitura` ou `escrita`). `--somente-leitura` rebaixa uma chave de escrita.
+
+`leitura` anuncia só as ferramentas somente leitura (`isReadOnlyTool` em `engine/permissions.ts`, o registro menos as mutantes). `escrita` anuncia o resto, exceto as destrutivas, que ficam só no aplicativo: `trash.purge`, `trash.empty`, `note.deletePermanent`, `vault.import`, `site.export` e `library.switch` (este último não está no registro; a troca de biblioteca é o IPC `sophy:switch-library`). Chamar uma ferramenta de fora da permissão devolve `permissao_negada` e não executa nada. `tools/list` já vem filtrada.
+
+As ferramentas `mcp.clients.list|create|revoke|toggle|snippet` e `mcp.legacy.get|set` são só do processo principal, no IPC `sophy:mcp-admin`. Não entram no registro do MCP nem nas ferramentas da Sofi. `mcp.clients.snippet` recebe `{nome, chave}` — a chave é a que a pessoa acabou de ver — e devolve os trechos de `config.toml` (Codex) e `mcpServers` (Claude) para stdio e HTTP. A função pura é `mcpConfigSnippet(cliente, chave, transporte)` em `engine/mcp-snippet.ts`.
+
+No modo legado ligado, sem chave, o autor da atividade é `mcp:legado` e a permissão segue `--escrita` (senão leitura). Mesmo assim as ferramentas destrutivas não são anunciadas.
+
+O modo Pergunta da Sofi ainda não está nesta base (PR 8, `fernando/pr8-sofi-provedores`). O gancho é `sofiTools('pergunta')`, a lista somente leitura, com `activity.list` e `activity.diff`. `activity.undo` só entra em `sofiTools('agente')` e pede confirmação. `runAgentTurn` continua no modo agente.
 
 ## Links internos
 

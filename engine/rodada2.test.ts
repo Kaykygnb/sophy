@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { issueKey, mcpEnv } from './mcp-harness.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -165,14 +166,13 @@ test('a Sofi pede confirmação para sobrescrever, desfazer e mover estante', as
   assert.match(agentConfirmation('canvas.update', { path: 'Mapa.canvas' }), /Alterar o canvas/);
 });
 
-test('o MCP somente leitura recusa note.create', async () => {
+test('o MCP de leitura recusa note.create', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-mcp-ro-'));
   fs.mkdirSync(path.join(root, '.sophy'));
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === 'string' && key !== 'SOPHY_LIBRARY' && key !== 'SOPHY_UI_DIR') env[key] = value;
-  }
-  env.SOPHY_UI_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-mcp-'));
+  const issued = issueKey('leitura', 'Leitura');
+  const env = mcpEnv(issued.userData, issued.chave, {
+    SOPHY_UI_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-mcp-')),
+  });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ['--experimental-strip-types', path.resolve('engine/cli.ts'), 'mcp', '--biblioteca', root],
@@ -187,8 +187,8 @@ test('o MCP somente leitura recusa note.create', async () => {
     assert.equal(result.isError, true);
     const theme = await client.callTool({ name: 'ui.setTheme', arguments: { theme: 'dark' } });
     assert.equal(theme.isError, true);
-    const text = JSON.stringify(result) + JSON.stringify(theme);
-    assert.match(text, /somente leitura/);
+    assert.match(JSON.stringify(result), /permissao_negada/);
+    assert.match(JSON.stringify(theme), /não está aberta|ui-offline/);
     assert.equal(fs.existsSync(path.join(root, 'Nota.md')), false);
   } finally {
     await client.close();

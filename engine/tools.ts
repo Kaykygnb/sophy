@@ -29,6 +29,8 @@ import {
   weeklyReview,
 } from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
+import { diffActivity, listActivity, recordActivity, snapshotFromChanges, undoActivity } from './activity.ts';
+import { currentAuthor, type Author } from './call-context.ts';
 import { capture, diff, listHistory, pushHistory, undoById, undoLast, type Origin } from './history.ts';
 import {
   deletePermanent,
@@ -410,9 +412,34 @@ export const tools = [
   ),
   define(
     'agent.undo',
-    'Desfaz uma ação específica da Sofi pelo versionId do histórico. Falha se a versão não existe ou já foi desfeita.',
+    'Atalho da Sofi: desfaz uma ação pelo versionId do histórico. Falha se a versão não existe ou já foi desfeita.',
     z.object({ libraryPath, versionId: z.string().min(1) }),
     ({ libraryPath: folder, versionId }) => undoById(openLibrary(folder), versionId),
+  ),
+  define(
+    'activity.list',
+    'Lista a atividade da biblioteca, da mais nova para a mais antiga. Filtra por autor e intervalo.',
+    z.object({
+      libraryPath,
+      autor: z.string().min(1).optional(),
+      de: z.string().min(1).optional(),
+      ate: z.string().min(1).optional(),
+      limite: z.number().int().positive().max(500).optional(),
+    }),
+    ({ libraryPath: folder, autor, de, ate, limite }) =>
+      listActivity(openLibrary(folder), { autor, de, ate, limite }),
+  ),
+  define(
+    'activity.diff',
+    'Mostra o texto da nota antes e depois de uma atividade.',
+    z.object({ libraryPath, id: z.string().min(1) }),
+    ({ libraryPath: folder, id }) => diffActivity(openLibrary(folder), id),
+  ),
+  define(
+    'activity.undo',
+    'Desfaz uma atividade de qualquer autor. Se a nota mudou depois, devolve conflito, a menos que forcar seja true.',
+    z.object({ libraryPath, id: z.string().min(1), forcar: z.boolean().optional() }),
+    ({ libraryPath: folder, id, forcar }) => undoActivity(openLibrary(folder), id, forcar === true),
   ),
   define(
     'shelf.style.list',
@@ -781,6 +808,7 @@ const MUTATIONS = new Set([
   'trash.empty',
   'history.undo',
   'agent.undo',
+  'activity.undo',
   'shelf.style.set',
   'mention.link',
   'vault.import',
@@ -825,17 +853,31 @@ function tracked<T>(
   tool: string,
   summary: string,
   run: (library: Library) => T,
+  author: Author = currentAuthor(),
 ) {
   const library = openLibrary(folder);
   if (source === 'mcp' || source === 'agent') saveVersionPoint(library, `${source}:${tool}`);
   const before = capture(library);
   const result = run(library);
+  const changes = diff(before, capture(library));
   const entry = pushHistory(library, {
     origin: source,
     tool,
     summary,
-    changes: diff(before, capture(library)),
+    changes,
   });
+  if (changes.length) {
+    const snap = snapshotFromChanges(changes);
+    recordActivity(library, {
+      autor: author,
+      tool,
+      label: summary,
+      notePath: snap.notePath,
+      versionId: entry?.id ?? null,
+      antes: snap.antes,
+      depois: snap.depois,
+    });
+  }
   if (entry?.id && result !== null && typeof result === 'object') trackedVersions.set(result, entry.id);
   return result;
 }

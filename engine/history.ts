@@ -101,11 +101,11 @@ export function listHistory(library: Library) {
     .reverse();
 }
 
-export function undoLast(library: Library) {
+export function undoLast(library: Library, options: { force?: boolean } = {}) {
   const actions = readActions(library);
   const last = actions.at(-1);
   if (!last) throw new EngineError('not-found', 'Não há ação para desfazer.');
-  apply(library, last.changes);
+  apply(library, last.changes, options.force === true);
   // Desfazer `entry.trash` regrava o snapshot e apaga só a cópia mais recente
   // da lixeira com aquele caminho. Restaurar, purgar e esvaziar não geram histórico.
   if (last.tool === 'entry.trash') removeTrashOriginals(library, trashRoots(last.changes));
@@ -134,10 +134,12 @@ function trashRoots(changes: Change[]) {
     .map((change) => change.path);
 }
 
-function apply(library: Library, changes: Change[]) {
-  for (const change of changes) {
-    if (change.type === 'file') assertFile(library, change);
-    else assertDirectory(library, change);
+function apply(library: Library, changes: Change[], force = false) {
+  if (!force) {
+    for (const change of changes) {
+      if (change.type === 'file') assertFile(library, change);
+      else assertDirectory(library, change);
+    }
   }
   for (const change of changes) {
     if (change.type !== 'directory' || change.before !== true) continue;
@@ -247,8 +249,8 @@ function rememberUndone(library: Library, id: string) {
   fs.writeFileSync(undoneFile(library), JSON.stringify({ ids: ids.slice(-200) }));
 }
 
-/** Desfaz uma ação pelo id do histórico. Não cria outra entrada. */
-export function undoById(library: Library, id: string) {
+/** Desfaz uma ação pelo id do histórico. Não cria outra entrada. `force` ignora o conflito. */
+export function undoById(library: Library, id: string, options: { force?: boolean } = {}) {
   const versionId = typeof id === 'string' ? id.trim() : '';
   if (!versionId) throw new EngineError('not-found', 'Não encontrei essa versão para desfazer.');
   if (readUndone(library).includes(versionId))
@@ -257,12 +259,12 @@ export function undoById(library: Library, id: string) {
   const index = actions.findIndex((action) => action.id === versionId);
   if (index < 0) throw new EngineError('not-found', 'Não encontrei essa versão para desfazer.');
   if (index === actions.length - 1) {
-    const undone = undoLast(library);
+    const undone = undoLast(library, options);
     rememberUndone(library, versionId);
     return undone;
   }
   const action = actions[index]!;
-  apply(library, action.changes);
+  apply(library, action.changes, options.force === true);
   actions.splice(index, 1);
   writeActions(library, actions);
   rememberUndone(library, versionId);

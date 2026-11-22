@@ -7,30 +7,25 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { splitMarkdown } from './markdown.ts';
-import { callTool, tools } from './tools.ts';
+import { issueKey, mcpBin, mcpEnv } from './mcp-harness.ts';
+import { toolsForPermission } from './permissions.ts';
+import { callTool } from './tools.ts';
 import { subscribeUi, type UiCommand } from './ui-bridge.ts';
 
-const bin = path.resolve('engine/cli.ts');
+const bin = mcpBin;
 const sensitive = /api[-_ ]?key|\b(secret|password|token|senha|credential)s?\b/i;
 
 function noteBody(file: string) {
   return splitMarkdown(fs.readFileSync(file, 'utf8')).body;
 }
 
-function environment() {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === 'string' && key !== 'SOPHY_LIBRARY') env[key] = value;
-  }
-  return env;
-}
-
 async function connect(root: string) {
+  const issued = issueKey('escrita', 'Teste');
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ['--experimental-strip-types', bin, 'mcp', '--biblioteca', root, '--escrita'],
     cwd: os.tmpdir(),
-    env: environment(),
+    env: mcpEnv(issued.userData, issued.chave),
     stderr: 'pipe',
   });
   const client = new Client({ name: 'sophy-test', version: '0.0.0' });
@@ -60,7 +55,9 @@ test('listTools bate com o registro e cada inputSchema é válido', { timeout: 3
   try {
     const listed = await client.listTools();
     const names = listed.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, tools.map((tool) => tool.name).sort());
+    assert.deepEqual(names, toolsForPermission('escrita').map((tool) => tool.name).sort());
+    for (const hidden of ['trash.purge', 'trash.empty', 'note.deletePermanent', 'vault.import', 'site.export', 'library.switch', 'mcp.clients.list'])
+      assert.equal(names.includes(hidden), false, hidden);
     const validator = new AjvJsonSchemaValidator();
     for (const tool of listed.tools) {
       assert.equal(typeof tool.inputSchema, 'object');

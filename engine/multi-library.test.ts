@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { libraryCatalog, readCatalog } from './catalog.ts';
+import { issueKey, mcpEnv } from './mcp-harness.ts';
 import { splitMarkdown } from './markdown.ts';
 
 function noteBody(file: string) {
@@ -36,6 +37,7 @@ for (const write of [false, true]) {
     });
     const catalog = path.join(root, 'ui.json');
     fs.writeFileSync(catalog, JSON.stringify({ libraryPath: libraries[0], libraries }));
+    const issued = issueKey(write ? 'escrita' : 'leitura', write ? 'MultiEscrita' : 'MultiLeitura');
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [
@@ -47,6 +49,7 @@ for (const write of [false, true]) {
         catalog,
         ...(write ? ['--escrita'] : []),
       ],
+      env: mcpEnv(issued.userData, issued.chave),
       stderr: 'pipe',
     });
     const client = new Client({ name: 'multi-test', version: '1' });
