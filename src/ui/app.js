@@ -610,7 +610,7 @@ const NAV_GROUPS = [
 /* Ícones animados (assets/anim). O <style> de cada um vai uma vez para o <head>,
    assim o texto dos botões e toasts continua limpo. */
 const ANIM = {};
-const ANIM_NAMES = ['abrir-estante', 'agente-trabalhando', 'carregando', 'desfazer', 'favoritar', 'fixar', 'nova-nota', 'salvo', 'sincronizar', 'tarefa-marcar'];
+const ANIM_NAMES = ['abrir-estante', 'agente-trabalhando', 'carregando', 'desfazer', 'nova-nota', 'salvo', 'sincronizar', 'tarefa-marcar'];
 
 async function loadAnims() {
   const styles = [];
@@ -1986,7 +1986,6 @@ function paintSettings(center) {
       <section class="config__secao" id="cfg-geral" data-secao="geral"><h3>Geral</h3>
         ${cfgRow('Início da semana', `O calendário e a revisão usam esta data. A semana começa ${weekStartsOn() === 0 ? 'no domingo' : 'na segunda'}.`, radios('cfg-semana', 'Início da semana', [[1, 'Segunda'], [0, 'Domingo']], state.settings.weekStartsOn ?? 1))}
         ${cfgRow('Revisão da semana', 'Aos domingos, um aviso no topo convida a revisar a semana. A Sofi não altera as notas sozinha.', '<button type="button" class="btn btn--secundario" id="abrir-revisao">Abrir revisão</button>')}
-        ${cfgSoon('Idioma', 'Por enquanto o Sophy fala português do Brasil.', '<select disabled aria-label="Idioma"><option>Português (Brasil)</option></select>')}
         ${cfgSoon('Ao abrir o Sophy', 'Escolher se abre no Início ou na última nota.', '<select disabled aria-label="Ao abrir"><option>Início</option></select>')}
       </section>
       <section class="config__secao" id="cfg-aparencia" data-secao="aparencia"><h3>Aparência</h3>
