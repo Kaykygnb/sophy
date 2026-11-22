@@ -3813,10 +3813,10 @@ button.propriedade__nome { cursor: text; }
 /* =====================================================================
    #tag no texto (fase 4)
    ===================================================================== */
-.tag-inline { --tag-h: 250; display: inline; padding: 0 6px; border-radius: 999px; background: hsl(var(--tag-h) 60% 50% / .13); color: hsl(var(--tag-h) 52% 36%); font-weight: 500; cursor: pointer; white-space: nowrap; }
-.tag-inline:hover { background: hsl(var(--tag-h) 60% 50% / .22); }
-:root[data-theme="dark"] .tag-inline { background: hsl(var(--tag-h) 70% 65% / .16); color: hsl(var(--tag-h) 78% 76%); }
-:root[data-theme="dark"] .tag-inline:hover { background: hsl(var(--tag-h) 70% 65% / .26); }
+.tag-inline { --tag-h: 250; --tag-tom: var(--tag-cor, hsl(var(--tag-h, 250) 55% 52%)); display: inline; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--tag-tom) 16%, transparent); color: var(--tag-tom); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.tag-inline:hover { background: color-mix(in srgb, var(--tag-tom) 26%, transparent); }
+:root[data-theme="dark"] .tag-inline { --tag-tom: var(--tag-cor, hsl(var(--tag-h, 250) 68% 68%)); background: color-mix(in srgb, var(--tag-tom) 20%, transparent); color: var(--tag-tom); }
+:root[data-theme="dark"] .tag-inline:hover { background: color-mix(in srgb, var(--tag-tom) 28%, transparent); }
 .paleta__filtros { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 14px 4px; color: var(--ink-3); font: 500 12px var(--font-ui); }
 .menu--tags .menu__item .icon { color: var(--accent); }
 

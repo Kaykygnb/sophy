@@ -158,6 +158,9 @@ function syncMotion() {
 function engineMessage(code, message) {
   if (code === 'daily-locked') return 'Notas do dia têm o nome fixo pela data';
   if (code === 'daily-exists') return 'Esse dia já tem nota';
+  if (code === 'tag_invalida') return 'Essa tag não é válida.';
+  if (code === 'cor_invalida') return 'Essa cor não é válida. Escolha uma da paleta ou um código #rrggbb.';
+  if (code === 'tag_inexistente') return 'Essa tag ainda não aparece em nenhuma nota.';
   return message || 'Falha na operação.';
 }
 
@@ -759,6 +762,8 @@ async function refreshLibrary() {
   } catch {
     state.linkCatalog = [];
   }
+  /* cores das tags vêm do motor; na primeira abertura migra o que ainda estiver no localStorage */
+  await loadTagColors();
   /* as tags ficam acima da árvore: carregam junto com a biblioteca para a lateral não pular depois */
   await refreshTags();
 }
@@ -2643,7 +2648,7 @@ function paintTags() {
   host.hidden = false;
   const open = tagsOpen();
   const total = flatTags(tree).length;
-  const row = (node, depth) => `<li><div class="tag-linha${state.view === 'tag' && state.tagFilter === node.path ? ' is-atual' : ''}" style="--nivel:${depth};--tag-h:${tagHue(node.path)}"><button type="button" class="tag-linha__abrir" data-tag="${escapeHtml(node.path)}" title="Ver as notas com #${escapeHtml(node.path)}"><span class="tag-ponto" aria-hidden="true"></span><span class="tag-linha__nome">${escapeHtml(node.name)}</span><span class="tag-linha__conta">${node.total}</span></button><button type="button" class="tag-linha__mais" data-tag-menu="${escapeHtml(node.path)}" aria-label="Opções da tag ${escapeHtml(node.name)}">${icon('mais-opcoes')}</button></div>${node.children?.length ? `<ul>${node.children.map((child) => row(child, depth + 1)).join('')}</ul>` : ''}</li>`;
+  const row = (node, depth) => `<li><div class="tag-linha${state.view === 'tag' && state.tagFilter === node.path ? ' is-atual' : ''}" style="--nivel:${depth};${tagStyle(node.path)}"><button type="button" class="tag-linha__abrir" data-tag="${escapeHtml(node.path)}" title="Ver as notas com #${escapeHtml(node.path)}"><span class="tag-ponto" aria-hidden="true"></span><span class="tag-linha__nome">${escapeHtml(node.name)}</span><span class="tag-linha__conta">${node.total}</span></button><button type="button" class="tag-linha__mais" data-tag-menu="${escapeHtml(node.path)}" aria-label="Opções da tag ${escapeHtml(node.name)}">${icon('mais-opcoes')}</button></div>${node.children?.length ? `<ul>${node.children.map((child) => row(child, depth + 1)).join('')}</ul>` : ''}</li>`;
   const body = tree.length
     ? `<ul class="tags-painel__lista">${tree.map((node) => row(node, 0)).join('')}</ul>`
     : '<p class="tags-painel__vazio">Nenhuma tag ainda. Escreva <b>#nome</b> numa nota ou use <b>+ Tag</b> embaixo do título.</p>';
@@ -2747,16 +2752,25 @@ async function showTag(tag) {
 
 async function loadTagNotes(repaint) {
   const tag = state.tagFilter;
+  state.tagRelated = null;
   try {
-    const [result, graph] = await Promise.all([
+    const [result, graph, related] = await Promise.all([
       tool('tags.notes', { tag, nested: true }),
       tool('graph.query', {}).catch(() => null),
+      tool('tags.related', { tag }).catch((error) => {
+        if (error.code && error.code !== 'tag_inexistente') toast(error.message, 'erro');
+        return [];
+      }),
     ]);
+    if (state.tagFilter !== tag) return;
     state.tagNotes = result?.notes || [];
     state.tagGraph = graph;
+    state.tagRelated = Array.isArray(related) ? related : [];
   } catch (error) {
+    if (state.tagFilter !== tag) return;
     state.tagNotes = [];
     state.tagGraph = null;
+    state.tagRelated = [];
     toast(error.message, 'erro');
   }
   if (repaint !== false || state.view === 'tag') paintCenter();
@@ -2770,13 +2784,6 @@ function tagInsights(tag, notes) {
   const graph = state.tagGraph || { nodes: [], edges: [] };
   const tagged = new Set(notes.map((note) => note.path));
   const byPath = new Map(graph.nodes.map((item) => [item.path, item]));
-  const together = new Map();
-  for (const path of tagged)
-    for (const other of byPath.get(path)?.tags || []) {
-      const otherLower = other.toLocaleLowerCase();
-      if (otherLower === lower || otherLower.startsWith(`${lower}/`) || lower.startsWith(`${otherLower}/`)) continue;
-      together.set(other, (together.get(other) || 0) + 1);
-    }
   const related = new Map();
   for (const edge of graph.edges) {
     const inside = tagged.has(edge.from) ? edge.to : tagged.has(edge.to) ? edge.from : null;
@@ -2785,22 +2792,22 @@ function tagInsights(tag, notes) {
   }
   return {
     children,
-    together: [...together.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).slice(0, 12),
     related: [...related.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([path, count]) => ({ path, count, title: byPath.get(path)?.title || baseName(path), tags: byPath.get(path)?.tags || [] })),
     tagsOf: (path) => byPath.get(path)?.tags || [],
   };
 }
 
-function tagChipHtml(tag, extra = '') {
-  return `<button type="button" class="tag-inline" data-tag-ir="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}" title="Ver as notas com #${escapeHtml(tag)}"${extra}>#${escapeHtml(tag)}</button>`;
+function tagChipHtml(tag, extra = '', juntas) {
+  const count = Number.isFinite(juntas) ? `<small class="tag-inline__juntas">${juntas}</small>` : '';
+  const label = Number.isFinite(juntas) ? ` aria-label="#${escapeHtml(tag)}, ${juntas} em comum"` : '';
+  return `<button type="button" class="tag-inline" data-tag-ir="${escapeHtml(tag)}" style="${tagStyle(tag)}" title="Ver as notas com #${escapeHtml(tag)}"${label}${extra}>#${escapeHtml(tag)}${count}</button>`;
 }
 
 function paintTagView(center) {
   const tag = state.tagFilter;
   const notes = state.tagNotes;
-  const hue = tagHue(tag);
   if (!notes) {
-    center.innerHTML = `<div class="etiqueta-tela" style="--tag-h:${hue}"><header class="etiqueta-capa"><h2 class="etiqueta-capa__nome"><span class="etiqueta-capa__hash" aria-hidden="true">#</span><span class="tag-selo">#${escapeHtml(tag)}</span></h2><p class="lixeira__nota" role="status">Carregando…</p></header></div>`;
+    center.innerHTML = `<div class="etiqueta-tela" style="${tagStyle(tag)}"><header class="etiqueta-capa"><h2 class="etiqueta-capa__nome"><span class="etiqueta-capa__hash" aria-hidden="true">#</span><span class="tag-selo">#${escapeHtml(tag)}</span></h2><p class="lixeira__nota" role="status">Carregando…</p></header></div>`;
     return;
   }
   const info = tagInsights(tag, notes);
@@ -2808,13 +2815,21 @@ function paintTagView(center) {
   const trail = parts.length > 1 ? `<p class="etiqueta-capa__trilha">${parts.slice(0, -1).map((_, index) => `<button type="button" data-tag-ir="${escapeHtml(parts.slice(0, index + 1).join('/'))}">#${escapeHtml(parts.slice(0, index + 1).join('/'))}</button>${icon('chevron-direita')}`).join('')}</p>` : '';
   const inText = notes.filter((note) => note.source !== 'frontmatter').length;
   const inProps = notes.filter((note) => note.source !== 'text').length;
-  const current = tagColorStore()[tag.toLocaleLowerCase()];
-  const swatches = TAG_HUES.map(([name, value]) => `<button type="button" class="etiqueta-cor" data-tag-cor="${value}" style="--tag-h:${value}" aria-label="${name}" title="${name}" aria-pressed="${Number(current) === value}"></button>`).join('');
+  const current = tagColorExact(tag);
+  const swatches = TAG_PALETTE.map((name) => `<button type="button" class="etiqueta-cor" data-tag-cor="${name}" style="${tagSwatchStyle(name)}" aria-label="${tagPaletteLabel(name)}" title="${tagPaletteLabel(name)}" aria-pressed="${current === name}"></button>`).join('');
+  const hexCurrent = current && isTagHex(current) ? current : '';
   const noteRow = (note) => {
     const others = info.tagsOf(note.path).filter((item) => item.toLocaleLowerCase() !== tag.toLocaleLowerCase()).slice(0, 3);
-    return `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('nota')}<span><b>${escapeHtml(note.title || baseName(note.path))}</b><small>${escapeHtml(trashFolder(note.path))}${note.source === 'text' ? ' · no texto' : note.source === 'frontmatter' ? ' · nas propriedades' : ''}</small></span>${others.length ? `<span class="etiqueta-nota__tags">${others.map((item) => `<span class="tag-inline" style="--tag-h:${tagHue(item)}">#${escapeHtml(item)}</span>`).join('')}</span>` : ''}</button></li>`;
+    return `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('nota')}<span><b>${escapeHtml(note.title || baseName(note.path))}</b><small>${escapeHtml(trashFolder(note.path))}${note.source === 'text' ? ' · no texto' : note.source === 'frontmatter' ? ' · nas propriedades' : ''}</small></span>${others.length ? `<span class="etiqueta-nota__tags">${others.map((item) => `<span class="tag-inline" style="${tagStyle(item)}">#${escapeHtml(item)}</span>`).join('')}</span>` : ''}</button></li>`;
   };
-  center.innerHTML = `<div class="etiqueta-tela" style="--tag-h:${hue}">
+  const together = state.tagRelated;
+  const togetherBody =
+    together == null
+      ? '<p class="lixeira__nota" role="status">Carregando…</p>'
+      : together.length
+        ? `<div class="tag-chips">${together.map((item) => tagChipHtml(item.tag, '', item.juntas)).join('')}</div>`
+        : '<p class="lixeira__nota">Nenhuma outra tag aparece nas mesmas notas desta.</p>';
+  center.innerHTML = `<div class="etiqueta-tela" style="${tagStyle(tag)}">
     <header class="etiqueta-capa">
       <div class="etiqueta-capa__topo">
         <div>${trail}<h2 class="etiqueta-capa__nome"><span class="etiqueta-capa__hash" aria-hidden="true">#</span><span class="tag-selo">#${escapeHtml(tag)}</span></h2></div>
@@ -2825,10 +2840,14 @@ function paintTagView(center) {
         </div>
       </div>
       <div class="etiqueta-capa__numeros"><span><b>${notes.length}</b>${notes.length === 1 ? 'nota' : 'notas'}</span><span><b>${info.children.length}</b>${info.children.length === 1 ? 'tag filha' : 'tags filhas'}</span><span><b>${inText}</b>no texto</span><span><b>${inProps}</b>nas propriedades</span></div>
-      <div class="etiqueta-cores" id="tag-cores" ${state.tagColorOpen ? '' : 'hidden'} role="group" aria-label="Cor da tag">${swatches}<button type="button" class="etiqueta-cores__padrao" data-tag-cor="">Cor automática</button></div>
+      <div class="etiqueta-cores" id="tag-cores" ${state.tagColorOpen ? '' : 'hidden'} role="group" aria-label="Cor da tag">
+        <div class="etiqueta-cores__paleta">${swatches}</div>
+        <label class="etiqueta-cores__hex"><span>Livre</span><input type="color" id="tag-cor-picker" value="${escapeHtml(hexCurrent || '#6b4e9a')}" aria-label="Escolher uma cor livre"><input type="text" id="tag-cor-hex" value="${escapeHtml(hexCurrent)}" placeholder="#rrggbb" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Código da cor"></label>
+        <button type="button" class="etiqueta-cores__padrao" data-tag-cor="" id="tag-sem-cor" aria-pressed="${!current}">Sem cor</button>
+      </div>
     </header>
     ${info.children.length ? `<section class="etiqueta-secao"><h3>Tags filhas</h3><div class="tag-chips">${info.children.map((child) => tagChipHtml(child.path)).join('')}</div></section>` : ''}
-    ${info.together.length ? `<section class="etiqueta-secao"><h3>Aparece junto com</h3><div class="tag-chips">${info.together.map(([other, count]) => tagChipHtml(other, ` aria-label="#${escapeHtml(other)}, ${count} em comum"`)).join('')}</div></section>` : ''}
+    <section class="etiqueta-secao" id="tag-juntas"><h3>Aparece junto com</h3>${togetherBody}</section>
     <section class="etiqueta-secao"><h3>Notas com #${escapeHtml(tag)}</h3>${
       notes.length ? `<ul class="etiqueta-tela__lista">${notes.map(noteRow).join('')}</ul>` : '<p class="lixeira__nota">Nenhuma nota usa esta tag agora.</p>'
     }<p class="lixeira__nota">Inclui as tags filhas.</p></section>
@@ -2843,14 +2862,27 @@ function paintTagView(center) {
     $('#tag-cor').setAttribute('aria-expanded', String(!panel.hidden));
     if (!panel.hidden) panel.querySelector('[aria-pressed="true"], .etiqueta-cor')?.focus();
   };
+  const applyColor = (cor) => chooseTagColor(tag, cor);
   center.querySelectorAll('[data-tag-cor]').forEach((button) => {
-    button.onclick = () => {
-      setTagHue(tag, button.dataset.tagCor === '' ? null : Number(button.dataset.tagCor));
-      state.tagColorOpen = true;
-      repaintTagColors();
-      toast(button.dataset.tagCor === '' ? `#${tag} voltou para a cor automática.` : `#${tag} agora tem cor nova.`, 'ok');
-    };
+    button.onclick = () => applyColor(button.dataset.tagCor === '' ? null : button.dataset.tagCor);
   });
+  const picker = $('#tag-cor-picker');
+  const hexField = $('#tag-cor-hex');
+  if (picker) {
+    picker.oninput = () => {
+      if (hexField) hexField.value = picker.value;
+    };
+    picker.onchange = () => applyColor(picker.value);
+  }
+  if (hexField) {
+    hexField.onkeydown = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applyColor(hexField.value.trim());
+      }
+    };
+    hexField.onchange = () => applyColor(hexField.value.trim());
+  }
   center.querySelectorAll('[data-tag-ir]').forEach((button) => {
     button.onclick = () => showTag(button.dataset.tagIr);
   });
@@ -2886,8 +2918,8 @@ function noteTagsBandHtml() {
   const ownLower = new Set(own.map((tag) => tag.toLocaleLowerCase()));
   const fromText = noteTextTags().filter((tag) => !ownLower.has(tag.toLocaleLowerCase()));
   const chips = own
-    .map((tag) => `<span class="tag-chip" data-tag-chip="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Ver as notas com #${escapeHtml(tag)}">#${escapeHtml(tag)}</button><button type="button" class="tag-chip__tirar" data-tag-tirar="${escapeHtml(tag)}" aria-label="Tirar a tag ${escapeHtml(tag)}" title="Tirar a tag">${icon('fechar')}</button></span>`)
-    .concat(fromText.map((tag) => `<span class="tag-chip tag-chip--texto" data-tag-texto-chip="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Está escrita no texto da nota. Clique para ver as notas com #${escapeHtml(tag)}.">#${escapeHtml(tag)}</button></span>`))
+    .map((tag) => `<span class="tag-chip" data-tag-chip="${escapeHtml(tag)}" style="${tagStyle(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Ver as notas com #${escapeHtml(tag)}">#${escapeHtml(tag)}</button><button type="button" class="tag-chip__tirar" data-tag-tirar="${escapeHtml(tag)}" aria-label="Tirar a tag ${escapeHtml(tag)}" title="Tirar a tag">${icon('fechar')}</button></span>`)
+    .concat(fromText.map((tag) => `<span class="tag-chip tag-chip--texto" data-tag-texto-chip="${escapeHtml(tag)}" style="${tagStyle(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Está escrita no texto da nota. Clique para ver as notas com #${escapeHtml(tag)}.">#${escapeHtml(tag)}</button></span>`))
     .join('');
   const empty = !own.length && !fromText.length;
   return `<div class="nota-tags" id="nota-tags" role="group" aria-label="Tags da nota">${empty ? '' : `<span class="nota-tags__rotulo" aria-hidden="true">${icon('tag')}</span>`}${chips}<span class="nota-tags__campo tag-chip-novo"><button type="button" class="nota-tags__mais${empty ? ' nota-tags__mais--vazio' : ''}" id="tag-adicionar" aria-label="Adicionar tag" title="Adicionar uma tag a esta nota">${icon('mais')}<span>Tag</span></button></span></div>`;
@@ -2914,7 +2946,7 @@ function bindNoteTags() {
     const own = new Set(noteTagList().map((tag) => tag.toLocaleLowerCase()));
     const draw = () => {
       const typed = input.value.replace(/^#/, '').trim();
-      const rows = options.map((item, index) => `<button type="button" class="nota-tags__sugestao${index === active ? ' is-ativa' : ''}" role="option" aria-selected="${index === active}" data-sugestao="${escapeHtml(item.name)}" style="--tag-h:${tagHue(item.name)}"><span class="tag-ponto" aria-hidden="true"></span><span>#${highlight(item.name, typed)}</span><small>${item.total} ${item.total === 1 ? 'nota' : 'notas'}</small></button>`);
+      const rows = options.map((item, index) => `<button type="button" class="nota-tags__sugestao${index === active ? ' is-ativa' : ''}" role="option" aria-selected="${index === active}" data-sugestao="${escapeHtml(item.name)}" style="${tagStyle(item.name)}"><span class="tag-ponto" aria-hidden="true"></span><span>#${highlight(item.name, typed)}</span><small>${item.total} ${item.total === 1 ? 'nota' : 'notas'}</small></button>`);
       if (typed && !options.some((item) => item.name.toLocaleLowerCase() === typed.toLocaleLowerCase()))
         rows.push(`<button type="button" class="nota-tags__sugestao nota-tags__sugestao--nova${active === options.length ? ' is-ativa' : ''}" role="option" data-sugestao="${escapeHtml(typed)}">${icon('mais')}<span>Criar #${escapeHtml(typed)}</span></button>`);
       list.innerHTML = rows.join('');
@@ -2973,60 +3005,211 @@ async function changeNoteTags(change) {
 }
 
 /* ------------------------------------------------- #tag no texto e autocomplete */
-/* Cor de cada tag: um matiz estável (vem do nome da tag de topo, então #estudo/leitura herda de #estudo)
-   que a pessoa pode trocar. A escolha fica no front, por biblioteca. */
-const TAG_HUES = [
-  ['Lavanda', 250],
-  ['Azul', 212],
-  ['Turquesa', 182],
-  ['Verde', 148],
-  ['Oliva', 88],
-  ['Mostarda', 45],
-  ['Laranja', 24],
-  ['Vermelho', 356],
-  ['Rosa', 330],
-  ['Violeta', 285],
-];
+/* Cor de cada tag: vem do motor (`tag.color.get` / `tag.color.set`). A paleta
+   é a mesma do editor (cinza…vermelho), nos temas claro e escuro, e ainda
+   aceita um #rrggbb livre. Sem cor, o matiz sai do nome da tag de topo
+   (então #estudo/leitura herda o tom automático de #estudo, ou a cor gravada
+   dela). A escolha antiga no localStorage migra na primeira abertura. */
+const TAG_PALETTE = ['cinza', 'marrom', 'laranja', 'amarelo', 'verde', 'azul', 'roxo', 'rosa', 'vermelho'];
+const TAG_PALETTE_SET = new Set(TAG_PALETTE);
+const TAG_PALETTE_LABEL = {
+  cinza: 'Cinza',
+  marrom: 'Marrom',
+  laranja: 'Laranja',
+  amarelo: 'Amarelo',
+  verde: 'Verde',
+  azul: 'Azul',
+  roxo: 'Roxo',
+  rosa: 'Rosa',
+  vermelho: 'Vermelho',
+};
+function tagPaletteLabel(name) {
+  return TAG_PALETTE_LABEL[name] || name;
+}
+function tagKeyName(tag) {
+  return String(tag || '').replace(/^#/, '').normalize('NFC').toLocaleLowerCase('pt-BR');
+}
+function isTagHex(value) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || ''));
+}
 function tagColorKey() {
   return `sophy-tag-cores:${state.libraryPath || state.libraryName || 'default'}`;
 }
 function tagColorStore() {
   if (state.tagColorCache?.key === tagColorKey()) return state.tagColorCache.map;
-  let map = {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(tagColorKey()) || '{}');
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed;
-  } catch {
-    map = {};
-  }
-  state.tagColorCache = { key: tagColorKey(), map };
-  return map;
+  return {};
 }
-function tagHue(tag) {
-  const clean = String(tag || '').replace(/^#/, '').toLocaleLowerCase();
+function tagColorExact(tag) {
+  return tagColorStore()[tagKeyName(tag)] || null;
+}
+function tagColorOf(tag) {
   const store = tagColorStore();
-  const parts = clean.split('/');
+  const parts = tagKeyName(tag).split('/').filter(Boolean);
   for (let i = parts.length; i > 0; i -= 1) {
-    const hue = Number(store[parts.slice(0, i).join('/')]);
-    if (Number.isFinite(hue)) return hue;
+    const color = store[parts.slice(0, i).join('/')];
+    if (color) return color;
   }
+  return null;
+}
+function tagHueFallback(tag) {
+  const clean = tagKeyName(tag);
+  const head = clean.split('/')[0] || clean;
   let hash = 0;
-  for (const char of parts[0]) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  for (const char of head) hash = (hash * 31 + char.charCodeAt(0)) % 360;
   return hash;
 }
+function tagSwatchStyle(color) {
+  if (TAG_PALETTE_SET.has(color)) return `--tag-cor:var(--cor-${color})`;
+  if (isTagHex(color)) return `--tag-cor:${color.toLowerCase()}`;
+  return `--tag-h:${tagHueFallback(color)}`;
+}
+function tagStyle(tag) {
+  const color = tagColorOf(tag);
+  if (color) return tagSwatchStyle(color);
+  return `--tag-h:${tagHueFallback(tag)}`;
+}
+function resolveCssColor(value) {
+  if (!value) return '';
+  if (isTagHex(value)) return value.toLowerCase();
+  const probe = document.createElement('span');
+  probe.style.color = value;
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved || value;
+}
 function tagColorCss(tag) {
-  const hue = tagHue(tag);
+  const color = tagColorOf(tag);
+  if (TAG_PALETTE_SET.has(color)) return resolveCssColor(`var(--cor-${color})`) || `var(--cor-${color})`;
+  if (isTagHex(color)) return color.toLowerCase();
+  const hue = tagHueFallback(tag);
   return themeName() === 'dark' ? `hsl(${hue} 68% 70%)` : `hsl(${hue} 52% 46%)`;
 }
-function setTagHue(tag, hue) {
-  const store = { ...tagColorStore() };
-  const clean = String(tag || '').replace(/^#/, '').toLocaleLowerCase();
-  if (hue == null) delete store[clean];
-  else store[clean] = Math.round(Number(hue)) % 360;
+function hueToHex(hue) {
+  const h = (((Number(hue) % 360) + 360) % 360) / 360;
+  const s = 0.52;
+  const l = 0.46;
+  /* HSL → RGB, com S e L iguais ao tom claro usado nas tags automáticas */
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue2rgb = (x, y, t) => {
+    let k = t;
+    if (k < 0) k += 1;
+    if (k > 1) k -= 1;
+    if (k < 1 / 6) return x + (y - x) * 6 * k;
+    if (k < 1 / 2) return y;
+    if (k < 2 / 3) return x + (y - x) * (2 / 3 - k) * 6;
+    return x;
+  };
+  const toHex = (n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(hue2rgb(p, q, h + 1 / 3))}${toHex(hue2rgb(p, q, h))}${toHex(hue2rgb(p, q, h - 1 / 3))}`;
+}
+function legacyColorToEngine(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return hueToHex(value);
+  const text = String(value).normalize('NFC').trim();
+  const named = text.toLocaleLowerCase('pt-BR');
+  if (TAG_PALETTE_SET.has(named)) return named;
+  if (isTagHex(text)) return text.toLowerCase();
+  const asNum = Number(text);
+  if (Number.isFinite(asNum) && text !== '') return hueToHex(asNum);
+  return null;
+}
+function rememberTagColors(map) {
+  state.tagColorCache = { key: tagColorKey(), map: { ...map } };
+}
+async function loadTagColors() {
+  let engine = {};
   try {
-    localStorage.setItem(tagColorKey(), JSON.stringify(store));
-  } catch {}
-  state.tagColorCache = { key: tagColorKey(), map: store };
+    const result = await tool('tag.color.get', {});
+    engine = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+  } catch (error) {
+    toast(error.message || 'Não deu para ler as cores das tags.', 'erro');
+    engine = {};
+  }
+  rememberTagColors(engine);
+  await migrateTagColorsFromLocal(engine);
+}
+async function migrateTagColorsFromLocal(engine) {
+  const key = tagColorKey();
+  let raw;
+  try {
+    raw = localStorage.getItem(key);
+  } catch {
+    return;
+  }
+  if (!raw) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+  const have = new Set(Object.keys(engine || {}));
+  const pending = [];
+  for (const [name, value] of Object.entries(parsed)) {
+    const tag = tagKeyName(name);
+    if (!tag || have.has(tag)) continue;
+    const cor = legacyColorToEngine(value);
+    if (!cor) continue;
+    pending.push({ tag, cor });
+  }
+  const store = { ...tagColorStore() };
+  let failed = false;
+  for (const item of pending) {
+    try {
+      const result = await tool('tag.color.set', { tag: item.tag, cor: item.cor });
+      const saved = result?.tag || item.tag;
+      if (result?.cor) store[saved] = result.cor;
+    } catch {
+      failed = true;
+    }
+  }
+  rememberTagColors(store);
+  if (!failed) {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  }
+}
+async function chooseTagColor(tag, cor) {
+  const next = cor == null || cor === '' ? null : cor;
+  try {
+    const result = await tool('tag.color.set', { tag, cor: next });
+    const store = { ...tagColorStore() };
+    const key = result?.tag || tagKeyName(tag);
+    if (result?.cor == null || result?.cor === '') delete store[key];
+    else store[key] = result.cor;
+    rememberTagColors(store);
+    state.tagColorOpen = true;
+    repaintTagColors();
+    toast(next == null ? `#${tag} ficou sem cor própria.` : `#${tag} agora tem cor nova.`, 'ok');
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+async function loadTagRelations(tags) {
+  const unique = [];
+  const seen = new Set();
+  for (const tag of tags || []) {
+    const key = tagKeyName(tag);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(tag);
+  }
+  const top = unique.slice(0, 24);
+  const entries = await Promise.all(
+    top.map(async (tag) => {
+      try {
+        const list = await tool('tags.related', { tag });
+        return [tag, Array.isArray(list) ? list : []];
+      } catch {
+        return [tag, []];
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
 }
 
 const INLINE_TAG = /(^|[\s(>])#([\p{L}\p{N}_][\p{L}\p{N}_\-\/]*)/gu;
@@ -3047,7 +3230,7 @@ function tagifyHtml(html) {
         if (!/\D/.test(name)) return all;
         const clean = name.replace(/[\/\-]+$/, '');
         const rest = name.slice(clean.length);
-        return `${lead}<span class="tag-inline" data-tag-texto="${clean}" style="--tag-h:${tagHue(clean)}" title="Ver as notas com #${clean}">#${clean}</span>${rest}`;
+        return `${lead}<span class="tag-inline" data-tag-texto="${clean}" style="${tagStyle(clean)}" title="Ver as notas com #${clean}">#${clean}</span>${rest}`;
       });
     })
     .join('');
@@ -3087,7 +3270,7 @@ async function showTagMenu(el, found) {
     return;
   }
   const rows = tags
-    .map((tag) => `<button type="button" class="menu__item" role="option" data-insert="#${escapeHtml(tag.name)}" style="--tag-h:${tagHue(tag.name)}"><span class="tag-ponto" aria-hidden="true"></span><span><span class="menu__titulo">${highlight(tag.name, found.query)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`)
+    .map((tag) => `<button type="button" class="menu__item" role="option" data-insert="#${escapeHtml(tag.name)}" style="${tagStyle(tag.name)}"><span class="tag-ponto" aria-hidden="true"></span><span><span class="menu__titulo">${highlight(tag.name, found.query)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`)
     .join('');
   openMenu(el, 'menu menu--wiki menu-flutuante menu--tags', rows, (button) => {
     insertAt(el, found.start, found.start + 1 + found.query.length, button.dataset.insert);
@@ -8679,7 +8862,7 @@ async function paintGraph(center) {
       <section class="grafo__secao">
         <p class="grafo__rotulo">Tags</p>
         <label class="grafo__campo">${icon('hash')}<select id="grafo-tag" aria-label="Filtrar por tag"><option value="">Todas as tags</option>${tags.map((tag) => `<option value="${escapeHtml(tag)}">#${escapeHtml(tag)} (${tagCounts.get(tag)})</option>`).join('')}</select></label>
-        ${topTags.length ? `<div class="grafo__tags-topo">${topTags.map(([tag, count]) => `<button type="button" class="tag-inline grafo__tag-atalho" data-graph-tag="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}" title="${count} ${count === 1 ? 'nota' : 'notas'}">#${escapeHtml(tag)}</button>`).join('')}</div>` : '<p class="grafo__dica">Nenhuma tag ainda. Escreva <b>#nome</b> numa nota.</p>'}
+        ${topTags.length ? `<div class="grafo__tags-topo">${topTags.map(([tag, count]) => `<button type="button" class="tag-inline grafo__tag-atalho" data-graph-tag="${escapeHtml(tag)}" style="${tagStyle(tag)}" title="${count} ${count === 1 ? 'nota' : 'notas'}">#${escapeHtml(tag)}</button>`).join('')}</div>` : '<p class="grafo__dica">Nenhuma tag ainda. Escreva <b>#nome</b> numa nota.</p>'}
       </section>
       <section class="grafo__secao">
         <p class="grafo__rotulo">Período de criação</p>
@@ -8800,7 +8983,9 @@ async function paintGraph(center) {
     colorOf,
     shelfColor,
     tagColor: (tag) => tagColorCss(tag),
-    tagHue: (tag) => tagHue(tag),
+    tagStyle: (tag) => tagStyle(tag),
+    tagHue: (tag) => tagHueFallback(tag),
+    relatedTags: state.graphRelated || {},
     escape: escapeHtml,
     icon,
     onStats: paintStats,
@@ -8819,6 +9004,12 @@ async function paintGraph(center) {
     onOpenTag: (tag) => showTag(tag),
   });
   state.graphView.setBaseGraph(graph);
+  const fillRelations = async () => {
+    const map = await loadTagRelations(topTags.map(([tag]) => tag).concat([...tagCounts.keys()]));
+    state.graphRelated = map;
+    state.graphView?.setRelatedTags(map);
+  };
+  if (view === 'tags') fillRelations();
   paintStats(state.graphView.stats());
   const frames = $('#grafo-quadros');
   if (frames && times.length) frames.innerHTML = `<span>${escapeHtml(timeLabel(times[0]))}</span><span>${escapeHtml(timeLabel(times[times.length - 1]))}</span>`;
@@ -8961,6 +9152,12 @@ async function paintGraph(center) {
       });
       $('#grafo-visao-dica').textContent = viewHelp[view];
       state.graphView?.setView(view);
+      if (view === 'tags') {
+        loadTagRelations(topTags.map(([tag]) => tag).concat([...tagCounts.keys()])).then((map) => {
+          state.graphRelated = map;
+          state.graphView?.setRelatedTags(map);
+        });
+      }
       applyFilters();
     };
   });
@@ -9160,13 +9357,13 @@ function openPalette() {
       return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
     };
     list.innerHTML =
-      (tagTokens.length ? `<div class="paleta__filtros" id="paleta-filtro-tag">Filtrando por ${tagTokens.map((tag) => `<span class="tag-inline" style="--tag-h:${tagHue(tag)}">#${escapeHtml(tag)}</span>`).join(' ')}</div>` : '') +
+      (tagTokens.length ? `<div class="paleta__filtros" id="paleta-filtro-tag">Filtrando por ${tagTokens.map((tag) => `<span class="tag-inline" style="${tagStyle(tag)}">#${escapeHtml(tag)}</span>`).join(' ')}</div>` : '') +
       (noteHits.length ? '<div class="menu__grupo">Notas</div>' : '') +
       noteHits.map(row).join('') +
       (canvasHits.length ? '<div class="menu__grupo">Canvas</div>' : '') +
       canvasHits.map(row).join('') +
       (tagRows.length ? '<div class="menu__grupo">Tags</div>' : '') +
-      tagRows.map((tag) => `<button type="button" class="menu__item" data-paleta-tag="${escapeHtml(tag.path)}" style="--tag-h:${tagHue(tag.path)}"><span class="tag-ponto" aria-hidden="true"></span><span><span class="menu__titulo">#${escapeHtml(tag.path)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`).join('') +
+      tagRows.map((tag) => `<button type="button" class="menu__item" data-paleta-tag="${escapeHtml(tag.path)}" style="${tagStyle(tag.path)}"><span class="tag-ponto" aria-hidden="true"></span><span><span class="menu__titulo">#${escapeHtml(tag.path)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`).join('') +
       (commands.length && !commandMode ? '' : '') +
       (commands.length ? '<div class="menu__grupo">Comandos</div>' : '') +
       commands

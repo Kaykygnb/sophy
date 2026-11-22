@@ -32,6 +32,7 @@
     'vault.import',
     'view.save',
     'tag.rename',
+    'tag.color.set',
     'note.tags',
     'card.review',
     'card.undo',
