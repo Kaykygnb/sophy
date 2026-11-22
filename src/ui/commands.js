@@ -62,6 +62,17 @@
     return { start: marker, query };
   }
 
+  function tagQuery(text, cursor) {
+    const before = text.slice(0, cursor);
+    const match = before.match(/(^|[\s(])#([\p{L}\p{N}_\-\/]*)$/u);
+    if (!match) return null;
+    const start = before.length - match[2].length - 1;
+    // "#" sozinho no começo da linha é título, não tag
+    if (!match[2] && !match[1]) return null;
+    if (match[2] && !/\D/.test(match[2])) return null;
+    return { start, query: match[2] };
+  }
+
   function foldText(value) {
     return String(value || '')
       .normalize('NFD')
@@ -612,6 +623,7 @@
     SLASH_ITEMS,
     slashQuery,
     wikiQuery,
+    tagQuery,
     foldText,
     fuzzyScore,
     parseWikiDraft,

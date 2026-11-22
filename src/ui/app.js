@@ -2813,6 +2813,79 @@ async function changeNoteTags(change) {
   }
 }
 
+/* ------------------------------------------------- #tag no texto e autocomplete */
+function tagHue(tag) {
+  const root = String(tag).split('/')[0].toLocaleLowerCase();
+  let hash = 0;
+  for (const char of root) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  return hash;
+}
+
+const INLINE_TAG = /(^|[\s(>])#([\p{L}\p{N}_][\p{L}\p{N}_\-\/]*)/gu;
+
+// Marca #tag no HTML já renderizado, sem tocar em links, código nem atributos.
+function tagifyHtml(html) {
+  let skip = 0;
+  return String(html)
+    .split(/(<[^>]+>)/)
+    .map((part) => {
+      if (part.startsWith('<')) {
+        if (/^<(a|code|kbd|pre)[\s>]/i.test(part)) skip += 1;
+        else if (/^<\/(a|code|kbd|pre)>/i.test(part)) skip = Math.max(0, skip - 1);
+        return part;
+      }
+      if (skip || !part.includes('#')) return part;
+      return part.replace(INLINE_TAG, (all, lead, name) => {
+        if (!/\D/.test(name)) return all;
+        const clean = name.replace(/[\/\-]+$/, '');
+        const rest = name.slice(clean.length);
+        return `${lead}<span class="tag-inline" data-tag-texto="${clean}" style="--tag-h:${tagHue(clean)}" title="Ver as notas com #${clean}">#${clean}</span>${rest}`;
+      });
+    })
+    .join('');
+}
+
+let tagClickGuard = null;
+function hookInlineTags() {
+  document.addEventListener(
+    'mousedown',
+    (event) => {
+      const chip = event.target.closest?.('#coluna .tag-inline');
+      tagClickGuard = chip ? { chip, editing: chip.closest('[data-block]') === document.activeElement } : null;
+    },
+    true,
+  );
+  document.addEventListener('click', (event) => {
+    const chip = event.target.closest?.('#coluna .tag-inline[data-tag-texto]');
+    if (!chip) return;
+    if (getSelection()?.toString()) return;
+    if (tagClickGuard?.chip === chip && tagClickGuard.editing && !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    showTag(chip.dataset.tagTexto);
+  });
+}
+
+async function showTagMenu(el, found) {
+  const seq = (state.tagMenuSeq = (state.tagMenuSeq || 0) + 1);
+  let tags = [];
+  try {
+    tags = (await tool('tag.suggest', { prefix: found.query, limit: 8 }))?.tags || [];
+  } catch {
+    tags = [];
+  }
+  if (seq !== state.tagMenuSeq || !el.isConnected) return;
+  if (!tags.length) {
+    closeMenus();
+    return;
+  }
+  const rows = tags
+    .map((tag) => `<button type="button" class="menu__item" role="option" data-insert="#${escapeHtml(tag.name)}">${icon('hash')}<span><span class="menu__titulo">${highlight(tag.name, found.query)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`)
+    .join('');
+  openMenu(el, 'menu menu--wiki menu-flutuante menu--tags', rows, (button) => {
+    insertAt(el, found.start, found.start + 1 + found.query.length, button.dataset.insert);
+  });
+}
+
 function syncWeekly() {
   $('#revisao-semana')?.remove();
   scheduleNotifRefresh();
@@ -3910,7 +3983,7 @@ function inlineHtml(text) {
       (link) => link.raw === raw && (link.status === 'broken' || link.status === 'ambiguous'),
     ),
   );
-  return html.replace(/<a href="#" class="wikilink([^"]*)"([^>]*)>/g, (all, cls, attrs) => {
+  return tagifyHtml(html).replace(/<a href="#" class="wikilink([^"]*)"([^>]*)>/g, (all, cls, attrs) => {
     const targetMatch = attrs.match(/data-target="([^"]*)"/);
     const target = targetMatch
       ? targetMatch[1]
@@ -4053,8 +4126,10 @@ function onBlockInput(el) {
   }
   const found = slash.offer(text, cursor);
   const wiki = Cmd.wikiQuery(text, cursor);
+  const tagFound = block?.type === 'code' ? null : Cmd.tagQuery(text, cursor);
   if (found) showSlash(el, found);
   else if (wiki) showWiki(el, wiki);
+  else if (tagFound) showTagMenu(el, tagFound);
   else closeMenus();
   if (block?.type === 'code') refreshCodeView(el);
   scheduleSave();
@@ -6882,8 +6957,16 @@ async function stopSofi() {
   }
 }
 
+let inlineTagsHooked = false;
+function hookInlineTagsOnce() {
+  if (inlineTagsHooked) return;
+  inlineTagsHooked = true;
+  hookInlineTags();
+}
+
 let sofiHooked = false;
 function hookSofiEvents() {
+  hookInlineTagsOnce();
   if (sofiHooked) return;
   sofiHooked = true;
   sophy.onAgentProgress?.((event) => {
@@ -8712,18 +8795,25 @@ function openPalette() {
   const render = async () => {
     const raw = input.value;
     const commandMode = raw.trimStart().startsWith('>');
-    const query = (commandMode ? raw.trimStart().slice(1) : raw).trim();
+    const tagTokens = commandMode ? [] : [...raw.matchAll(/(?:^|\s)#([^\s#]+)/g)].map((match) => match[1]);
+    const query = (commandMode ? raw.trimStart().slice(1) : tagTokens.length ? raw.replace(/(?:^|\s)#[^\s#]+/g, ' ') : raw).trim();
     let hits = [];
-    if (!commandMode && query.length >= 2) {
+    if (!commandMode && (query.length >= 2 || tagTokens.length)) {
       try {
-        hits = await tool('search.query', { query });
+        if (!tagTokens.length) hits = await tool('search.query', { query });
+        else if (query.length >= 2) hits = await tool('search.query', { query, tags: tagTokens, tagsMode: 'all' });
+        else {
+          const lists = await Promise.all(tagTokens.map((tag) => tool('tags.notes', { tag, nested: true })));
+          const common = lists.map((result) => result?.notes || []).reduce((left, right) => left.filter((note) => right.some((other) => other.path === note.path)));
+          hits = common.map((note) => ({ path: note.path, title: note.title, segments: [] }));
+        }
       } catch {
         hits = [];
       }
       const seen = new Set(
         hits.filter((hit) => String(hit.path).toLowerCase().endsWith('.canvas')).map((hit) => hit.path),
       );
-      const canvases = state.canvases.filter(
+      const canvases = (tagTokens.length ? [] : state.canvases).filter(
         (file) =>
           !seen.has(file.path) && file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
       );
@@ -8749,7 +8839,7 @@ function openPalette() {
       hits = unique;
     }
     const list = $('#paleta-lista');
-    const commands = (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
+    const commands = tagTokens.length ? [] : (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
       .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
     const noteHits = hits.filter((hit) => hit.kind !== 'canvas');
@@ -8766,6 +8856,7 @@ function openPalette() {
       return `<button type="button" class="menu__item" data-hit="${index}">${icon(hit.kind === 'canvas' ? 'canvas' : 'nota')}<span><span class="menu__titulo">${escapeHtml(hit.title || hit.path)}</span><span class="menu__caminho">${dot}${escapeHtml(hit.path)} ${excerpt}</span></span></button>`;
     };
     list.innerHTML =
+      (tagTokens.length ? `<div class="paleta__filtros" id="paleta-filtro-tag">Filtrando por ${tagTokens.map((tag) => `<span class="tag-inline" style="--tag-h:${tagHue(tag)}">#${escapeHtml(tag)}</span>`).join(' ')}</div>` : '') +
       (noteHits.length ? '<div class="menu__grupo">Notas</div>' : '') +
       noteHits.map(row).join('') +
       (canvasHits.length ? '<div class="menu__grupo">Canvas</div>' : '') +
@@ -8778,7 +8869,7 @@ function openPalette() {
             `<button type="button" class="menu__item" data-cmd="${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>`,
         )
         .join('') +
-      (hits.length === 0 && query.length >= 2
+      (hits.length === 0 && (query.length >= 2 || tagTokens.length)
         ? `<div class="vazio-pequeno vazio-pequeno--paleta">${ilustracao('busca-sem-resultado', 120)}<p>Nada encontrado para “${escapeHtml(query)}”. Tente outra palavra ou crie uma nota com esse nome.</p></div>`
         : '');
     list.querySelectorAll('[data-hit]').forEach((button) => {
@@ -9068,6 +9159,7 @@ async function boot() {
   sophy.onCommand((command) => {
     commandJob = commandJob.then(() => applyCommand(command)).catch((error) => toast(error.message, 'erro'));
   });
+  hookInlineTagsOnce();
   if (!state.settings.onboarded || !state.libraryPath) paintOnboarding();
   else await showShell();
   sophy.ready?.();

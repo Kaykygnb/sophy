@@ -3809,3 +3809,32 @@ button.propriedade__nome { cursor: text; }
 .sofi-campo [hidden] { display: none !important; }
 .sofi-campo { position: relative; }
 .sofi-campo__parar { position: absolute; right: 6px; bottom: 6px; height: 28px; padding: 0 10px; }
+
+/* =====================================================================
+   #tag no texto (fase 4)
+   ===================================================================== */
+.tag-inline { --tag-h: 250; display: inline; padding: 0 6px; border-radius: 999px; background: hsl(var(--tag-h) 60% 50% / .13); color: hsl(var(--tag-h) 52% 36%); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.tag-inline:hover { background: hsl(var(--tag-h) 60% 50% / .22); }
+:root[data-theme="dark"] .tag-inline { background: hsl(var(--tag-h) 70% 65% / .16); color: hsl(var(--tag-h) 78% 76%); }
+:root[data-theme="dark"] .tag-inline:hover { background: hsl(var(--tag-h) 70% 65% / .26); }
+.paleta__filtros { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 14px 4px; color: var(--ink-3); font: 500 12px var(--font-ui); }
+.menu--tags .menu__item .icon { color: var(--accent); }
+
+/* =====================================================================
+   Canvas: toolbar rotulada, + Card, minimapa com moldura (fase 4)
+   ===================================================================== */
+.canvas-mini[hidden] { display: none; }
+.canvas-mini { cursor: pointer; }
+.canvas-ferramentas .cv-novo-card { height: 30px; padding: 0 14px; border-radius: 15px; font-weight: 600; }
+.canvas-ferramentas .btn--rotulo { width: auto; gap: 6px; padding: 0 10px; border-radius: 15px; }
+.canvas-ferramentas .btn--rotulo .cv-btn-rotulo { font: 500 12.5px var(--font-ui); color: var(--ink-2); }
+.canvas-ferramentas .btn--rotulo[aria-pressed="true"] .cv-btn-rotulo { color: var(--accent); font-weight: 600; }
+.canvas-ferramentas .cv-novo-card:focus-visible, .canvas-ferramentas .btn--rotulo:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.canvas-zoom .btn--secundario { color: var(--accent); font-weight: 600; }
+@media (max-width: 760px) { .canvas-ferramentas .btn--rotulo .cv-btn-rotulo { display: none; } .canvas-ferramentas .btn--rotulo { width: 32px; padding: 0; } }
+.canvas-ferramentas { width: max-content; max-width: calc(100% - 32px); white-space: nowrap; }
+.canvas-ferramentas > * { flex: none; }
+.canvas-ferramentas .btn--rotulo { height: 34px; }
+.canvas-ferramentas .btn--rotulo .icon { width: 16px; height: 16px; flex: none; }
+.canvas-ferramentas .btn--rotulo { display: inline-flex; align-items: center; justify-content: center; }
+.canvas-ferramentas .btn--rotulo { aspect-ratio: auto; min-width: 0; }
