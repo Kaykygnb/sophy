@@ -17,6 +17,7 @@ import { exportNote } from './export.ts';
 import { queryGraph } from './graph.ts';
 import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
 import { readShelfStyles, writeShelfStyle } from './shelves.ts';
+import { migrateTagColors, readTagColors, setTagColor } from './tag-colors.ts';
 import {
   enableSemantic,
   exportSite,
@@ -79,6 +80,7 @@ import {
   listTagTree,
   portablePath,
   readStoredTags,
+  relatedTags,
   renameTags,
   suggestTags,
   type TagNoteRecord,
@@ -489,12 +491,19 @@ export const tools = [
       listNotesForTag(tagRecordsOf(openLibrary(folder)), tag, nested !== false),
   ),
   define(
+    'tags.related',
+    'Lista as outras tags que aparecem nas mesmas notas de tags.notes, com a contagem de notas em comum. Usa o índice já escaneado.',
+    z.object({ libraryPath, tag: z.string().min(1) }),
+    ({ libraryPath: folder, tag }) => relatedTags(tagRecordsOf(openLibrary(folder)), tag),
+  ),
+  define(
     'tag.rename',
-    'Renomeia uma tag no texto e no frontmatter de todas as notas, inclusive as descendentes. Se o destino já existe, une. Um desfazer volta todas.',
+    'Renomeia uma tag no texto e no frontmatter de todas as notas, inclusive as descendentes. Se o destino já existe, une. A cor em .sophy/tags.json acompanha o novo nome; se o destino já tinha cor, ela permanece. Um desfazer volta as notas. A cor fica fora desse histórico.',
     z.object({ libraryPath, from: z.string().min(1), to: z.string().min(1), origin }),
     ({ libraryPath: folder, from, to, origin: source }) =>
       tracked(folder, source, 'tag.rename', `Renomear tag ${from}`, (library) => {
         const result = renameTags(library, from, to, tagRecordsOf(library));
+        migrateTagColors(library, from, to);
         for (const path of result.paths) forgetCachedNote(library, path);
         return { changedNotes: result.changedNotes, replaced: result.replaced };
       }),
@@ -509,6 +518,26 @@ export const tools = [
     }),
     ({ libraryPath: folder, prefix, limit }) =>
       suggestTags(tagRecordsOf(openLibrary(folder)), prefix ?? '', limit ?? 10),
+  ),
+  define(
+    'tag.color.get',
+    'Lê as cores das tags gravadas em .sophy/tags.json. A chave é a tag sem #, normalizada como as outras tags.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => readTagColors(openLibrary(folder)),
+  ),
+  define(
+    'tag.color.set',
+    'Grava ou remove a cor de uma tag em .sophy/tags.json. Aceita um nome da paleta do editor ou #rrggbb. null ou string vazia remove.',
+    z.object({
+      libraryPath,
+      tag: z.string().min(1),
+      cor: z.union([z.string(), z.null()]),
+      origin,
+    }),
+    ({ libraryPath: folder, tag, cor, origin: source }) =>
+      tracked(folder, source, 'tag.color.set', `Cor da tag ${tag}`, (library) =>
+        setTagColor(library, tag, cor),
+      ),
   ),
   define(
     'note.tags',
@@ -933,6 +962,7 @@ const MUTATIONS = new Set([
   'search.semantic.enable',
   'task.update',
   'tag.rename',
+  'tag.color.set',
   'note.tags',
   'canvas.create',
   'canvas.update',
