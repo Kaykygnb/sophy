@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240">
+  <title>lixeira-vazia</title>
+  <path d="M30 206 L290 206" fill="none" stroke="#2a2934" stroke-width="4" stroke-linecap="round"/>
+  <path d="M62 92 L142 92 L134 192 C133.6 197 129.5 200 125 200 L79 200 C74.5 200 70.4 197 70 192 Z" fill="#22212b" stroke="#363543" stroke-width="4" stroke-linejoin="round"/><path d="M90 110 L92 184" fill="none" stroke="#262531" stroke-width="5" stroke-linecap="round"/><path d="M102 110 L102 184" fill="none" stroke="#262531" stroke-width="5" stroke-linecap="round"/><path d="M114 110 L112 184" fill="none" stroke="#262531" stroke-width="5" stroke-linecap="round"/><path d="M54 86 L150 74" fill="none" stroke="#363543" stroke-width="5" stroke-linecap="round"/><path d="M92 80 L98 68 L112 66 L118 76" fill="none" stroke="#363543" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="158" y="58" width="28" height="34" rx="4" fill="#1c1b23" stroke="#363543" stroke-width="4"/><path d="M164 70 L180 70" fill="none" stroke="#2a2934" stroke-width="3" stroke-linecap="round"/><path d="M164 78 L176 78" fill="none" stroke="#2a2934" stroke-width="3" stroke-linecap="round"/>
+  <g>
+      <path d="M213.2 105.76 L208.88 84.16 L230.48 97.12 Z" fill="#d4d2dd"/>
+      <path d="M270.8 105.76 L275.12 84.16 L253.52 97.12 Z" fill="#d4d2dd"/>
+      <path d="M203.12 136 C203.12 114.527 220.527 97.12 242 97.12 C263.473 97.12 280.88 114.527 280.88 136 L280.88 183.52 C280.88 187.496 277.656 190.72 273.68 190.72 L210.32 190.72 C206.344 190.72 203.12 187.496 203.12 183.52 Z" fill="#d4d2dd"/>
+      <path d="M220.4 190.72 L220.4 172 C220.4 160.071 230.071 150.4 242 150.4 C253.929 150.4 263.6 160.071 263.6 172 L263.6 190.72 Z" fill="#b5b3c2"/>
+      <path d="M234.8 173.44 L249.2 173.44" fill="none" stroke="#d4d2dd" stroke-width="2.16" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+      <path d="M234.8 182.08 L249.2 182.08" fill="none" stroke="#d4d2dd" stroke-width="2.16" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+      <path d="M242 134.56 C242 143.308 234.908 150.4 226.16 150.4 C217.412 150.4 210.32 143.308 210.32 134.56 C210.32 125.812 217.412 118.72 226.16 118.72 C234.908 118.72 242 125.812 242 134.56 Z" fill="#1c1b23"/>
+      <path d="M273.68 134.56 C273.68 143.308 266.588 150.4 257.84 150.4 C249.092 150.4 242 143.308 242 134.56 C242 125.812 249.092 118.72 257.84 118.72 C266.588 118.72 273.68 125.812 273.68 134.56 Z" fill="#1c1b23"/>
+      <path d="M218.24 136.936 C218.24 132.562 221.786 129.016 226.16 129.016 C230.534 129.016 234.08 132.562 234.08 136.936" fill="none" stroke="#d4d2dd" stroke-width="4.118" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M249.92 136.936 C249.92 132.562 253.466 129.016 257.84 129.016 C262.214 129.016 265.76 132.562 265.76 136.936" fill="none" stroke="#d4d2dd" stroke-width="4.118" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M236.96 148.96 L247.04 148.96 L242 156.88 Z" fill="#c9ab78"/>
+      <path d="M224 190.72 L231.2 190.72 C232.393 190.72 233.36 191.687 233.36 192.88 L233.36 192.88 C233.36 194.073 232.393 195.04 231.2 195.04 L224 195.04 C222.807 195.04 221.84 194.073 221.84 192.88 L221.84 192.88 C221.84 191.687 222.807 190.72 224 190.72 Z" fill="#c9ab78"/>
+      <path d="M252.8 190.72 L260 190.72 C261.193 190.72 262.16 191.687 262.16 192.88 L262.16 192.88 C262.16 194.073 261.193 195.04 260 195.04 L252.8 195.04 C251.607 195.04 250.64 194.073 250.64 192.88 L250.64 192.88 C250.64 191.687 251.607 190.72 252.8 190.72 Z" fill="#c9ab78"/>
+  <circle cx="289.52" cy="95.68" r="8" fill="#a6abea"/><path d="M285.5 95.68 L293.5 95.68" fill="none" stroke="#22212b" stroke-width="1.9" stroke-linecap="round"/><path d="M289.52 91.7 L289.52 99.7" fill="none" stroke="#22212b" stroke-width="1.9" stroke-linecap="round"/>
+  </g>
+</svg>
