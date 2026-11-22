@@ -63,8 +63,8 @@ export {
   decodeExportBytes,
   exportFileRelative,
 } from './export.ts';
-export { runAgentTurn, agentTools } from './agent.ts';
-export { listHistory, undoLast } from './history.ts';
+export { runAgentTurn, agentTools, agentConfirmation } from './agent.ts';
+export { listHistory, undoLast, undoById } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';
 export {
   subscribeUi,
