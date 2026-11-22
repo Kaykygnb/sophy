@@ -9,12 +9,24 @@ import { findNoteByRememberedName } from './note-id.ts';
 import { resolveInside } from './paths.ts';
 import { buildRewriteIndexes, rewriteLinks } from './rewrite.ts';
 import { fold, rankByFuzzy } from './fuzzy.ts';
+import { collectNoteTags, type NoteTag } from './tags.ts';
+import {
+  findNamedBlock,
+  namedBlocksOf,
+  previewLines,
+  sectionText,
+  unwrapWiki,
+  type NamedBlock,
+} from './blocks.ts';
 import {
   anchorExists,
+  anchorKey,
   blockIdsOf,
   headingsOf,
   labelOf,
+  parseTarget,
   plainText,
+  posixPath,
   resolveFile,
   indexPaths,
   resolvePath,
@@ -27,6 +39,8 @@ import {
 
 export type LinkStatus = 'resolved' | 'ambiguous' | 'broken';
 
+export type LinkKind = 'note' | 'section' | 'block';
+
 export type OutgoingLink = {
   format: LinkFormat;
   raw: string;
@@ -36,6 +50,7 @@ export type OutgoingLink = {
   status: LinkStatus;
   path: string | null;
   candidates: string[];
+  kind?: LinkKind;
 };
 
 export type Backlink = {
@@ -56,6 +71,7 @@ export type CatalogNote = {
   headings: string[];
   sections: NoteSection[];
   blockIds: string[];
+  blocks: NamedBlock[];
   modifiedAt: number;
   plain: string;
 };
@@ -66,9 +82,11 @@ type CachedNote = {
   title: string;
   aliases: string[];
   tags: string[];
+  tagRecords: NoteTag[];
   headings: string[];
   sections: NoteSection[];
   blockIds: string[];
+  blocks: NamedBlock[];
   plain: string;
   frontmatterText: string;
   mtime: number;
@@ -83,6 +101,10 @@ const watchers = new Map<string, fs.FSWatcher>();
 const generations = new Map<string, number>();
 const bundleByCache = new WeakMap<Map<string, CachedNote>, ReturnType<typeof buildBundle>>();
 const fileInventories = new Map<string, string[]>();
+
+export function forgetCachedNote(library: Library, relative: string) {
+  caches.get(library.root)?.delete(relative.split('\\').join('/'));
+}
 
 export function syncLinks(library: Library) {
   const cache = caches.get(library.root) ?? new Map<string, CachedNote>();
@@ -171,6 +193,7 @@ export function catalogNotes(library: Library): CatalogNote[] {
       headings: note.headings,
       sections: note.sections,
       blockIds: note.blockIds,
+      blocks: note.blocks,
       modifiedAt: note.mtime,
       plain: note.plain.slice(0, 400),
     }));
@@ -341,15 +364,18 @@ function loadNote(
   const headings = headingsOf(parts.body);
   const sections = sectionsOf(parts.body);
   const scanned = scan(content);
+  const tagRecords = collectNoteTags(parts.frontmatter, parts.body);
   return {
     path: relative,
     workspace,
     title: headings[0] || basename(relative),
     aliases: aliasesOf(parts.frontmatter),
-    tags: tagsOf(parts.frontmatter),
+    tags: tagRecords.map((tag) => tag.name),
+    tagRecords,
     headings,
     sections,
     blockIds: blockIdsOf(parts.body),
+    blocks: namedBlocksOf(content),
     plain: plainText(parts.body),
     frontmatterText: frontmatterText(parts.frontmatter),
     mtime,
@@ -417,17 +443,23 @@ function decorate(
       if (healed) resolved = { path: healed, candidates: [healed], invalid: false };
     }
     let status: LinkStatus = 'broken';
+    const target = resolved.path ? cache.get(resolved.path) : undefined;
     if (resolved.invalid || (!resolved.path && resolved.candidates.length === 0)) status = 'broken';
     else if (!resolved.path) status = 'ambiguous';
     else {
-      const target = cache.get(resolved.path);
       const anchorOk = !link.anchor
         ? true
         : target
-          ? anchorExists(target.headings, target.blockIds, link.anchor)
+          ? anchorExists(
+              target.headings,
+              target.blockIds,
+              link.anchor,
+              target.blocks.map((block) => block.title),
+            )
           : false;
       status = anchorOk ? 'resolved' : 'broken';
     }
+    const kind = status === 'resolved' && target ? linkKind(target, link.anchor) : undefined;
     return {
       format: link.format,
       raw: link.raw,
@@ -437,17 +469,11 @@ function decorate(
       status,
       path: status === 'resolved' ? resolved.path : null,
       candidates: resolved.candidates,
+      ...(kind ? { kind } : {}),
     };
   });
   bundle.outgoing.set(note.path, resolvedLinks);
   return resolvedLinks;
-}
-
-function tagsOf(frontmatter: Record<string, unknown> | null) {
-  const tags = frontmatter?.tags;
-  if (typeof tags === 'string') return [tags];
-  if (Array.isArray(tags)) return tags.filter((tag): tag is string => typeof tag === 'string');
-  return [];
 }
 
 function aliasesOf(frontmatter: Record<string, unknown> | null) {
@@ -520,9 +546,11 @@ function loadCanvas(
     title: basename(relative),
     aliases: [],
     tags: [],
+    tagRecords: [],
     headings: [],
     sections: [],
     blockIds: [],
+    blocks: [],
     plain: plainText(texts.join('\n')),
     frontmatterText: '',
     mtime,
@@ -643,4 +671,158 @@ function rewriteFileRef(
 
 function basename(filePath: string) {
   return (filePath.split('/').pop() ?? filePath).replace(/\.md$/i, '').replace(/\.canvas$/i, '');
+}
+
+function linkKind(note: CachedNote, anchor: string): LinkKind {
+  if (!anchor) return 'note';
+  if (anchor.startsWith('^')) return 'block';
+  const wanted = anchorKey(anchor);
+  if (note.headings.some((heading) => anchorKey(heading) === wanted)) return 'section';
+  return 'block';
+}
+
+/** Tira do índice as notas regravadas, para o próximo scan ler o disco. */
+export function forgetLinks(library: Library, paths: string[]) {
+  const cache = caches.get(library.root);
+  if (cache) {
+    for (const filePath of paths) cache.delete(posixPath(filePath));
+    bundleByCache.delete(cache);
+  }
+  sharedIndexes.delete(library.root);
+}
+
+export function scanBlocks(library: Library, relative?: string) {
+  const cache = syncLinks(library);
+  const present = (note: CachedNote) => ({ path: note.path, blocks: note.blocks });
+  if (relative === undefined) {
+    return [...cache.values()]
+      .filter((note) => note.path.toLowerCase().endsWith('.md'))
+      .map(present)
+      .sort((a, b) => a.path.localeCompare(b.path, 'pt-BR'));
+  }
+  const key = posixPath(relative);
+  const note = cache.get(key);
+  if (!note || !key.toLowerCase().endsWith('.md'))
+    throw new EngineError('not-found', 'Nota não encontrada.');
+  return present(note);
+}
+
+export function resolveLink(library: Library, source: string, rawTarget: string) {
+  const from = posixPath(source);
+  const cache = syncLinks(library);
+  if (!cache.has(from) || !from.toLowerCase().endsWith('.md'))
+    throw new EngineError('not-found', 'Nota não encontrada.');
+  const spec = parseTarget(unwrapWiki(rawTarget));
+  const paths = [...cache.keys()];
+  let resolved = resolvePath(spec.note, from, paths);
+  if (!resolved.invalid && !resolved.path && resolved.candidates.length === 0) {
+    const healed = findNoteByRememberedName(library, spec.note);
+    if (healed) resolved = { path: healed, candidates: [healed], invalid: false };
+  }
+  if (resolved.invalid || !resolved.path) return { ...spec, ...resolved };
+  const target = cache.get(resolved.path);
+  if (!spec.anchor) {
+    return {
+      kind: 'note' as const,
+      ...spec,
+      path: resolved.path,
+      notePath: resolved.path,
+      title: target?.title || basename(resolved.path),
+      candidates: resolved.candidates,
+      invalid: false,
+    };
+  }
+  if (!target) return { ...spec, path: null, candidates: resolved.candidates, invalid: false };
+  const wanted = anchorKey(spec.anchor);
+  if (!spec.anchor.startsWith('^') && target.headings.some((heading) => anchorKey(heading) === wanted)) {
+    const title = target.headings.find((heading) => anchorKey(heading) === wanted) || spec.anchor;
+    return {
+      kind: 'section' as const,
+      ...spec,
+      path: resolved.path,
+      notePath: resolved.path,
+      title,
+      candidates: resolved.candidates,
+      invalid: false,
+    };
+  }
+  if (spec.anchor.startsWith('^')) {
+    if (!target.blockIds.includes(spec.anchor.slice(1)))
+      return { ...spec, path: null, candidates: resolved.candidates, invalid: false };
+    const located = caretLine(readText(library, resolved.path).content, spec.anchor.slice(1));
+    return {
+      kind: 'block' as const,
+      notePath: resolved.path,
+      anchor: spec.anchor,
+      title: spec.anchor.slice(1),
+      lang: '',
+      startLine: located.line,
+      endLine: located.line,
+      preview: located.text,
+      truncated: false,
+      path: resolved.path,
+      ...spec,
+      candidates: resolved.candidates,
+      invalid: false,
+    };
+  }
+  const block = target.blocks.find((item) => anchorKey(item.title) === wanted && !item.duplicate);
+  if (!block) return { ...spec, path: null, candidates: resolved.candidates, invalid: false };
+  const content = readText(library, resolved.path).content;
+  const rich = findNamedBlock(content, spec.anchor);
+  const code = rich?.code ?? '';
+  const shown = previewLines(code);
+  return {
+    kind: 'block' as const,
+    notePath: resolved.path,
+    anchor: spec.anchor,
+    title: block.title,
+    lang: block.lang,
+    startLine: block.startLine,
+    endLine: block.endLine,
+    preview: shown.preview,
+    truncated: shown.truncated,
+    path: resolved.path,
+    candidates: resolved.candidates,
+    invalid: false,
+  };
+}
+
+export function previewLink(library: Library, source: string, rawTarget: string) {
+  const resolved = resolveLink(library, source, rawTarget);
+  if (!('kind' in resolved) || !resolved.kind) return resolved;
+  if (resolved.kind === 'block') {
+    if (resolved.anchor.startsWith('^'))
+      return { kind: 'block' as const, lang: '', title: resolved.title, code: resolved.preview };
+    const content = readText(library, resolved.notePath).content;
+    const rich = findNamedBlock(content, resolved.anchor);
+    return { kind: 'block' as const, lang: resolved.lang, title: resolved.title, code: rich?.code ?? '' };
+  }
+  const content = readText(library, resolved.notePath).content;
+  if (resolved.kind === 'section') {
+    const body = splitMarkdown(content).body;
+    return {
+      kind: 'section' as const,
+      notePath: resolved.notePath,
+      anchor: resolved.anchor,
+      title: resolved.title,
+      text: sectionText(body, resolved.anchor),
+    };
+  }
+  return {
+    kind: 'note' as const,
+    notePath: resolved.notePath,
+    anchor: resolved.anchor,
+    title: resolved.title,
+    text: splitMarkdown(content).body,
+  };
+}
+
+function caretLine(source: string, id: string) {
+  const lines = source.split(/\r?\n/);
+  const pattern = new RegExp(`(?:^|\\s)\\^${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (pattern.test(lines[index])) return { line: index + 1, text: lines[index].trim() };
+  }
+  return { line: 1, text: '' };
 }

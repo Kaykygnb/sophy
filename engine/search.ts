@@ -1,16 +1,23 @@
 import { indexedNotes } from './links.ts';
 import type { Library } from './library.ts';
+import { matchesTagFilter, type TagFilter } from './tags.ts';
 
 export function fold(value: string) {
   return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 }
 
-export function searchLibrary(library: Library, query: string, workspace?: string) {
+export function searchLibrary(
+  library: Library,
+  query: string,
+  workspace?: string,
+  tags: TagFilter = {},
+) {
   const needle = fold(query.trim());
   if (needle.length < 2) return [];
   const hits = [];
   for (const note of indexedNotes(library)) {
     if (workspace && note.workspace !== workspace) continue;
+    if (!matchesTagFilter(note.tagRecords, tags)) continue;
     const fields: Array<[string, string]> = [
       ['title', note.title],
       ['body', note.plain],

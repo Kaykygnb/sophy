@@ -94,13 +94,16 @@
           );
     const toolBtn = ([id, label, key]) =>
       `<button type="button" class="btn btn--icone" data-tool="${id}" aria-label="${label}" title="${label}${key ? ` (${key})` : ''}">${toolIcon(id)}</button>`;
+    const labelBtn = ([id, label, key, text]) =>
+      `<button type="button" class="btn btn--icone btn--rotulo" data-tool="${id}" aria-label="${label}" title="${label}${key ? ` (${key})` : ''}">${toolIcon(id)}<span class="cv-btn-rotulo">${text}</span></button>`;
     tools.innerHTML = [
-      toolBtn(['select', 'Selecionar', 'V']),
+      '<button type="button" class="btn btn--primario btn--pequeno cv-novo-card" data-canvas-add aria-label="Adicionar card" title="Adicionar card (R)">+ Card</button>',
+      labelBtn(['select', 'Selecionar', 'V', 'Selecionar']),
       '<span class="cv-sep" aria-hidden="true"></span>',
       toolBtn(['rectangle', 'Retângulo', 'R']),
       toolBtn(['ellipse', 'Elipse', 'O']),
       toolBtn(['diamond', 'Losango', 'D']),
-      toolBtn(['connect', 'Seta', 'C']),
+      labelBtn(['connect', 'Conectar cards com uma seta', 'C', 'Conectar']),
       '<span class="cv-sep" aria-hidden="true"></span>',
       toolBtn(['undo', 'Desfazer', '']),
       toolBtn(['redo', 'Refazer', '']),
@@ -111,6 +114,35 @@
     colors.innerHTML = `<span class="cv-cores__rotulo">Fundo</span>${['', ...PALETTE].map((id) => swatch('fill', id)).join('')}<span class="cv-sep" aria-hidden="true"></span><span class="cv-cores__rotulo">Borda</span>${['', ...PALETTE].map((id) => swatch('border', id)).join('')}`;
 
     zoomBar.innerHTML = `<button type="button" class="btn btn--icone" data-zoom="out" aria-label="Afastar">−</button><span class="canvas-zoom__valor">100%</span><button type="button" class="btn btn--icone" data-zoom="in" aria-label="Aproximar">+</button><button type="button" class="btn btn--secundario" data-zoom="fit">Ajustar</button>`;
+
+    /** Enquadra todos os cards, sem passar por trás da toolbar nem do zoom. */
+    const fitCamera = () => {
+      const nodes = state.document.nodes;
+      const width = area.clientWidth || host.clientWidth;
+      const height = area.clientHeight || host.clientHeight;
+      if (!width || !height) return false;
+      if (!nodes.length) {
+        state.camera = { x: 80, y: 96, zoom: 1 };
+        return true;
+      }
+      const minX = Math.min(...nodes.map((node) => node.x));
+      const minY = Math.min(...nodes.map((node) => node.y));
+      const maxX = Math.max(...nodes.map((node) => node.x + node.width));
+      const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+      const padX = 80;
+      const top = 104;
+      const bottom = 88;
+      const zoom = Math.min(
+        1.2,
+        Math.max(0.35, Math.min((width - padX * 2) / Math.max(maxX - minX, 1), (height - top - bottom) / Math.max(maxY - minY, 1))),
+      );
+      state.camera = {
+        zoom,
+        x: (width - (maxX - minX) * zoom) / 2 - minX * zoom,
+        y: top + (height - top - bottom - (maxY - minY) * zoom) / 2 - minY * zoom,
+      };
+      return true;
+    };
 
     const applyCamera = () => {
       const camera = state.camera;
@@ -158,6 +190,7 @@
     };
 
     const paint = () => {
+      if (!state.fitted && fitCamera()) state.fitted = true;
       const empty = area.querySelector('.canvas-vazio');
       if (!state.document.nodes.length) {
         if (!empty) {
@@ -673,13 +706,20 @@
       paint();
       commit();
     });
+    tools.addEventListener('click', (event) => {
+      if (!event.target.closest('[data-canvas-add]')) return;
+      const width = area.clientWidth || 900;
+      const height = area.clientHeight || 600;
+      const step = (state.document.nodes.length % 5) * 24;
+      place('rectangle', (width / 2 - state.camera.x) / state.camera.zoom - 120 + step, (height / 2 - state.camera.y) / state.camera.zoom - 80 + step);
+    });
     zoomBar.addEventListener('click', (event) => {
       const button = event.target.closest('[data-zoom]');
       if (!button) return;
       if (button.dataset.zoom === 'in') state.camera.zoom = Math.min(2.2, state.camera.zoom * 1.15);
       if (button.dataset.zoom === 'out')
         state.camera.zoom = Math.max(0.35, state.camera.zoom / 1.15);
-      if (button.dataset.zoom === 'fit') state.camera = { x: 80, y: 48, zoom: 1 };
+      if (button.dataset.zoom === 'fit') fitCamera();
       paint();
     });
     host.addEventListener('dragover', (event) => event.preventDefault());
@@ -707,7 +747,7 @@
       const key = event.key.toLocaleLowerCase();
       if ((event.ctrlKey || event.metaKey) && key === '0') {
         event.preventDefault();
-        state.camera = { x: 80, y: 48, zoom: 1 };
+        fitCamera();
         paint();
         return;
       }
@@ -750,32 +790,50 @@
       };
     }
 
+    let miniMap = null;
     function paintMini() {
       const ctx = mini.getContext('2d');
       ctx.clearRect(0, 0, MINI_W, MINI_H);
-      ctx.fillStyle =
-        getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f4f2ef';
-      ctx.fillRect(0, 0, MINI_W, MINI_H);
       const nodes = state.document.nodes;
+      mini.hidden = !nodes.length;
+      miniMap = null;
       if (!nodes.length) return;
-      const minX = Math.min(...nodes.map((node) => node.x));
-      const minY = Math.min(...nodes.map((node) => node.y));
-      const maxX = Math.max(...nodes.map((node) => node.x + node.width));
-      const maxY = Math.max(...nodes.map((node) => node.y + node.height));
-      const scale = Math.min(
-        (MINI_W - 16) / Math.max(maxX - minX, 1),
-        (MINI_H - 16) / Math.max(maxY - minY, 1),
-      );
+      const css = getComputedStyle(document.documentElement);
+      ctx.fillStyle = css.getPropertyValue('--bg').trim() || '#f4f2ef';
+      ctx.fillRect(0, 0, MINI_W, MINI_H);
+      const view = {
+        x: -state.camera.x / state.camera.zoom,
+        y: -state.camera.y / state.camera.zoom,
+        width: (area.clientWidth || 900) / state.camera.zoom,
+        height: (area.clientHeight || 600) / state.camera.zoom,
+      };
+      const minX = Math.min(view.x, ...nodes.map((node) => node.x));
+      const minY = Math.min(view.y, ...nodes.map((node) => node.y));
+      const maxX = Math.max(view.x + view.width, ...nodes.map((node) => node.x + node.width));
+      const maxY = Math.max(view.y + view.height, ...nodes.map((node) => node.y + node.height));
+      const scale = Math.min((MINI_W - 12) / Math.max(maxX - minX, 1), (MINI_H - 12) / Math.max(maxY - minY, 1));
+      const offX = (MINI_W - (maxX - minX) * scale) / 2;
+      const offY = (MINI_H - (maxY - minY) * scale) / 2;
+      miniMap = { minX, minY, scale, offX, offY };
       for (const node of nodes) {
         ctx.fillStyle = node.type === 'group' ? 'rgba(110,114,176,0.28)' : '#918DA6';
-        ctx.fillRect(
-          (node.x - minX) * scale + 8,
-          (node.y - minY) * scale + 8,
-          Math.max(3, node.width * scale),
-          Math.max(3, node.height * scale),
-        );
+        ctx.fillRect((node.x - minX) * scale + offX, (node.y - minY) * scale + offY, Math.max(3, node.width * scale), Math.max(3, node.height * scale));
       }
+      ctx.strokeStyle = css.getPropertyValue('--accent').trim() || '#5b5fc7';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect((view.x - minX) * scale + offX, (view.y - minY) * scale + offY, view.width * scale, view.height * scale);
     }
+    mini.addEventListener('click', (event) => {
+      if (!miniMap) return;
+      const rect = mini.getBoundingClientRect();
+      const px = ((event.clientX - rect.left) / rect.width) * MINI_W;
+      const py = ((event.clientY - rect.top) / rect.height) * MINI_H;
+      const wx = (px - miniMap.offX) / miniMap.scale + miniMap.minX;
+      const wy = (py - miniMap.offY) / miniMap.scale + miniMap.minY;
+      state.camera.x = (area.clientWidth || 900) / 2 - wx * state.camera.zoom;
+      state.camera.y = (area.clientHeight || 600) / 2 - wy * state.camera.zoom;
+      paint();
+    });
 
     function inline(text) {
       return window.SophyWriting.inlineHtml(text || '', (raw) => options.brokenLink?.(raw) || false);

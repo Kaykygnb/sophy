@@ -157,6 +157,8 @@ export function agentConfirmation(name: string, args: Record<string, unknown>) {
   if (name === 'note.deletePermanent')
     return `Apagar de vez ${String(args.path || 'o item')}?`;
   if (name === 'note.write') return `Sobrescrever a nota ${String(args.path || '')}?`;
+  if (name === 'block.rename')
+    return `Renomear o bloco ${String(args.de || '')} para ${String(args.para || '')}?`;
   if (name === 'entry.move') {
     const from = String(args.from || '');
     return from.includes('/') ? `Mover a nota ${from}?` : `Mover ou renomear a estante ${from}?`;
@@ -194,6 +196,22 @@ export function agentActionPhrase(tool: string, input: Record<string, unknown>):
     );
   if (tool === 'directory.create')
     return said('Criando', 'Criou', 'Não criou', 'Recusou criar', `a pasta ${title}`);
+  if (tool === 'block.rename')
+    return said(
+      'Renomeando',
+      'Renomeou',
+      'Não renomeou',
+      'Recusou renomear',
+      `o bloco ${String(input.de || '')}`,
+    );
+  if (tool === 'tag.rename')
+    return said(
+      'Renomeando',
+      'Renomeou',
+      'Não renomeou',
+      'Recusou renomear',
+      `a tag ${String(input.from || '')}`,
+    );
   if (tool === 'entry.move') {
     const note = String(input.from || '').includes('/') || String(input.from || '').endsWith('.md');
     const rest = note ? `a nota ${from} para ${to}` : `a estante ${from}`;

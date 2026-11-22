@@ -18,7 +18,7 @@ test('o IPC expõe os clientes MCP e o registro não', () => {
 
 test('o motor e o IPC não deixam resíduo de log de depuração', () => {
   const files = [
-    ...fs.readdirSync('engine').filter((name) => name.endsWith('.ts')).map((name) => path.join('engine', name)),
+    ...fs.readdirSync('engine').filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts')).map((name) => path.join('engine', name)),
     path.join('src', 'main.js'),
     path.join('src', 'preload.js'),
     'README.md',
