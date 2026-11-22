@@ -7,7 +7,15 @@ type FetchLike = (url: string, init: { method: string; headers: Record<string, s
 }>;
 
 const blocked = /key|chave|secret|token|senha/i;
-const unsafe = new Set(['site.export', 'vault.import', 'entry.trash', 'version.restore']);
+const unsafe = new Set([
+  'site.export',
+  'vault.import',
+  'entry.trash',
+  'note.deletePermanent',
+  'trash.purge',
+  'trash.empty',
+  'version.restore',
+]);
 
 export function agentTools() {
   return listTools()
@@ -20,6 +28,7 @@ export function agentTools() {
 
 export function agentConfirmation(name: string, args: Record<string, unknown>) {
   if (name === 'history.undo') return 'Desfazer a última ação da biblioteca?';
+  if (name === 'trash.restore') return 'Restaurar este item da lixeira?';
   if (name === 'note.write') return `Sobrescrever a nota ${String(args.path || '')}?`;
   if (name === 'block.rename')
     return `Renomear o bloco ${String(args.de || '')} para ${String(args.para || '')}?`;
