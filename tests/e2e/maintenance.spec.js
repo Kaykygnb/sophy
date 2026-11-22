@@ -1,7 +1,23 @@
 const { test, expect, _electron: electron } = require('@playwright/test');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+
+function issueMcpKey(nome) {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-e2e-mcp-'));
+  const script = `import { createClient } from './engine/mcp-clients.ts';
+const created = createClient(${JSON.stringify(userData)}, { nome: ${JSON.stringify(nome)}, permissao: 'escrita' });
+process.stdout.write(created.chave);
+`;
+  const result = spawnSync(
+    process.execPath,
+    ['--experimental-strip-types', '--input-type=module', '-e', script],
+    { encoding: 'utf8', cwd: path.resolve(__dirname, '../..') },
+  );
+  if (result.status !== 0) throw new Error(result.stderr || 'não criei a chave MCP');
+  return { userData, chave: result.stdout };
+}
 
 function library() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-maintenance-'));
@@ -156,10 +172,13 @@ test('motor sem janela grava em outra biblioteca e MCP reabre a interface no des
       .toBe(false);
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+    const issued = issueMcpKey('Manutencao');
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([, value]) => typeof value === 'string'),
     );
     env.SOPHY_UI_DIR = path.join(data, 'presenca');
+    env.SOPHY_USER_DATA = issued.userData;
+    env.SOPHY_MCP_KEY = issued.chave;
     client = new Client({ name: 'daemon-e2e', version: '1' });
     await client.connect(
       new StdioClientTransport({
@@ -223,6 +242,7 @@ test('iniciar em segundo plano não cria janela e um comando visual abre a nota'
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+    const issued = issueMcpKey('Segundo plano');
     client = new Client({ name: 'background', version: '1' });
     await client.connect(
       new StdioClientTransport({
@@ -240,6 +260,8 @@ test('iniciar em segundo plano não cria janela e um comando visual abre a nota'
             Object.entries(process.env).filter(([, value]) => typeof value === 'string'),
           ),
           SOPHY_UI_DIR: path.join(data, 'presenca'),
+          SOPHY_USER_DATA: issued.userData,
+          SOPHY_MCP_KEY: issued.chave,
         },
         stderr: 'pipe',
       }),

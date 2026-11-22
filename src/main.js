@@ -144,7 +144,7 @@ function broadcast(command) {
 async function loadEngine() {
   engine = await import(pathToFileURL(path.join(__dirname, '..', 'engine', 'index.ts')).href);
   gate = createToolGate({
-    call: engine.callTool,
+    call: (name, input) => engine.withAuthor('usuario', () => engine.callTool(name, input)),
     libraryPath: () => sessionPath,
     setLibraryPath: (value) => {
       sessionPath = value;
@@ -234,8 +234,28 @@ function setupIpc() {
     if (typeof name !== 'string' || !/^[a-z]+(\.[A-Za-z]+)+$/.test(name))
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
+    if (engine.MCP_ADMIN_TOOLS.includes(name))
+      throw Object.assign(new Error('Tool desconhecida.'), { code: 'not-found' });
     const body = input && typeof input === 'object' ? input : {};
     return gate(name, body);
+  });
+
+  handle('sophy:mcp-admin', (_event, tool, input) => {
+    if (typeof tool !== 'string' || !engine.MCP_ADMIN_TOOLS.includes(tool))
+      throw Object.assign(new Error('Tool desconhecida.'), { code: 'not-found' });
+    const args = [
+      '--experimental-strip-types',
+      path.join(__dirname, '..', 'engine', 'cli.ts'),
+      'mcp',
+    ];
+    if (sessionPath) args.push('--biblioteca', sessionPath);
+    return engine.mcpAdmin(tool, input && typeof input === 'object' ? input : {}, app.getPath('userData'), {
+      biblioteca: sessionPath || undefined,
+      comando: process.execPath,
+      electron: true,
+      args,
+      url: 'http://127.0.0.1:8734/mcp',
+    });
   });
 
   handle('sophy:agent-status', () => ({

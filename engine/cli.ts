@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { EngineError } from './errors.ts';
+import { userDataDir } from './mcp-clients.ts';
 import { serveMcp } from './mcp.ts';
 import { callTool, tools } from './tools.ts';
 import { readCatalog, libraryCatalog } from './catalog.ts';
@@ -34,6 +35,8 @@ type Parsed = {
   texto: string | undefined;
   somenteLeitura: boolean;
   escrita: boolean;
+  http: boolean;
+  httpPort: number | undefined;
 };
 
 const SHORTCUTS = new Set([
@@ -67,7 +70,10 @@ export async function execute(argv: string[], io: Io): Promise<number> {
     }
     if (parsed.command === 'mcp') {
       if (parsed.positionals.length)
-        throw new CliError('Uso: sophy mcp [--biblioteca <pasta>] [--escrita]', 1);
+        throw new CliError(
+          'Uso: sophy mcp [--biblioteca <pasta> | --todas-bibliotecas] [--somente-leitura] [--http [porta]]',
+          1,
+        );
       const libraries = parsed.flags['todas-bibliotecas'] === true
         ? readCatalog(typeof parsed.flags.catalogo === 'string' ? path.resolve(io.cwd, parsed.flags.catalogo) : undefined)
         : undefined;
@@ -75,7 +81,14 @@ export async function execute(argv: string[], io: Io): Promise<number> {
       const defaultLibrary = libraries ? libraryCatalog(libraries).find((entry) => entry.available)?.root : findLibrary(io, parsed.biblioteca);
       if (!defaultLibrary) throw new CliError('Nenhuma biblioteca cadastrada está disponível.', 2);
       await serveMcp(defaultLibrary, {
-        readonly: !parsed.escrita || parsed.somenteLeitura, libraries,
+        somenteLeitura: parsed.somenteLeitura,
+        escrita: parsed.escrita,
+        libraries,
+        userData: userDataDir(io.env),
+        key: io.env.SOPHY_MCP_KEY,
+        transport: parsed.http ? 'http' : 'stdio',
+        port: parsed.httpPort,
+        onListen: (url) => io.stderr(`MCP HTTP em ${url}\n`),
       });
       return 0;
     }
@@ -112,6 +125,8 @@ function parseArgv(argv: string[]): Parsed {
   let texto: string | undefined;
   let somenteLeitura = false;
   let escrita = false;
+  let http = false;
+  let httpPort: number | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
@@ -124,6 +139,18 @@ function parseArgv(argv: string[]): Parsed {
     }
     if (arg === '--escrita') {
       escrita = true;
+      continue;
+    }
+    if (arg === '--http' || arg.startsWith('--http=')) {
+      http = true;
+      const inline = arg.startsWith('--http=') ? arg.slice('--http='.length) : undefined;
+      const next = inline === undefined ? argv[index + 1] : inline;
+      if (next && /^\d+$/.test(next)) {
+        httpPort = Number(next);
+        if (inline === undefined) index += 1;
+      } else if (inline !== undefined)
+        throw new CliError('A porta de --http precisa ser um número.', 1);
+      else httpPort = 8734;
       continue;
     }
     if (arg === '--biblioteca' || arg.startsWith('--biblioteca=')) {
@@ -177,6 +204,8 @@ function parseArgv(argv: string[]): Parsed {
     texto,
     somenteLeitura,
     escrita,
+    http,
+    httpPort,
   };
 }
 
@@ -438,13 +467,16 @@ Uso:
   sophy desfazer
   sophy tools
   sophy help <tool>
-  sophy mcp [--biblioteca <pasta> | --todas-bibliotecas [--catalogo <ui.json>]] [--escrita]
+  sophy mcp [--biblioteca <pasta> | --todas-bibliotecas [--catalogo <ui.json>]] [--somente-leitura] [--http [porta]]
   sophy <tool> [--campo valor] [--json '{...}']
 
 A biblioteca vem de --biblioteca, de SOPHY_LIBRARY, ou da pasta atual
 subindo até encontrar .sophy. Toda alteração usa a origem cli.
 --json sozinho imprime a resposta para máquina. --json '{...}' envia a entrada.
 Códigos: 0 ok, 1 uso, 2 erro do motor.
+O MCP exige SOPHY_MCP_KEY no stdio, ou Authorization: Bearer no --http.
+Sem chave a conexão é recusada (chave_invalida), salvo com o legado ligado.
+A permissão vem da chave. --escrita não abre o servidor; --somente-leitura rebaixa.
 `;
 }
 

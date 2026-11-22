@@ -138,34 +138,44 @@ A saída humana é o padrão. `--json` sozinho imprime o resultado para máquina
 
 ## MCP
 
-`sophy mcp` sobe um servidor stdio com o SDK `@modelcontextprotocol/sdk`. As tools são as do registro: o schema anunciado sai do Zod, sem uma segunda implementação. O servidor usa a mesma descoberta de biblioteca da CLI (`--biblioteca`, `SOPHY_LIBRARY` ou a pasta `.sophy` acima). `libraryPath` e `path` de `library.open` enviados pelo cliente são ignorados, para o processo não ser apontado a outra pasta. Toda mutação grava `origin: "mcp"`, mesmo que o input peça outra origem.
+`sophy mcp` sobe o servidor da engine (`engine/mcp.ts`) com o SDK `@modelcontextprotocol/sdk`. O transporte padrão é stdio; `--http [porta]` escuta em `127.0.0.1` (8734 se a porta for omitida), caminho `/mcp`. As tools anunciadas saem do registro: o schema vem do Zod, sem uma segunda implementação, já filtradas pela permissão da chave. `libraryPath` e `path` de `library.open` enviados pelo cliente são ignorados. Toda mutação grava `origin: "mcp"` e o autor `mcp:<nome>` no log `.sophy/atividade.jsonl`.
 
-Conflito de revisão, link ambíguo e caminho proibido voltam como resultado de erro do MCP, com a mensagem em texto. Não há tool de chave de API nem de configuração sensível.
+A conexão exige chave. No stdio, `SOPHY_MCP_KEY`. No HTTP, `Authorization: Bearer`. Sem chave válida a resposta é `chave_invalida`; cliente desativado é `cliente_desativado`. Isto quebra a configuração antiga, que subia o comando sem chave. O legado (`mcp.legacy`, desligado por padrão) restaura essa entrada. As chaves ficam só como hash SHA-256 em `mcp-clients.json`, na userData do Electron, fora da biblioteca. `mcp.clients.*` e `mcp.legacy.*` não estão no registro: o IPC é `sophy:mcp-admin`.
+
+`leitura` vê `isReadOnlyTool`. `escrita` vê o resto, menos `trash.purge`, `trash.empty`, `note.deletePermanent`, `vault.import`, `site.export` e `library.switch` (a troca de biblioteca não é tool; é o IPC `sophy:switch-library`). Fora da permissão, `permissao_negada`, sem executar. `--escrita` não concede gravação. `--somente-leitura` rebaixa uma chave de escrita.
+
+Conflito de revisão, link ambíguo e caminho proibido voltam como resultado de erro do MCP, com a mensagem em texto. Não há tool de chave de API no registro.
 
 Notas são resources `sophy://nota/<caminho>`, por exemplo `sophy://nota/Estudos/Nota.md`.
 
-`ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` estão no registro. Elas publicam num canal em processo (`subscribeUi`). A janela do Electron assina esse canal. Se o `sophy mcp` for outro processo, ele entrega o pedido numa pasta temporária que a janela lê, desde que ela esteja aberta. Sem a janela, a resposta continua `A interface não está aberta.`
+`ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` estão no registro e não são mutações, então entram na leitura. Elas publicam num canal em processo (`subscribeUi`). A janela do Electron assina esse canal. Se o `sophy mcp` for outro processo, ele entrega o pedido numa pasta temporária que a janela lê, desde que ela esteja aberta. Sem a janela, a resposta continua `A interface não está aberta.`
 
-Exemplo para Claude Desktop ou Cursor:
+O trecho pronto para o Claude (e o equivalente em `config.toml` para o Codex) sai de `mcpConfigSnippet` / `mcp.clients.snippet`. O comando real do motor é `node --experimental-strip-types engine/cli.ts mcp`. Dentro do app, `process.execPath` é o Electron: o snippet mantém esse binário e acrescenta `ELECTRON_RUN_AS_NODE=1`, senão a janela abre no lugar do servidor. Exemplo em desenvolvimento:
 
 ```json
 {
   "mcpServers": {
-    "sophy": {
-      "command": "node",
+    "sophy-claude": {
+      "command": "/caminho/do/electron",
       "args": [
         "--experimental-strip-types",
         "/caminho/absoluto/do/sophy/engine/cli.ts",
         "mcp",
         "--biblioteca",
         "/caminho/da/biblioteca"
-      ]
+      ],
+      "env": {
+        "ELECTRON_RUN_AS_NODE": "1",
+        "SOPHY_MCP_KEY": "sph_..."
+      }
     }
   }
 }
 ```
 
-O bin `sophy mcp --biblioteca /caminho/da/biblioteca` é equivalente.
+Com Node no `PATH`, troque `command` por `node` e tire `ELECTRON_RUN_AS_NODE`. No app empacotado o `cli.ts` está dentro de `app.asar`, que esse modo do Electron não lê. Use `node` com o `engine/cli.ts` do repositório, como no README.
+
+O modo Pergunta da Sofi ainda não está nesta base. `sofiTools('pergunta')` é o gancho: inclui `activity.list` e `activity.diff`. `activity.undo` só no modo agente, com confirmação.
 
 ## Testes
 

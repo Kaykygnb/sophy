@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { issueKey, mcpEnv } from './mcp-harness.ts';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -150,15 +151,12 @@ test('a CLI grava e lê o canvas com origem cli', () => {
 
 test('o MCP cria o canvas pela tool do registro', { timeout: 30000 }, async () => {
   const root = library();
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === 'string' && key !== 'SOPHY_LIBRARY') env[key] = value;
-  }
+  const issued = issueKey('escrita', 'Canvas');
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ['--experimental-strip-types', bin, 'mcp', '--biblioteca', root, '--escrita'],
     cwd: os.tmpdir(),
-    env,
+    env: mcpEnv(issued.userData, issued.chave),
     stderr: 'pipe',
   });
   const client = new Client({ name: 'sophy-canvas', version: '0.0.0' });

@@ -50,7 +50,18 @@ export { parseCanvas, serializeCanvas, readCanvas, createCanvas, updateCanvas } 
 export { listTasks, updateTask, queryCalendar } from './tasks.ts';
 export { fillTemplate, unlinkedMentions, linkMentions, importVault, listViews, saveView } from './extras.ts';
 export { listCards, reviewCard, undoCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
-export { runAgentTurn, agentTools, agentConfirmation } from './agent.ts';
+export { runAgentTurn, agentTools, agentConfirmation, sofiTools } from './agent.ts';
+export { withAuthor, currentAuthor } from './call-context.ts';
+export { isReadOnlyTool, toolsForPermission, APP_ONLY_TOOLS } from './permissions.ts';
+export { mcpConfigSnippet } from './mcp-snippet.ts';
+export {
+  mcpAdmin,
+  MCP_ADMIN_TOOLS,
+  createClient,
+  listClients,
+  userDataDir,
+} from './mcp-clients.ts';
+export { listActivity, diffActivity, undoActivity } from './activity.ts';
 export { listHistory, undoLast, undoById } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';
 export {

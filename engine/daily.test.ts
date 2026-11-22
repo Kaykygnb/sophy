@@ -6,6 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { issueKey, mcpEnv } from './mcp-harness.ts';
 import { createNote, openLibrary } from './library.ts';
 import { trashEntry } from './lixeira.ts';
 import { calendarFileReads, queryCalendar, todayIso } from './tasks.ts';
@@ -56,11 +57,12 @@ test('entry.move recusa a nota do dia no app, no CLI, no MCP e na Sofi', { timeo
   assert.equal(cli.status, 2);
   assert.match(cli.stderr, /daily-locked/);
   assert.match(cli.stderr, /Notas do dia têm o nome fixo pela data/);
+  const issued = issueKey('escrita', 'Diario');
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ['--experimental-strip-types', bin, 'mcp', '--biblioteca', opened.root, '--escrita'],
     cwd: os.tmpdir(),
-    env: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[0] !== 'SOPHY_LIBRARY')),
+    env: mcpEnv(issued.userData, issued.chave),
     stderr: 'pipe',
   });
   const client = new Client({ name: 'sophy-diario', version: '0.0.0' });

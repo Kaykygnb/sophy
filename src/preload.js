@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld(
     agentAsk: (message, context) => ipcRenderer.invoke('sophy:agent-ask', message, context),
     agentCancel: () => ipcRenderer.invoke('sophy:agent-cancel'),
     agentUndo: (versionId) => ipcRenderer.invoke('sophy:agent-undo', versionId),
+    mcpAdmin: (tool, input) => ipcRenderer.invoke('sophy:mcp-admin', tool, input),
     agentConfirmReply: (confirmId, allow) =>
       ipcRenderer.invoke('sophy:agent-confirm-reply', confirmId, allow),
     onAgentProgress: (listener) => {
