@@ -30,6 +30,8 @@ export function agentConfirmation(name: string, args: Record<string, unknown>) {
   if (name === 'history.undo') return 'Desfazer a última ação da biblioteca?';
   if (name === 'trash.restore') return 'Restaurar este item da lixeira?';
   if (name === 'note.write') return `Sobrescrever a nota ${String(args.path || '')}?`;
+  if (name === 'block.rename')
+    return `Renomear o bloco ${String(args.de || '')} para ${String(args.para || '')}?`;
   if (name === 'entry.move') {
     const from = String(args.from || '');
     return from.includes('/') ? `Mover a nota ${from}?` : `Mover ou renomear a estante ${from}?`;

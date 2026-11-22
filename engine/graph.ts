@@ -32,7 +32,15 @@ export function queryGraph(
         !visible.has(link.path)
       )
         continue;
-      edges.push({ from: note.path, to: link.path, format: link.format });
+      const edge: {
+        from: string;
+        to: string;
+        format: string;
+        target?: { kind: 'section' | 'block'; anchor: string };
+      } = { from: note.path, to: link.path, format: link.format };
+      if (link.anchor && (link.kind === 'section' || link.kind === 'block'))
+        edge.target = { kind: link.kind, anchor: link.anchor };
+      edges.push(edge);
     }
     if (isMother(library, note.path)) {
       for (const child of listChildren(library, note.path)) {

@@ -31,6 +31,7 @@ import {
 } from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
 import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
+import { renameNamedBlock } from './blocks.ts';
 import {
   deletePermanent,
   emptyTrash,
@@ -45,9 +46,13 @@ import {
   brokenLinks,
   catalogNotes,
   forgetCachedNote,
+  forgetLinks,
   indexedNotes,
   outgoingLinks,
+  previewLink,
   relocate,
+  resolveLink,
+  scanBlocks,
   suggestNotes,
   watchLibrary,
 } from './links.ts';
@@ -380,7 +385,7 @@ export const tools = [
   ),
   define(
     'links.catalog',
-    'Catálogo de notas para o menu [[: título, apelidos, seções e blocos.',
+    'Catálogo de notas para o menu [[: título, apelidos, seções, blocos ^ e blocos nomeados.',
     z.object({ libraryPath }),
     ({ libraryPath: folder }) => catalogNotes(openLibrary(folder)),
   ),
@@ -395,6 +400,41 @@ export const tools = [
     }),
     ({ libraryPath: folder, query, source, limit }) =>
       suggestNotes(openLibrary(folder), query, { source, limit }),
+  ),
+  define(
+    'links.resolve',
+    'Resolve um wikilink a partir de uma nota. Acrescenta kind: note, section ou block. Bloco nomeado traz o código (até 40 linhas).',
+    z.object({ libraryPath, path: relativePath, target: z.string().min(1) }),
+    ({ libraryPath: folder, path, target }) => resolveLink(openLibrary(folder), path, target),
+  ),
+  define(
+    'links.scan',
+    'Lista os blocos nomeados de uma nota, ou de todas, para o autocompletar [[Nota#.',
+    z.object({ libraryPath, path: z.string().min(1).optional() }),
+    ({ libraryPath: folder, path }) => scanBlocks(openLibrary(folder), path),
+  ),
+  define(
+    'links.preview',
+    'Prévia ao pairar. Bloco nomeado devolve kind, lang, title e code. Seção devolve o trecho markdown.',
+    z.object({ libraryPath, path: relativePath, target: z.string().min(1) }),
+    ({ libraryPath: folder, path, target }) => previewLink(openLibrary(folder), path, target),
+  ),
+  define(
+    'block.rename',
+    'Renomeia um bloco nomeado (title na cerca) e reescreve [[Nota#de]] e [[Nota#de|alias]] num único desfazer.',
+    z.object({
+      libraryPath,
+      notePath: relativePath,
+      de: z.string().min(1),
+      para: z.string().min(1),
+      origin,
+    }),
+    ({ libraryPath: folder, notePath, de, para, origin: source }) =>
+      tracked(folder, source, 'block.rename', `Renomear bloco ${de} para ${para}`, (library) => {
+        const result = renameNamedBlock(library, notePath, de, para);
+        forgetLinks(library, result.updated);
+        return result;
+      }),
   ),
   define(
     'links.broken',
@@ -867,6 +907,7 @@ const MUTATIONS = new Set([
   'note.child.create',
   'note.write',
   'entry.move',
+  'block.rename',
   'entry.trash',
   'note.deletePermanent',
   'trash.restore',

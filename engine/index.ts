@@ -34,7 +34,8 @@ export {
   emptyTrash,
   deletePermanent,
 } from './lixeira.ts';
-export { scan, resolvePath, parseTarget } from './wikilinks.ts';
+export { scan, resolvePath, parseTarget, anchorKey } from './wikilinks.ts';
+export { namedBlocksOf, renameNamedBlock } from './blocks.ts';
 export {
   outgoingLinks,
   backlinks,
@@ -43,6 +44,9 @@ export {
   suggestNotes,
   relocate,
   watchLibrary,
+  resolveLink,
+  previewLink,
+  scanBlocks,
 } from './links.ts';
 export { fold, fuzzyScore, rankByFuzzy } from './fuzzy.ts';
 export { capture, diff, pushHistory } from './history.ts';
