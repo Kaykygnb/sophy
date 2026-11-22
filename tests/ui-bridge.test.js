@@ -70,6 +70,11 @@ test('a chamada da janela força origem ui e ignora o caminho do input', () => {
   assert.equal(prepared.origin, 'ui');
   assert.equal(prepared.libraryPath, '/tmp/biblioteca');
   assert.equal(prepared.body, 'oi [[');
+  for (const name of ['trash.purge', 'trash.empty', 'note.deletePermanent', 'card.undo', 'trash.restore']) {
+    const body = commands.prepareCall(name, { id: 'x', path: 'Nota.md' }, '/tmp/biblioteca');
+    assert.equal(body.origin, 'ui', name);
+    assert.equal(body.libraryPath, '/tmp/biblioteca');
+  }
   const theme = commands.prepareCall(
     'ui.setTheme',
     { theme: 'dark', libraryPath: '/x' },
@@ -166,4 +171,11 @@ test('as tools ui.* chegam na janela pelo mesmo registro', async () => {
   } finally {
     stop();
   }
+});
+
+test('wikiQuery ignora um [[ esquecido no meio do texto', () => {
+  const commands = require('../src/ui/commands.js');
+  const text = 'liga a um [[ incompleto. **vivo**';
+  assert.equal(commands.wikiQuery(text, text.length), null);
+  assert.equal(commands.wikiQuery(`[[${'a'.repeat(61)}`, 63), null);
 });

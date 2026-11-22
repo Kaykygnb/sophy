@@ -70,12 +70,20 @@ O registro em `engine/tools.ts` é a borda que CLI, MCP, UI e o agente vão usar
 | `note.create`        | Cria `.md` sem sobrescrever                                  |
 | `note.write`         | Grava o corpo se a revisão SHA-256 ainda confere             |
 | `entry.move`         | Move ou renomeia e reescreve os wikilinks afetados           |
-| `entry.trash`        | Move para a lixeira do sistema                               |
+| `entry.trash`        | Move para `.sophy/lixeira` dentro da biblioteca              |
+| `trash.list`         | Lista a lixeira, da exclusão mais recente para a mais antiga |
+| `trash.restore`      | Devolve o item; se o caminho existe, usa ` (restaurado)`     |
+| `trash.purge`        | Apaga um item da lixeira                                      |
+| `trash.empty`        | Esvazia só `.sophy/lixeira`                                   |
+| `note.deletePermanent` | Apaga de vez, sem cópia na lixeira                          |
 | `links.outgoing`     | Wikilinks da nota, com status resolvido, ambíguo ou quebrado |
 | `links.backlinks`    | Notas que apontam para um caminho                            |
 | `links.broken`       | Links quebrados ou ambíguos                                  |
 | `search.query`       | Busca em título, texto limpo, tags e frontmatter             |
-| `graph.query`        | Nós e arestas, com filtro de estante e tag                   |
+| `graph.query`        | Nós e arestas, com estante, tag e intervalo `from`/`to`      |
+| `card.list`          | Cartões, com o rótulo dos quatro botões                      |
+| `card.review`        | Nota 1 a 4 (ou `knew`) e o próximo prazo                     |
+| `card.undo`          | Restaura o agendamento anterior do cartão                    |
 | `history.list`       | Ações ainda desfazíveis                                      |
 | `history.undo`       | Desfaz a última ação, se os arquivos não mudaram depois      |
 | `library.watch`      | Watcher opcional para mudanças externas em `.md`             |
@@ -90,7 +98,15 @@ Toda tool que altera arquivo pede `origin`: `ui`, `cli`, `mcp` ou `agent` (Agent
 
 A gravação usa arquivo temporário, `fsync` e `rename`. O caminho relativo não pode sair da biblioteca (`..`, absoluto, barra invertida, nome oculto). Nota acima de 8 MB é recusada. A árvore para em 20 mil itens ou 40 níveis.
 
-A lixeira segue o layout do Freedesktop (`files/` e `info/`). Se o movimento falha, o original fica onde está. Não há exclusão permanente.
+Excluir (`entry.trash`) move o item para `.sophy/lixeira/<id>/` dentro da biblioteca, com `.meta.json` (`id`, `originalPath`, `title`, `kind`, `deletedAt`, `size`). Pasta inteira é um item só. `trash.restore` devolve ao caminho original — com sufixo ` (restaurado)` se o lugar estiver ocupado — e recria pastas que faltarem. `trash.purge` e `trash.empty` apagam só essa lixeira. `note.deletePermanent` apaga de vez, sem cópia. Se o movimento para a lixeira falha, o original fica no lugar. `.sophy` continua fora da árvore, da busca, do grafo e do vigia.
+
+`engine/trash.ts` (`moveToTrash`) continua sendo a lixeira do sistema no layout Freedesktop (`files/` e `info/`). O excluir da biblioteca não usa mais essa função, e o processo principal não chama `shell.trashItem` nesse caminho. Itens que já estão na lixeira do sistema ficam lá.
+
+Desfazer um `entry.trash` regrava o snapshot do histórico e remove a cópia mais recente da lixeira com aquele `originalPath`. Restaurar, purgar e esvaziar não entram no histórico. Desfazer um `note.deletePermanent` regrava o snapshot, porque não há cópia.
+
+Ao criar uma nota, o frontmatter ganha `id` e `criada` (`AAAA-MM-DDTHH:mm:ss`, hora local). Os outros campos permanecem, na ordem em que foram entregues. Nota antiga sem `criada` não é reescrita: o grafo usa o birthtime do arquivo e, se ele não existir, o mtime. `graph.query` aceita `from` e `to` opcionais (data ISO) e limita os nós por `createdAt`.
+
+O agendamento do cartão fica em `.sophy/flashcards.json` como `{ due, interval, ease, lapses }`, com ease inicial 2.5 e mínimo 1.3. A tabela está no comentário de `engine/study.ts`: nota 1 volta a 1 dia; nota 2 multiplica por 1.2; a primeira nota 3 vale 1 dia e a seguinte, com intervalo 1, vale 3 dias; depois a nota 3 multiplica pelo ease; a nota 4 multiplica por ease e por 1.3. `knew: true` vale 3 e `knew: false` vale 1. O id do cartão é `c_` mais 8 hex da frente normalizada com o id da nota. `card.undo` restaura só o agendamento anterior.
 
 Ao abrir a biblioteca, o motor recusa a própria home, um ancestral da home e diretórios protegidos (`.ssh`, `.config`, `.local`, `.gnupg`, `.codex`). A pasta de trabalho pode ficar dentro da biblioteca, que é o uso normal da CLI. A pasta da biblioteca não precisa estar dentro da home: o chamador entrega o caminho. Isso permite testes em diretório temporário e uma pasta escolhida fora do perfil.
 
