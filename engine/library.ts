@@ -6,8 +6,8 @@ import { EngineError } from './errors.ts';
 import { MAX_ATTACHMENT_BYTES, MAX_NOTE_BYTES, MAX_TREE_DEPTH, MAX_TREE_ENTRIES } from './limits.ts';
 import { assertBody, composeMarkdown, prefixFromFrontmatter, splitMarkdown } from './markdown.ts';
 import { ensureNoteIdentity, newNoteId, updateNoteIdPath } from './note-id.ts';
-import { openLibraryRoot, resolveInside, validateSegment, type OpenOptions } from './paths.ts';
-import { moveToTrash, restoreFromTrash, type TrashOptions } from './trash.ts';
+import { contains, openLibraryRoot, resolveInside, validateSegment, type OpenOptions } from './paths.ts';
+import { mask, scan } from './wikilinks.ts';
 
 /**
  * Motor da biblioteca.
@@ -75,6 +75,32 @@ export function createWorkspace(library: Library, name: string) {
   return { name, path: name };
 }
 
+/** `AAAA-MM-DDTHH:mm:ss` no fuso local, sem sufixo de fuso. */
+export function formatCreatedStamp(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
+/**
+ * Data de criação da nota. `criada` do frontmatter ganha; senão o birthtime
+ * do arquivo; se o birthtime não existe, o mtime.
+ */
+export function createdAtFrom(
+  frontmatter: Record<string, unknown> | null | undefined,
+  stat: { birthtimeMs: number; mtimeMs: number },
+) {
+  const raw = frontmatter?.criada;
+  if (typeof raw === 'string') {
+    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/.exec(raw.trim());
+    if (match) return match[1];
+  }
+  const ms = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
+  return formatCreatedStamp(new Date(ms));
+}
+
 export function createDirectory(library: Library, relative: string) {
   const parts = assertRelativeParts(relative);
   let parent = '';
@@ -110,6 +136,28 @@ const IMAGE_MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
 };
+
+const EXTRA_MIME: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.zip': 'application/zip',
+};
+
+/** Tipo do anexo pela extensão. Desconhecido vira `application/octet-stream`. */
+export function attachmentMime(name: string) {
+  const ext = path.extname(name).toLowerCase();
+  return IMAGE_MIME[ext] || EXTRA_MIME[ext] || 'application/octet-stream';
+}
 
 export function isImageName(name: string) {
   return Boolean(IMAGE_MIME[path.extname(name).toLowerCase()]);
@@ -191,6 +239,156 @@ export function readAttachmentDataUrl(library: Library, relative: string) {
   };
 }
 
+export type AttachmentFile = {
+  name: string;
+  path: string;
+  size: number;
+  mime: string;
+};
+
+export type AttachmentInfo = AttachmentFile & { usedBy: string[] };
+
+/**
+ * Arquivos visíveis dentro de `Anexos/` na raiz. Pasta ausente devolve lista
+ * vazia. Link simbólico e arquivo no lugar da pasta são recusados.
+ */
+export function listAttachmentFiles(library: Library): AttachmentFile[] {
+  const folder = path.join(library.root, 'Anexos');
+  let listed: fs.Stats;
+  try {
+    listed = fs.lstatSync(folder);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return [];
+    throw error;
+  }
+  if (listed.isSymbolicLink())
+    throw new EngineError('symlink', 'Links simbólicos não são permitidos.');
+  if (!listed.isDirectory())
+    throw new EngineError('invalid-path', 'Anexos precisa ser uma pasta.');
+  const files: AttachmentFile[] = [];
+  let count = 0;
+  const visit = (directory: string, prefix: string, depth: number) => {
+    if (depth > MAX_TREE_DEPTH)
+      throw new EngineError('too-large', 'A biblioteca ultrapassou o limite de 40 níveis.');
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      if (++count > MAX_TREE_ENTRIES)
+        throw new EngineError('too-large', 'A biblioteca ultrapassou o limite de 20 mil itens.');
+      if (entry.isSymbolicLink()) continue;
+      const relative = `${prefix}/${entry.name}`;
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(full, relative, depth + 1);
+      else if (entry.isFile()) {
+        files.push({
+          name: entry.name,
+          path: relative,
+          size: fs.statSync(full).size,
+          mime: attachmentMime(entry.name),
+        });
+      }
+    }
+  };
+  visit(folder, 'Anexos', 2);
+  return files.sort((a, b) => a.path.localeCompare(b.path, 'pt-BR', { numeric: true }));
+}
+
+/** Lista `Anexos/` com as notas que citam cada arquivo. Não grava `id` nas notas. */
+export function listAttachments(library: Library): AttachmentInfo[] {
+  const files = listAttachmentFiles(library);
+  const known = new Set(files.map((file) => file.path));
+  const used = new Map<string, string[]>();
+  if (known.size) {
+    for (const note of listNotes(library)) {
+      const content = readText(library, note.path).content;
+      for (const ref of referencedAttachments(content, known)) {
+        const list = used.get(ref) ?? [];
+        list.push(note.path);
+        used.set(ref, list);
+      }
+    }
+  }
+  return files.map((file) => ({
+    ...file,
+    usedBy: (used.get(file.path) ?? []).sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { numeric: true }),
+    ),
+  }));
+}
+
+/**
+ * Caminho absoluto de um arquivo em `Anexos/`. Recusa `..`, absoluto, barra
+ * invertida, link simbólico e qualquer coisa fora da biblioteca.
+ */
+export function resolveAttachmentPath(library: Library, relative: string) {
+  if (typeof relative !== 'string' || !relative.startsWith('Anexos/'))
+    throw new EngineError('invalid-path', 'O anexo precisa estar na pasta Anexos.');
+  const full = resolveInside(library.root, relative);
+  const listed = fs.lstatSync(full);
+  if (!listed.isFile())
+    throw new EngineError('invalid-path', 'O anexo precisa ser um arquivo.');
+  const root = fs.realpathSync(library.root);
+  const real = fs.realpathSync(full);
+  if (!contains(root, real))
+    throw new EngineError('invalid-path', 'O caminho está fora da biblioteca.');
+  return real;
+}
+
+/** Lê os bytes de um anexo em `Anexos/`, com o mesmo teto de 25 MB da importação. */
+export function readAttachmentBytes(library: Library, relative: string) {
+  const full = resolveAttachmentPath(library, relative);
+  const listed = fs.statSync(full);
+  if (listed.size > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo ultrapassa o limite de 25 MB.');
+  return fs.readFileSync(full);
+}
+
+/**
+ * Caminhos de `Anexos/` citados pela nota: wikilink, embed, link Markdown ou
+ * valor de frontmatter igual ao caminho. Código cercado e inline ficam de fora.
+ */
+export function referencedAttachments(content: string, known: ReadonlySet<string>) {
+  const found = new Set<string>();
+  const consider = (value: string) => {
+    const normalized = normalizeAttachmentRef(value);
+    if (normalized && known.has(normalized)) found.add(normalized);
+  };
+  for (const link of scan(content)) consider(link.note);
+  for (const match of mask(content).matchAll(/!?\[[^\]]*\]\(([^)\s]+)\)/g)) consider(match[1]);
+  const parts = splitMarkdown(content);
+  if (parts.frontmatter) collectAttachmentStrings(parts.frontmatter, consider);
+  return [...found].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+}
+
+function normalizeAttachmentRef(value: string) {
+  let text = value.trim().replaceAll('\\', '/');
+  if (text.startsWith('<') && text.endsWith('>') && text.length > 2)
+    text = text.slice(1, -1).trim();
+  const cut = text.search(/[?#]/);
+  if (cut >= 0) text = text.slice(0, cut);
+  try {
+    text = decodeURIComponent(text);
+  } catch {
+    return '';
+  }
+  if (!text.startsWith('Anexos/')) return '';
+  if (text.split('/').some((part) => !part || part === '.' || part === '..')) return '';
+  return text;
+}
+
+function collectAttachmentStrings(value: unknown, consider: (value: string) => void) {
+  if (typeof value === 'string') {
+    consider(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectAttachmentStrings(item, consider);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) collectAttachmentStrings(item, consider);
+  }
+}
+
 export function listEntries(library: Library) {
   return walkFiles(library);
 }
@@ -270,10 +468,7 @@ export function createNote(
   if (fs.existsSync(full) && dailyDate(relative))
     throw new EngineError('daily-exists', 'Esse dia já tem nota');
   if (fs.existsSync(full)) throw new EngineError('exists', 'A nota já existe.');
-  const meta =
-    frontmatter === undefined || frontmatter === null
-      ? { id: newNoteId() }
-      : { ...frontmatter, id: typeof frontmatter.id === 'string' && frontmatter.id ? frontmatter.id : newNoteId() };
+  const meta = withCreatedIdentity(frontmatter);
   const prefix = prefixFromFrontmatter(meta);
   const content = composeMarkdown({ bom: '', prefix, body });
   assertSize(content);
@@ -348,24 +543,13 @@ export function moveEntry(library: Library, source: string, target: string) {
   return { from: source, path: target };
 }
 
-export function restoreEntry(
-  library: Library,
-  id: string,
-  options?: TrashOptions & { mode?: 'merge' | 'asNote' },
-) {
-  return restoreFromTrash(library.root, id, options);
-}
-
-export function trashEntry(library: Library, relative: string, options?: TrashOptions) {
-  const full = resolveInside(library.root, relative);
-  const before = fs.lstatSync(full);
-  if (before.isSymbolicLink())
-    throw new EngineError('symlink', 'Links simbólicos não são permitidos.');
-  const again = fs.lstatSync(full);
-  if (again.dev !== before.dev || again.ino !== before.ino)
-    throw new EngineError('conflict', 'O item mudou durante a operação.');
-  const trashed = moveToTrash(full, options);
-  return { path: relative, trashed: true, trashPath: trashed.trashPath, infoPath: trashed.infoPath };
+function withCreatedIdentity(frontmatter?: Record<string, unknown> | null) {
+  const criada = formatCreatedStamp();
+  if (frontmatter === undefined || frontmatter === null) return { id: newNoteId(), criada };
+  const next: Record<string, unknown> = { ...frontmatter };
+  if (typeof next.id !== 'string' || !next.id.trim()) next.id = newNoteId();
+  if (typeof next.criada !== 'string' || !next.criada.trim()) next.criada = criada;
+  return next;
 }
 
 function atomicWrite(
@@ -482,7 +666,7 @@ function assertMarkdown(relative: string) {
     throw new EngineError('invalid-note', 'Somente arquivos Markdown podem ser editados.');
 }
 
-function assertRelativeParts(relative: string) {
+export function assertRelativeParts(relative: string) {
   if (
     typeof relative !== 'string' ||
     !relative ||

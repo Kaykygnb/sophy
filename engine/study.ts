@@ -1,11 +1,34 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 import { listNotes, readNote, type Library } from './library.ts';
+import { noteIdOf } from './note-id.ts';
 import { resolveInside } from './paths.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * Agendamento dos cartões (um passo SM-2 curto).
+ *
+ * Estado guardado: `{ due, interval, ease, lapses }`.
+ * ease começa em 2.5 e não desce de 1.3. O intervalo fica com duas casas.
+ * A data soma `max(1, round(intervalo))` dias.
+ *
+ * | nota | nome    | efeito                                                                 |
+ * | ---- | ------- | ---------------------------------------------------------------------- |
+ * | 1    | errei   | intervalo = 1 dia, lapses + 1, ease − 0.2                              |
+ * | 2    | difícil | intervalo × 1.2 (parte de 1 dia se ainda não havia), ease − 0.15       |
+ * | 3    | bom     | primeira vez (intervalo < 1) = 1 dia; se o intervalo é 1 = 3 dias; senão intervalo × ease |
+ * | 4    | fácil   | intervalo × ease × 1.3 (parte de 1 dia se ainda não havia), ease + 0.15 |
+ *
+ * `knew: true` vale nota 3 e `knew: false` vale nota 1.
+ * Um agendamento antigo `{ due, box }` vira o formato novo na leitura e
+ * conserva o `due`. A caixa Leitner 0..5 mapeia para 1, 2, 4, 8, 16, 32 dias.
+ *
+ * Rótulos dos botões (`intervals`): menos de 7 dias `Nd`; até 30 `Nsem`;
+ * até um ano `Nmês`; depois `Na`.
+ */
 export type StudyCard = {
   id: string;
   path: string;
@@ -14,36 +37,218 @@ export type StudyCard = {
   back: string;
   workspace: string | null;
   due: string;
-  box: number;
+  interval: number;
+  ease: number;
+  lapses: number;
+  intervals: Record<1 | 2 | 3 | 4, string>;
   reversible?: boolean;
 };
 
-type Schedule = Record<string, { due: string; box: number }>;
+type ScheduleState = {
+  due: string;
+  interval: number;
+  ease: number;
+  lapses: number;
+};
+
+type ScheduleEntry = ScheduleState & {
+  previous?: ScheduleState | null;
+};
+
+type Schedule = Record<string, ScheduleEntry>;
+
+const INITIAL_EASE = 2.5;
+const MIN_EASE = 1.3;
+const BOX_DAYS = [1, 2, 4, 8, 16, 32];
 
 function deckFile(library: Library) {
   return path.join(library.root, '.sophy', 'flashcards.json');
 }
 
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function clampEase(value: number) {
+  return round2(Math.max(MIN_EASE, value));
+}
+
+export function intervalLabel(days: number) {
+  const rounded = Math.max(1, Math.round(days));
+  if (rounded < 7) return `${rounded}d`;
+  if (rounded < 30) return `${Math.max(1, Math.round(rounded / 7))}sem`;
+  if (rounded < 365) return `${Math.max(1, Math.round(rounded / 30))}mês`;
+  return `${Math.max(1, Math.round(rounded / 365))}a`;
+}
+
+function normalizeFront(front: string) {
+  return front.normalize('NFC').trim().replace(/\s+/g, ' ');
+}
+
+function cardKey(noteKey: string, front: string, seen: Map<string, number>) {
+  const digest = createHash('sha256').update(`${noteKey}\n${normalizeFront(front)}`).digest('hex').slice(0, 8);
+  const base = `c_${digest}`;
+  const count = (seen.get(base) ?? 0) + 1;
+  seen.set(base, count);
+  return count === 1 ? base : `${base}_${count}`;
+}
+
+function noteKeyOf(frontmatter: Record<string, unknown> | null, notePath: string) {
+  return noteIdOf(frontmatter) ?? notePath.replace(/\\/g, '/');
+}
+
+function blankState(today: string): ScheduleState {
+  return { due: today, interval: 0, ease: INITIAL_EASE, lapses: 0 };
+}
+
+function stateOf(entry: ScheduleEntry | undefined, today: string): ScheduleState {
+  if (!entry) return blankState(today);
+  return { due: entry.due, interval: entry.interval, ease: entry.ease, lapses: entry.lapses };
+}
+
+export function nextInterval(state: ScheduleState, grade: 1 | 2 | 3 | 4) {
+  const ease = clampEase(state.ease);
+  const interval = state.interval;
+  if (grade === 1) {
+    return { interval: 1, ease: clampEase(ease - 0.2), lapses: state.lapses + 1 };
+  }
+  if (grade === 2) {
+    const base = interval < 1 ? 1 : interval;
+    return { interval: round2(base * 1.2), ease: clampEase(ease - 0.15), lapses: state.lapses };
+  }
+  if (grade === 3) {
+    const next = interval < 1 ? 1 : interval === 1 ? 3 : round2(interval * ease);
+    return { interval: next, ease, lapses: state.lapses };
+  }
+  const base = interval < 1 ? 1 : interval;
+  return { interval: round2(base * ease * 1.3), ease: clampEase(ease + 0.15), lapses: state.lapses };
+}
+
+function previewIntervals(state: ScheduleState): Record<1 | 2 | 3 | 4, string> {
+  return {
+    1: intervalLabel(nextInterval(state, 1).interval),
+    2: intervalLabel(nextInterval(state, 2).interval),
+    3: intervalLabel(nextInterval(state, 3).interval),
+    4: intervalLabel(nextInterval(state, 4).interval),
+  };
+}
+
+function resolveGrade(gradeOrKnew: boolean | number | undefined): 1 | 2 | 3 | 4 {
+  if (typeof gradeOrKnew === 'boolean') return gradeOrKnew ? 3 : 1;
+  if (typeof gradeOrKnew === 'number' && Number.isInteger(gradeOrKnew) && gradeOrKnew >= 1 && gradeOrKnew <= 4)
+    return gradeOrKnew as 1 | 2 | 3 | 4;
+  if (gradeOrKnew === undefined)
+    throw new EngineError('invalid-note', 'Informe a nota da revisão (1 a 4).');
+  throw new EngineError('invalid-note', 'A nota da revisão precisa ser um inteiro de 1 a 4.');
+}
+
+function asState(raw: unknown): ScheduleState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = raw as Record<string, unknown>;
+  if (typeof entry.due !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.due)) return null;
+  if (typeof entry.interval === 'number' && Number.isFinite(entry.interval)) {
+    return {
+      due: entry.due,
+      interval: entry.interval,
+      ease: typeof entry.ease === 'number' && Number.isFinite(entry.ease) ? clampEase(entry.ease) : INITIAL_EASE,
+      lapses: typeof entry.lapses === 'number' && Number.isFinite(entry.lapses) ? entry.lapses : 0,
+    };
+  }
+  if (typeof entry.box === 'number' && Number.isFinite(entry.box)) {
+    const box = Math.max(0, Math.min(5, Math.floor(entry.box)));
+    return {
+      due: entry.due,
+      interval: BOX_DAYS[box] ?? 1,
+      ease: INITIAL_EASE,
+      lapses: box === 0 ? 1 : 0,
+    };
+  }
+  return { due: entry.due, interval: 0, ease: INITIAL_EASE, lapses: 0 };
+}
+
+function asEntry(raw: unknown): ScheduleEntry | null {
+  const state = asState(raw);
+  if (!state) return null;
+  const previous = raw && typeof raw === 'object' ? asState((raw as { previous?: unknown }).previous) : null;
+  return previous ? { ...state, previous } : state;
+}
+
+function oldIndex(key: string) {
+  const normalized = key.replace(/\\/g, '/');
+  const cut = normalized.lastIndexOf(':');
+  if (cut <= 0) return null;
+  const index = Number(normalized.slice(cut + 1));
+  if (!Number.isInteger(index) || index < 1) return null;
+  const notePath = normalized.slice(0, cut);
+  if (!notePath || notePath.startsWith('c_')) return null;
+  return { path: notePath, index };
+}
+
 function readSchedule(library: Library): Schedule {
   const file = deckFile(library);
   if (!fs.existsSync(file)) return {};
+  let parsed: { cards?: Record<string, unknown>; cardIdsMigrated?: boolean };
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { cards?: Schedule };
-    return parsed.cards || {};
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { cards?: Record<string, unknown>; cardIdsMigrated?: boolean };
   } catch {
     return {};
   }
+  const cards: Schedule = {};
+  for (const [key, value] of Object.entries(parsed.cards || {})) {
+    const entry = asEntry(value);
+    if (entry) cards[key.replace(/\\/g, '/')] = entry;
+  }
+  if (parsed.cardIdsMigrated) return cards;
+  const consumed = new Set<string>();
+  const take = (notePath: string, index: number) => {
+    for (const key of Object.keys(cards)) {
+      if (consumed.has(key)) continue;
+      const old = oldIndex(key);
+      if (!old || old.path !== notePath || old.index !== index) continue;
+      consumed.add(key);
+      return cards[key];
+    }
+    return undefined;
+  };
+  for (const note of listNotes(library)) {
+    let doc;
+    try {
+      doc = readNote(library, note.path);
+    } catch {
+      continue;
+    }
+    const found = cardsInText(doc.body, note.path, note.workspace, '2000-01-01', noteKeyOf(doc.frontmatter, note.path));
+    found.forEach((card, ordinal) => {
+      if (cards[card.id]) return;
+      const source = take(card.path, card.line) ?? take(card.path, ordinal + 1);
+      if (source) cards[card.id] = source;
+    });
+  }
+  for (const key of consumed) delete cards[key];
+  writeSchedule(library, cards, true);
+  return cards;
 }
 
-function writeSchedule(library: Library, cards: Schedule) {
+function writeSchedule(library: Library, cards: Schedule, migrated = true) {
   const dir = path.join(library.root, '.sophy');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(deckFile(library), `${JSON.stringify({ cards }, null, 2)}\n`);
+  const stored: Record<string, ScheduleEntry> = {};
+  for (const [key, entry] of Object.entries(cards)) {
+    stored[key] = entry.previous ? entry : { due: entry.due, interval: entry.interval, ease: entry.ease, lapses: entry.lapses };
+  }
+  fs.writeFileSync(deckFile(library), `${JSON.stringify({ cardIdsMigrated: migrated, cards: stored }, null, 2)}\n`);
 }
 
-export function cardsInText(body: string, notePath: string, workspace: string | null, today: string) {
+export function cardsInText(
+  body: string,
+  notePath: string,
+  workspace: string | null,
+  today: string,
+  noteKey = notePath.replace(/\\/g, '/'),
+) {
   const lines = String(body || '').split(/\r?\n/);
   const cards: StudyCard[] = [];
+  const seen = new Map<string, number>();
   let fence = false;
   lines.forEach((line, index) => {
     if (line.trim().startsWith('```')) {
@@ -55,19 +260,35 @@ export function cardsInText(body: string, notePath: string, workspace: string | 
     const pair = triple ? null : line.match(/^(.+?)\s::\s(.+)$/);
     const match = triple || pair;
     if (!match) return;
+    const front = match[1].trim();
+    const state = blankState(today);
     cards.push({
-      id: `${notePath}:${index + 1}`,
-      path: notePath,
+      id: cardKey(noteKey, front, seen),
+      path: notePath.replace(/\\/g, '/'),
       line: index + 1,
-      front: match[1].trim(),
+      front,
       back: match[2].trim(),
       workspace,
-      due: today,
-      box: 0,
+      due: state.due,
+      interval: state.interval,
+      ease: state.ease,
+      lapses: state.lapses,
+      intervals: previewIntervals(state),
       reversible: Boolean(triple),
     });
   });
   return cards;
+}
+
+function findCard(library: Library, id: string, today: string) {
+  for (const note of listNotes(library)) {
+    const doc = readNote(library, note.path);
+    const card = cardsInText(doc.body, note.path, note.workspace, today, noteKeyOf(doc.frontmatter, note.path)).find(
+      (item) => item.id === id,
+    );
+    if (card) return card;
+  }
+  return null;
 }
 
 export function listCards(library: Library, today: string, workspace?: string) {
@@ -76,32 +297,52 @@ export function listCards(library: Library, today: string, workspace?: string) {
   for (const note of listNotes(library)) {
     if (workspace && note.workspace !== workspace) continue;
     const doc = readNote(library, note.path);
-    for (const card of cardsInText(doc.body, note.path, note.workspace, today)) {
-      const saved = schedule[card.id];
-      cards.push(saved ? { ...card, due: saved.due, box: saved.box } : card);
+    for (const card of cardsInText(doc.body, note.path, note.workspace, today, noteKeyOf(doc.frontmatter, note.path))) {
+      const state = stateOf(schedule[card.id], today);
+      cards.push({ ...card, ...state, intervals: previewIntervals(state) });
     }
   }
   return cards;
 }
 
-export function reviewCard(library: Library, id: string, knew: boolean, today: string) {
-  const [notePath] = id.split(':');
-  const note = listNotes(library).find((item) => item.path === notePath);
-  if (!note) throw new EngineError('not-found', 'Cartão não encontrado.');
-  const doc = readNote(library, note.path);
-  const card = cardsInText(doc.body, note.path, note.workspace, today).find((item) => item.id === id);
+export function reviewCard(library: Library, id: string, gradeOrKnew: boolean | number | undefined, today: string) {
+  const grade = resolveGrade(gradeOrKnew);
+  const card = findCard(library, id, today);
   if (!card) throw new EngineError('not-found', 'Cartão não encontrado.');
   const schedule = readSchedule(library);
-  const box = knew ? Math.min(5, (schedule[id]?.box || 0) + 1) : 0;
-  const due = addDays(today, knew ? [1, 2, 4, 8, 16, 32][box] : 1);
-  schedule[id] = { due, box };
+  const current = stateOf(schedule[id], today);
+  const next = nextInterval(current, grade);
+  const due = addDays(today, next.interval);
+  schedule[id] = {
+    due,
+    interval: next.interval,
+    ease: next.ease,
+    lapses: next.lapses,
+    previous: current,
+  };
   writeSchedule(library, schedule);
-  return { ...card, due, box };
+  const saved = stateOf(schedule[id], today);
+  return { ...card, ...saved, grade, intervals: previewIntervals(saved) };
+}
+
+export function undoCard(library: Library, id: string) {
+  const today = '2000-01-01';
+  const card = findCard(library, id, today);
+  if (!card) throw new EngineError('not-found', 'Cartão não encontrado.');
+  const schedule = readSchedule(library);
+  const entry = schedule[id];
+  if (!entry?.previous)
+    throw new EngineError('not-found', 'Não há revisão anterior deste cartão para desfazer.');
+  const restored = entry.previous;
+  schedule[id] = { ...restored };
+  writeSchedule(library, schedule);
+  return { ...card, ...restored, undone: true as const, intervals: previewIntervals(restored) };
 }
 
 function addDays(iso: string, days: number) {
+  const whole = Math.max(1, Math.round(days));
   const date = new Date(`${iso}T12:00:00`);
-  date.setDate(date.getDate() + days);
+  date.setDate(date.getDate() + whole);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 

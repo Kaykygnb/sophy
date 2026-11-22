@@ -150,6 +150,15 @@ function setupIpc() {
     await shell.openExternal(url.href);
     return true;
   });
+  // Abre um arquivo de Anexos/ no aplicativo do sistema. O caminho fica preso à biblioteca.
+  handle('sophy:open-attachment', async (_event, relative) => {
+    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
+    const library = engine.openLibrary(sessionPath);
+    const full = engine.resolveAttachmentPath(library, relative);
+    const opened = await shell.openPath(full);
+    if (opened) throw new Error(opened);
+    return true;
+  });
   ipcMain.on('sophy:attention', (event) => {
     if (!trusted(event)) return;
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -199,27 +208,6 @@ function setupIpc() {
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     const body = input && typeof input === 'object' ? input : {};
-    if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
-      const library = engine.openLibrary(sessionPath);
-      const full = engine.resolveInside(library.root, body.path);
-      const before = engine.capture(library);
-      let systemTrashed = false;
-      try {
-        await shell.trashItem(full);
-        systemTrashed = true;
-      } catch {
-        // A lixeira local preserva uma cópia quando o sistema não recebe o item.
-      }
-      if (systemTrashed) {
-        engine.pushHistory(library, {
-          origin: 'ui',
-          tool: 'entry.trash',
-          summary: `Lixeira ${body.path}`,
-          changes: engine.diff(before, engine.capture(library)),
-        });
-        return { path: body.path, trashed: true, trashPath: '' };
-      }
-    }
     return gate(name, body);
   });
 
@@ -420,6 +408,81 @@ function setupIpc() {
       return chosen.filePath;
     } finally {
       paper.destroy();
+    }
+  });
+
+  // Grava o Markdown devolvido por note.export. O retorno é o objeto em si, sem o envelope { value }.
+  ipcMain.handle('sophy:export-markdown', async (event, result) => {
+    const failed = (error) => ({
+      ok: false,
+      path: null,
+      written: [],
+      error: error instanceof Error ? error.message : error || 'Falha na operação.',
+    });
+    if (!trusted(event)) return failed('Origem inválida.');
+    const written = [];
+    try {
+      if (!result || typeof result !== 'object' || typeof result.content !== 'string')
+        return failed('Exportação Markdown inválida.');
+      const files = result.files === undefined ? [] : result.files;
+      if (!Array.isArray(files)) return failed('Exportação Markdown inválida.');
+      const payloads = new Map();
+      for (const file of files) {
+        if (!file || typeof file !== 'object' || !engine.exportFileRelative(file.path))
+          return failed('O anexo precisa ficar na pasta escolhida.');
+        if (payloads.has(file.path)) return failed('Anexo repetido na exportação.');
+        payloads.set(file.path, engine.decodeExportBytes(file.bytesBase64));
+      }
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      const suggested = engine.suggestMarkdownName(result.suggestedName || result.filename);
+      const chosen = await dialog.showSaveDialog(owner || undefined, {
+        title: 'Exportar Markdown',
+        defaultPath: suggested,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (chosen.canceled || !chosen.filePath)
+        return { ok: false, canceled: true, path: null, written: [] };
+      const planInput = {
+        directory: path.dirname(chosen.filePath),
+        noteFile: chosen.filePath,
+        files: files.map((file) => file.path),
+        exists: (target) => fs.existsSync(target),
+      };
+      let plan = engine.planMarkdownExport(planInput);
+      if (!plan.ok) return failed(plan.error);
+      if (plan.action === 'choose') {
+        const answer = await dialog.showMessageBox(owner || undefined, {
+          type: 'question',
+          buttons: ['Substituir', 'Manter os dois', 'Cancelar'],
+          defaultId: 2,
+          cancelId: 2,
+          message: 'Já existe um arquivo neste destino.',
+          detail: plan.conflicts.join('\n'),
+        });
+        const choice =
+          answer.response === 0 ? 'replace' : answer.response === 1 ? 'keep-both' : 'cancel';
+        plan = engine.planMarkdownExport({ ...planInput, choice });
+        if (!plan.ok) return failed(plan.error);
+      }
+      if (plan.action !== 'write')
+        return { ok: false, canceled: true, path: null, written: [] };
+      for (const item of plan.writes) {
+        fs.mkdirSync(path.dirname(item.absolute), { recursive: true });
+        if (item.source === 'note') {
+          fs.writeFileSync(item.absolute, result.content, {
+            encoding: 'utf8',
+            flag: item.replace ? 'w' : 'wx',
+          });
+        } else {
+          const bytes = payloads.get(item.source);
+          if (!bytes) throw new Error('Anexo da exportação inválido.');
+          fs.writeFileSync(item.absolute, bytes, { flag: item.replace ? 'w' : 'wx' });
+        }
+        written.push(item.absolute);
+      }
+      return { ok: true, path: plan.path, written };
+    } catch (error) {
+      return { ...failed(error), written };
     }
   });
 
