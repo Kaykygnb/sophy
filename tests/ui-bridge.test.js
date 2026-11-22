@@ -167,3 +167,10 @@ test('as tools ui.* chegam na janela pelo mesmo registro', async () => {
     stop();
   }
 });
+
+test('wikiQuery ignora um [[ esquecido no meio do texto', () => {
+  const commands = require('../src/ui/commands.js');
+  const text = 'liga a um [[ incompleto. **vivo**';
+  assert.equal(commands.wikiQuery(text, text.length), null);
+  assert.equal(commands.wikiQuery(`[[${'a'.repeat(61)}`, 63), null);
+});
