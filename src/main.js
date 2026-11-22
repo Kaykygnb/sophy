@@ -199,27 +199,6 @@ function setupIpc() {
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     const body = input && typeof input === 'object' ? input : {};
-    if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
-      const library = engine.openLibrary(sessionPath);
-      const full = engine.resolveInside(library.root, body.path);
-      const before = engine.capture(library);
-      let systemTrashed = false;
-      try {
-        await shell.trashItem(full);
-        systemTrashed = true;
-      } catch {
-        // A lixeira local preserva uma cópia quando o sistema não recebe o item.
-      }
-      if (systemTrashed) {
-        engine.pushHistory(library, {
-          origin: 'ui',
-          tool: 'entry.trash',
-          summary: `Lixeira ${body.path}`,
-          changes: engine.diff(before, engine.capture(library)),
-        });
-        return { path: body.path, trashed: true, trashPath: '' };
-      }
-    }
     return gate(name, body);
   });
 

@@ -2,13 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 import { parseCanvas, serializeCanvas } from './canvas.ts';
-import { listEntries, listFiles, listNotes, assertEntryMove, moveEntry, readText, type Library } from './library.ts';
+import { createdAtFrom, listEntries, listFiles, listNotes, assertEntryMove, moveEntry, readText, type Library } from './library.ts';
 import { splitMarkdown } from './markdown.ts';
 import { isMother, listChildren, moveMotherTree, registerMother } from './children.ts';
 import { findNoteByRememberedName } from './note-id.ts';
 import { resolveInside } from './paths.ts';
 import { buildRewriteIndexes, rewriteLinks } from './rewrite.ts';
 import { fold, rankByFuzzy } from './fuzzy.ts';
+import { collectNoteTags, type NoteTag } from './tags.ts';
 import {
   anchorExists,
   blockIdsOf,
@@ -66,12 +67,14 @@ type CachedNote = {
   title: string;
   aliases: string[];
   tags: string[];
+  tagRecords: NoteTag[];
   headings: string[];
   sections: NoteSection[];
   blockIds: string[];
   plain: string;
   frontmatterText: string;
   mtime: number;
+  createdAt: string;
   size: number;
   scanned: ScannedLink[];
   linkSnippets: Map<string, string>;
@@ -82,6 +85,10 @@ const watchers = new Map<string, fs.FSWatcher>();
 const generations = new Map<string, number>();
 const bundleByCache = new WeakMap<Map<string, CachedNote>, ReturnType<typeof buildBundle>>();
 const fileInventories = new Map<string, string[]>();
+
+export function forgetCachedNote(library: Library, relative: string) {
+  caches.get(library.root)?.delete(relative.split('\\').join('/'));
+}
 
 export function syncLinks(library: Library) {
   const cache = caches.get(library.root) ?? new Map<string, CachedNote>();
@@ -243,31 +250,6 @@ export function relocate(library: Library, source: string, target: string) {
   const uniqueBase =
     /\.md$/i.test(source) &&
     notePaths.filter((file) => basename(file) === basename(source)).length === 1;
-  // #region agent log
-  try {
-    fs.appendFileSync(
-      path.resolve('c:/Users/kayky/Downloads/teste/.cursor/debug-1de8c6.log'),
-      `${JSON.stringify({
-        sessionId: '1de8c6',
-        hypothesisId: 'A',
-        location: 'links.ts:relocate',
-        message: 'relocate uniqueBase decision',
-        data: {
-          source,
-          target,
-          uniqueBase,
-          sourceIsNote: /\.md$/i.test(source),
-          basenameSource: basename(source),
-          sameBaseCount: notePaths.filter((file) => basename(file) === basename(source)).length,
-        },
-        timestamp: Date.now(),
-        runId: 'post-fix',
-      })}\n`,
-    );
-  } catch {
-    /* ignore */
-  }
-  // #endregion
   for (const note of notes) {
     try {
       if (
@@ -275,28 +257,6 @@ export function relocate(library: Library, source: string, target: string) {
           if (!mayNeedRewrite(content, needles)) return content;
           if (uniqueBase) {
             const quick = rewriteUniqueWiki(content, source, target);
-            // #region agent log
-            try {
-              fs.appendFileSync(
-                path.resolve('c:/Users/kayky/Downloads/teste/.cursor/debug-1de8c6.log'),
-                `${JSON.stringify({
-                  sessionId: '1de8c6',
-                  hypothesisId: 'A',
-                  location: 'links.ts:relocate:quick',
-                  message: 'uniqueBase shortcut used',
-                  data: {
-                    note: note.path,
-                    changed: quick !== null && quick !== content,
-                    hadPathLink: content.includes(`${basename(source)}/`),
-                  },
-                  timestamp: Date.now(),
-                  runId: 'post-fix',
-                })}\n`,
-              );
-            } catch {
-              /* ignore */
-            }
-            // #endregion
             if (quick !== null) return quick;
           }
           return rewriteLinks(content, note.path, notePaths, files, mapPath, indexes);
@@ -344,6 +304,15 @@ export function linkGeneration(root: string) {
   return generations.get(root) ?? 0;
 }
 
+/** `.sophy` e qualquer segmento oculto ficam fora do vigia. */
+export function ignoredByWatch(relative: string) {
+  return String(relative)
+    .split('\\')
+    .join('/')
+    .split('/')
+    .some((part) => part.startsWith('.'));
+}
+
 export function watchLibrary(library: Library, enabled: boolean) {
   const current = watchers.get(library.root);
   if (!enabled) {
@@ -356,7 +325,7 @@ export function watchLibrary(library: Library, enabled: boolean) {
   const watcher = fs.watch(library.root, { recursive: true }, (_event, filename) => {
     if (!filename) return;
     const relative = String(filename).split(path.sep).join('/');
-    if (relative.split('/').some((part) => part.startsWith('.'))) return;
+    if (ignoredByWatch(relative)) return;
     const lower = relative.toLowerCase();
     if (!lower.endsWith('.md') && !lower.endsWith('.canvas')) return;
     caches.get(library.root)?.delete(relative);
@@ -378,18 +347,21 @@ function loadNote(
   const headings = headingsOf(parts.body);
   const sections = sectionsOf(parts.body);
   const scanned = scan(content);
+  const tagRecords = collectNoteTags(parts.frontmatter, parts.body);
   return {
     path: relative,
     workspace,
     title: headings[0] || basename(relative),
     aliases: aliasesOf(parts.frontmatter),
-    tags: tagsOf(parts.frontmatter),
+    tags: tagRecords.map((tag) => tag.name),
+    tagRecords,
     headings,
     sections,
     blockIds: blockIdsOf(parts.body),
     plain: plainText(parts.body),
     frontmatterText: frontmatterText(parts.frontmatter),
     mtime,
+    createdAt: createdAtFrom(parts.frontmatter, fs.statSync(resolveInside(library.root, relative))),
     size,
     scanned,
     linkSnippets: snippetsFor(content, scanned),
@@ -479,13 +451,6 @@ function decorate(
   return resolvedLinks;
 }
 
-function tagsOf(frontmatter: Record<string, unknown> | null) {
-  const tags = frontmatter?.tags;
-  if (typeof tags === 'string') return [tags];
-  if (Array.isArray(tags)) return tags.filter((tag): tag is string => typeof tag === 'string');
-  return [];
-}
-
 function aliasesOf(frontmatter: Record<string, unknown> | null) {
   if (!frontmatter) return [];
   const raw = frontmatter.aliases ?? frontmatter.alias;
@@ -556,12 +521,14 @@ function loadCanvas(
     title: basename(relative),
     aliases: [],
     tags: [],
+    tagRecords: [],
     headings: [],
     sections: [],
     blockIds: [],
     plain: plainText(texts.join('\n')),
     frontmatterText: '',
     mtime,
+    createdAt: createdAtFrom(null, fs.statSync(resolveInside(library.root, relative))),
     size,
     scanned,
     linkSnippets: snippetsFor(texts.join('\n'), scanned),
