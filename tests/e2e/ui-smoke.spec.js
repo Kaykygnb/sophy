@@ -744,7 +744,7 @@ test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
   );
   await expect(page.locator('.sofi-lista')).toBeVisible();
-  await expect(page.locator('.agente--lateral img')).toBeVisible();
+  await expect(page.locator('.agente--lateral .sofi-mascote')).toBeVisible();
   await expect(page.locator('.chip', { hasText: 'cofre' })).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-sofi-painel-claro.png') });
   await page.locator('#seletor-biblioteca').click();
