@@ -1,4 +1,4 @@
-import { calendarSeeds } from './calendar-facts.ts';
+import { calendarSeeds, dateOf } from './calendar-facts.ts';
 import { EngineError } from './errors.ts';
 import { syncLinks } from './links.ts';
 import { listNotes, readNote, readText, writeText, type Library } from './library.ts';
@@ -57,10 +57,15 @@ function priorityOf(suffix: string): TaskPriority | null {
   return null;
 }
 
-function dateOf(suffix: string, mark: string) {
-  const clean = stripVariant(suffix);
-  const match = clean.match(new RegExp(`${mark}\\s*(\\d{4}-\\d{2}-\\d{2})`));
-  return match ? match[1] : null;
+function withoutColorSpans(text: string) {
+  return text.replace(/<span\b[^>]*\bdata-(?:cor|fundo)\s*=\s*["'][^"']*["'][^>]*>|<\/span>/gi, '');
+}
+
+/** Título que sobra depois de tirar span de cor, emoji de tarefa e espaços. */
+function hasVisibleTitle(rest: string) {
+  const plain = withoutColorSpans(stripVariant(rest));
+  const emoji = plain.search(/📅|🛫|⏳|✅|⏫|🔼|🔽/);
+  return (emoji < 0 ? plain : plain.slice(0, emoji)).trim().length > 0;
 }
 
 function indentOf(line: string) {
@@ -90,6 +95,7 @@ function parseLine(
   const match = line.match(/^(\s*)([-*+]|\d+\.) \[([ xX/\-])\]\s?(.*)$/);
   if (!match) return null;
   const rest = match[4];
+  if (!hasVisibleTitle(rest)) return null;
   const emoji = rest.search(/📅|🛫|⏳|✅|⏫|🔼|🔽/);
   const title = (emoji < 0 ? rest : rest.slice(0, emoji)).replace(/\s+$/, '');
   const suffix = emoji < 0 ? '' : rest.slice(emoji);
