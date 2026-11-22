@@ -244,31 +244,6 @@ export function relocate(library: Library, source: string, target: string) {
   const uniqueBase =
     /\.md$/i.test(source) &&
     notePaths.filter((file) => basename(file) === basename(source)).length === 1;
-  // #region agent log
-  try {
-    fs.appendFileSync(
-      path.resolve('c:/Users/kayky/Downloads/teste/.cursor/debug-1de8c6.log'),
-      `${JSON.stringify({
-        sessionId: '1de8c6',
-        hypothesisId: 'A',
-        location: 'links.ts:relocate',
-        message: 'relocate uniqueBase decision',
-        data: {
-          source,
-          target,
-          uniqueBase,
-          sourceIsNote: /\.md$/i.test(source),
-          basenameSource: basename(source),
-          sameBaseCount: notePaths.filter((file) => basename(file) === basename(source)).length,
-        },
-        timestamp: Date.now(),
-        runId: 'post-fix',
-      })}\n`,
-    );
-  } catch {
-    /* ignore */
-  }
-  // #endregion
   for (const note of notes) {
     try {
       if (
@@ -276,28 +251,6 @@ export function relocate(library: Library, source: string, target: string) {
           if (!mayNeedRewrite(content, needles)) return content;
           if (uniqueBase) {
             const quick = rewriteUniqueWiki(content, source, target);
-            // #region agent log
-            try {
-              fs.appendFileSync(
-                path.resolve('c:/Users/kayky/Downloads/teste/.cursor/debug-1de8c6.log'),
-                `${JSON.stringify({
-                  sessionId: '1de8c6',
-                  hypothesisId: 'A',
-                  location: 'links.ts:relocate:quick',
-                  message: 'uniqueBase shortcut used',
-                  data: {
-                    note: note.path,
-                    changed: quick !== null && quick !== content,
-                    hadPathLink: content.includes(`${basename(source)}/`),
-                  },
-                  timestamp: Date.now(),
-                  runId: 'post-fix',
-                })}\n`,
-              );
-            } catch {
-              /* ignore */
-            }
-            // #endregion
             if (quick !== null) return quick;
           }
           return rewriteLinks(content, note.path, notePaths, files, mapPath, indexes);
