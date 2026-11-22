@@ -55,6 +55,8 @@
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
     if (/[\]\n]/.test(query)) return null;
+    // Um [[ esquecido no meio do parágrafo não pode sequestrar o Enter: só abre enquanto parece um nome de nota.
+    if (query.length > 60 || /[.!?]\s|\*\*|`/.test(query)) return null;
     return { start: marker, query };
   }
 
@@ -289,6 +291,7 @@
   }
 
   function previewInline(text) {
+    text = String(text || '').replace(/<\/?span\b[^>]*>/gi, '');
     const pattern = /!?\[\[([^\]\n]*)\]\]/g;
     let html = '';
     let last = 0;
@@ -379,6 +382,7 @@
     { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
+    { id: 'lixeira', rotulo: 'Lixeira', grupo: 'Navegar', icone: 'lixeira', atalho: '', quando: 'biblioteca' },
     { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
