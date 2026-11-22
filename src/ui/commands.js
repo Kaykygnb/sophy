@@ -13,6 +13,7 @@
     'note.create',
     'note.write',
     'entry.move',
+    'block.rename',
     'entry.trash',
     'trash.restore',
     'trash.purge',

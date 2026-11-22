@@ -85,7 +85,14 @@ test('a chamada da janela força origem ui e ignora o caminho do input', () => {
   assert.equal(prepared.origin, 'ui');
   assert.equal(prepared.libraryPath, '/tmp/biblioteca');
   assert.equal(prepared.body, 'oi [[');
-  for (const name of ['trash.purge', 'trash.empty', 'note.deletePermanent', 'card.undo', 'trash.restore']) {
+  for (const name of [
+    'trash.purge',
+    'trash.empty',
+    'note.deletePermanent',
+    'card.undo',
+    'trash.restore',
+    'block.rename',
+  ]) {
     const body = commands.prepareCall(name, { id: 'x', path: 'Nota.md' }, '/tmp/biblioteca');
     assert.equal(body.origin, 'ui', name);
     assert.equal(body.libraryPath, '/tmp/biblioteca');
@@ -97,6 +104,74 @@ test('a chamada da janela força origem ui e ignora o caminho do input', () => {
   );
   assert.equal(theme.libraryPath, undefined);
   assert.equal(theme.theme, 'dark');
+});
+
+test('a UI renomeia o bloco com origem ui e agent.undo desfaz todos os arquivos', async () => {
+  const engine = await import('../engine/tools.ts');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-rename-'));
+  let current = null;
+  const gate = commands.createToolGate({
+    call: engine.callTool,
+    libraryPath: () => current,
+    setLibraryPath: (value) => {
+      current = value;
+    },
+  });
+  gate('library.open', { path: root });
+  gate('note.create', {
+    path: 'Estudos/Nota.md',
+    body: '# Outro\n\n```js title="api"\nconst a = 1;\n```\n\n[[#api|local]]\n',
+    origin: 'agent',
+  });
+  gate('note.create', { path: 'Estudos/Fonte.md', body: '[[Nota#api|apelido]]\n' });
+  const canvasPath = path.join(root, 'Estudos', 'Quadro.canvas');
+  fs.writeFileSync(
+    canvasPath,
+    JSON.stringify({
+      nodes: [{ id: '1', type: 'text', text: 'Canvas [[Nota#api]]', x: 0, y: 0, width: 100, height: 40 }],
+      edges: [],
+    }),
+  );
+  const notePath = path.join(root, 'Estudos', 'Nota.md');
+  const fontePath = path.join(root, 'Estudos', 'Fonte.md');
+  const before = {
+    note: fs.readFileSync(notePath, 'utf8'),
+    fonte: fs.readFileSync(fontePath, 'utf8'),
+    canvas: fs.readFileSync(canvasPath, 'utf8'),
+  };
+  assert.throws(
+    () => gate('block.rename', { notePath: 'Estudos/Nota.md', de: 'api', para: 'Outro', origin: 'mcp' }),
+    (error) => error.code === 'nome_em_uso' && /seção ou um bloco/.test(error.message),
+  );
+  assert.equal(fs.readFileSync(notePath, 'utf8'), before.note);
+  assert.equal(fs.readFileSync(fontePath, 'utf8'), before.fonte);
+  const result = gate('block.rename', {
+    notePath: 'Estudos/Nota.md',
+    de: 'api',
+    para: 'codigo',
+    origin: 'mcp',
+  });
+  assert.equal(result.path, 'Estudos/Nota.md');
+  assert.equal(result.title, 'codigo');
+  assert.equal(result.from, 'api');
+  assert.equal(result.shadowed, false);
+  assert.ok(result.updated.includes('Estudos/Nota.md'));
+  assert.ok(result.updated.includes('Estudos/Fonte.md'));
+  assert.ok(result.updated.includes('Estudos/Quadro.canvas'));
+  assert.equal(typeof result.versionId, 'string');
+  assert.ok(result.versionId);
+  gate('note.create', { path: 'Estudos/Depois.md', body: 'fica\n' });
+  const history = gate('history.list', {});
+  const rename = history.find((item) => item.tool === 'block.rename');
+  assert.equal(rename.id, result.versionId);
+  assert.equal(rename.origin, 'ui');
+  const undone = gate('agent.undo', { versionId: result.versionId });
+  assert.equal(undone.undone, result.versionId);
+  assert.equal(undone.tool, 'block.rename');
+  assert.equal(fs.readFileSync(notePath, 'utf8'), before.note);
+  assert.equal(fs.readFileSync(fontePath, 'utf8'), before.fonte);
+  assert.equal(fs.readFileSync(canvasPath, 'utf8'), before.canvas);
+  assert.match(fs.readFileSync(path.join(root, 'Estudos', 'Depois.md'), 'utf8'), /fica/);
 });
 
 test('conflito de revisão não é tratado como gravação', async () => {

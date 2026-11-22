@@ -12,7 +12,6 @@ test('preload e main expõem o contrato da Sofi', () => {
     'agentKeyClear',
     'agentAsk: (message, context)',
     'agentCancel',
-    'agentUndo',
     'agentConfirmReply',
     'onAgentProgress',
     'onAgentConfirm',
@@ -28,7 +27,6 @@ test('preload e main expõem o contrato da Sofi', () => {
     'sophy:agent-confirm',
     'sophy:agent-confirm-reply',
     'sophy:agent-cancel',
-    'sophy:agent-undo',
   ]) {
     assert.equal(`${preload}\n${main}`.includes(channel), true, channel);
   }

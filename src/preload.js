@@ -12,8 +12,6 @@ contextBridge.exposeInMainWorld(
     createLibrary: (folder) => ipcRenderer.invoke('sophy:create-library', folder),
     switchLibrary: (folder) => ipcRenderer.invoke('sophy:switch-library', folder),
     forgetLibrary: (folder) => ipcRenderer.invoke('sophy:forget-library', folder),
-    libraryList: () => ipcRenderer.invoke('sophy:library-list'),
-    libraryPick: () => ipcRenderer.invoke('sophy:library-pick'),
     libraryReveal: (folder) => ipcRenderer.invoke('sophy:library-reveal', folder),
     saveSettings: (patch) => ipcRenderer.invoke('sophy:settings', patch),
     exportPdf: (html) => ipcRenderer.invoke('sophy:export-pdf', html),
@@ -24,7 +22,6 @@ contextBridge.exposeInMainWorld(
     agentKeyClear: () => ipcRenderer.invoke('sophy:agent-key-clear'),
     agentAsk: (message, context) => ipcRenderer.invoke('sophy:agent-ask', message, context),
     agentCancel: () => ipcRenderer.invoke('sophy:agent-cancel'),
-    agentUndo: (versionId) => ipcRenderer.invoke('sophy:agent-undo', versionId),
     agentConfirmReply: (confirmId, allow) =>
       ipcRenderer.invoke('sophy:agent-confirm-reply', confirmId, allow),
     onAgentProgress: (listener) => {
