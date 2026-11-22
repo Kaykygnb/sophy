@@ -130,7 +130,7 @@ test('cartão de texto do canvas recebe o foco e formata negrito', async () => {
   await page.locator('#arvore [data-canvas="Estudos/Quadro.canvas"]').click();
   await expect(page.locator('.cv-texto strong')).toHaveText('negrito');
   await page.locator('[data-tool="rectangle"]').click();
-  await page.locator('.canvas-area').click({ position: { x: 80, y: 200 } });
+  await page.locator('.canvas-area').click({ position: { x: 700, y: 480 } });
   await expect(page.locator('.cv-texto').last()).toBeFocused();
   await app.close();
 });

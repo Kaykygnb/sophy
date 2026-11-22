@@ -229,14 +229,21 @@ test('painel da Sofi: cabeçalho, sugestões, contexto removível, campo e cart�
     await field.press('Enter');
     await expect(panel.locator('.sofi-msg--voce')).toContainText('segunda linha');
     expect(await field.inputValue()).toBe('');
-    // sem cofre disponível no teste, a resposta chega como balão de erro amigável
-    await expect(panel.locator('.sofi-msg--sofi')).toBeVisible({ timeout: 15000 });
-    await expect(panel.locator('#agente-vazio')).toBeHidden();
-
-    // Nova conversa limpa tudo
-    await panel.getByRole('button', { name: 'Nova conversa' }).click();
-    await expect(panel.locator('.sofi-msg')).toHaveCount(0);
-    await expect(panel.locator('#agente-vazio')).toBeVisible();
+    // sem chave guardada: com o harness (#36) o erro é `sem_chave` e o painel troca para o cartão
+    // “Conectar a Sofi”; sem ele, a resposta chega como balão de erro amigável.
+    const connectCard = page.locator('.sofi-conectar');
+    const errorBubble = panel.locator('.sofi-msg--sofi');
+    await expect(connectCard.or(errorBubble).first()).toBeVisible({ timeout: 15000 });
+    if (await connectCard.count()) {
+      await expect(connectCard).toContainText('Conectar a Sofi');
+      await expect(page.locator('#agente-pedido')).toBeDisabled();
+    } else {
+      await expect(panel.locator('#agente-vazio')).toBeHidden();
+      // Nova conversa limpa tudo
+      await panel.getByRole('button', { name: 'Nova conversa' }).click();
+      await expect(panel.locator('.sofi-msg')).toHaveCount(0);
+      await expect(panel.locator('#agente-vazio')).toBeVisible();
+    }
 
     // fechar
     await panel.locator('#agente-fechar').click();
