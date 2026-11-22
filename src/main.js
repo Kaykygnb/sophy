@@ -35,6 +35,8 @@ let sessionPath = null;
 let gate;
 let releasePresence = () => {};
 let mailboxTimer;
+let agentAbort = null;
+const agentConfirms = new Map();
 const windows = new Set();
 let tray;
 let quitting = false;
@@ -81,6 +83,39 @@ function rememberLibrary(folder) {
 
 function agentKeyFile() {
   return path.join(app.getPath('userData'), 'agent-key.bin');
+}
+
+function fail(message, code) {
+  const error = new Error(message);
+  if (code) error.code = code;
+  throw error;
+}
+
+function emitAgent(sender, channel, payload) {
+  if (sender && !sender.isDestroyed()) sender.send(channel, payload);
+}
+
+function waitForAgentConfirm(sender, request, signal) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (allow) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+      agentConfirms.delete(request.confirmId);
+      resolve(allow === true);
+    };
+    const onAbort = () => finish(false);
+    const timer = setTimeout(() => finish(false), 120000);
+    agentConfirms.set(request.confirmId, finish);
+    if (signal?.aborted) {
+      finish(false);
+      return;
+    }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    emitAgent(sender, 'sophy:agent-confirm', request);
+  });
 }
 
 function broadcast(command) {
@@ -146,7 +181,8 @@ function handle(channel, fn) {
 function setupIpc() {
   handle('sophy:open-external', async (_event, address) => {
     const url = new URL(address);
-    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) throw new Error('Tipo de link não permitido.');
+    if (!['http:', 'https:', 'mailto:'].includes(url.protocol))
+      throw new Error('Tipo de link não permitido.');
     await shell.openExternal(url.href);
     return true;
   });
@@ -241,31 +277,58 @@ function setupIpc() {
     return { saved: false };
   });
 
-  handle('sophy:agent-ask', async (_event, message) => {
+  handle('sophy:agent-ask', async (event, message, context) => {
     if (typeof message !== 'string' || !message.trim()) throw new Error('Escreva o pedido.');
     if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
-    if (!fs.existsSync(agentKeyFile())) throw new Error('Guarde a chave no cofre antes de pedir.');
+    if (!fs.existsSync(agentKeyFile()))
+      fail('Guarde a chave no cofre antes de pedir.', 'sem_chave');
     if (!safeStorage.isEncryptionAvailable())
       throw new Error('O cofre do sistema não está disponível.');
+    if (agentAbort)
+      throw new Error(
+        'A Sofi ainda está respondendo. Cancele o pedido atual antes de enviar outro.',
+      );
     const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
-    const owner = BrowserWindow.getFocusedWindow() || [...windows][0];
-    const turn = await engine.runAgentTurn({
-      libraryPath: sessionPath,
-      message: message.trim(),
-      key,
-      fetchImpl: fetch,
-      confirm: async (question) => {
-        const chosen = await dialog.showMessageBox(owner, {
-          type: 'question',
-          buttons: ['Cancelar', 'Confirmar'],
-          defaultId: 0,
-          cancelId: 0,
-          message: question,
-        });
-        return chosen.response === 1;
-      },
-    });
-    return { text: turn.text };
+    const controller = new AbortController();
+    agentAbort = controller;
+    try {
+      const turn = await engine.runAgentTurn({
+        libraryPath: sessionPath,
+        message: message.trim(),
+        context,
+        key,
+        fetchImpl: fetch,
+        signal: controller.signal,
+        onProgress: (payload) => emitAgent(event.sender, 'sophy:agent-progress', payload),
+        confirm: (request) => waitForAgentConfirm(event.sender, request, controller.signal),
+      });
+      return turn.canceled
+        ? { text: turn.text, actions: turn.actions, canceled: true }
+        : { text: turn.text, actions: turn.actions };
+    } finally {
+      if (agentAbort === controller) agentAbort = null;
+    }
+  });
+
+  handle('sophy:agent-cancel', () => {
+    if (!agentAbort) return { canceled: false };
+    agentAbort.abort();
+    return { canceled: true };
+  });
+
+  handle('sophy:agent-confirm-reply', (_event, confirmId, allow) => {
+    if (typeof confirmId !== 'string' || !agentConfirms.has(confirmId))
+      throw new Error('Essa confirmação não está mais pendente.');
+    const finish = agentConfirms.get(confirmId);
+    finish(allow === true);
+    return { allow: allow === true };
+  });
+
+  handle('sophy:agent-undo', (_event, versionId) => {
+    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
+    if (typeof versionId !== 'string' || !versionId.trim())
+      throw new Error('Informe a versão para desfazer.');
+    return gate('agent.undo', { versionId: versionId.trim() });
   });
 
   handle('sophy:choose-files', async (event) => {

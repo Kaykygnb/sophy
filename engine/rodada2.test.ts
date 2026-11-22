@@ -129,21 +129,38 @@ test('a Sofi pede confirmação para sobrescrever, desfazer e mover estante', as
     { name: 'history.undo', arguments: {} },
     { name: 'entry.move', arguments: { from: 'Estudos', to: 'Arquivo' } },
   ];
+  let rounds = 0;
   const denied = await runAgentTurn({
     libraryPath: opened.root,
     message: 'mexe',
     key: 'sk-teste-sofi-nao-gravar',
     confirm: async () => false,
-    fetchImpl: async () => ({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: 'ok', tool_calls: calls.map((call) => ({ function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) } }],
-      }),
-    }),
+    fetchImpl: async () => {
+      rounds += 1;
+      if (rounds > 1) {
+        return { ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: 'ok',
+                tool_calls: calls.map((call) => ({
+                  id: call.name,
+                  function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+                })),
+              },
+            },
+          ],
+        }),
+      };
+    },
   });
   assert.equal(fs.readFileSync(path.join(opened.root, 'Estudos.md'), 'utf8').includes('Original'), true);
   assert.equal(fs.existsSync(path.join(opened.root, 'Estudos')), true);
-  assert.equal(denied.results.filter((result) => result.skipped).length, 3);
+  assert.equal(denied.actions.filter((action) => action.ok === false).length, 3);
   assert.match(agentConfirmation('entry.move', { from: 'Estudos/Nota.md', to: 'Outro.md' }), /Mover a nota/);
   assert.match(agentConfirmation('canvas.update', { path: 'Mapa.canvas' }), /Alterar o canvas/);
 });

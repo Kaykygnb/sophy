@@ -28,7 +28,7 @@ import {
   weeklyReview,
 } from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
-import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
+import { capture, diff, listHistory, pushHistory, undoById, undoLast, type Origin } from './history.ts';
 import {
   backlinks,
   brokenLinks,
@@ -373,6 +373,12 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'agent.undo',
+    'Desfaz uma ação específica da Sofi pelo versionId do histórico. Falha se a versão não existe ou já foi desfeita.',
+    z.object({ libraryPath, versionId: z.string().min(1) }),
+    ({ libraryPath: folder, versionId }) => undoById(openLibrary(folder), versionId),
   ),
   define(
     'shelf.style.list',
@@ -721,6 +727,7 @@ const MUTATIONS = new Set([
   'entry.trash',
   'trash.restore',
   'history.undo',
+  'agent.undo',
   'shelf.style.set',
   'mention.link',
   'vault.import',
@@ -750,6 +757,14 @@ export function callTool(name: string, raw: unknown) {
   return tool.run(tool.input.parse(raw) as never);
 }
 
+const trackedVersions = new WeakMap<object, string>();
+
+/** Id do histórico que `tracked()` gravou para este resultado, quando a mutação mudou o disco. */
+export function trackedVersionId(result: unknown) {
+  if (!result || typeof result !== 'object') return undefined;
+  return trackedVersions.get(result);
+}
+
 function tracked<T>(
   folder: string,
   source: Origin,
@@ -761,7 +776,13 @@ function tracked<T>(
   if (source === 'mcp' || source === 'agent') saveVersionPoint(library, `${source}:${tool}`);
   const before = capture(library);
   const result = run(library);
-  pushHistory(library, { origin: source, tool, summary, changes: diff(before, capture(library)) });
+  const entry = pushHistory(library, {
+    origin: source,
+    tool,
+    summary,
+    changes: diff(before, capture(library)),
+  });
+  if (entry?.id && result !== null && typeof result === 'object') trackedVersions.set(result, entry.id);
   return result;
 }
 

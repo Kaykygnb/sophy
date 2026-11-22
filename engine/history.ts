@@ -199,3 +199,47 @@ function writeActions(library: Library, actions: Action[]) {
 function historyFile(library: Library) {
   return path.join(library.root, '.sophy', 'history.json');
 }
+
+function undoneFile(library: Library) {
+  return path.join(library.root, '.sophy', 'agent-undone.json');
+}
+
+function readUndone(library: Library) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(undoneFile(library), 'utf8')) as { ids?: unknown };
+    return Array.isArray(parsed.ids)
+      ? parsed.ids.filter((id): id is string => typeof id === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberUndone(library: Library, id: string) {
+  const ids = readUndone(library).filter((item) => item !== id);
+  ids.push(id);
+  fs.mkdirSync(path.join(library.root, '.sophy'), { recursive: true });
+  fs.writeFileSync(undoneFile(library), JSON.stringify({ ids: ids.slice(-200) }));
+}
+
+/** Desfaz uma ação pelo id do histórico. Não cria outra entrada. */
+export function undoById(library: Library, id: string) {
+  const versionId = typeof id === 'string' ? id.trim() : '';
+  if (!versionId) throw new EngineError('not-found', 'Não encontrei essa versão para desfazer.');
+  if (readUndone(library).includes(versionId))
+    throw new EngineError('already-undone', 'Essa ação já foi desfeita.');
+  const actions = readActions(library);
+  const index = actions.findIndex((action) => action.id === versionId);
+  if (index < 0) throw new EngineError('not-found', 'Não encontrei essa versão para desfazer.');
+  if (index === actions.length - 1) {
+    const undone = undoLast(library);
+    rememberUndone(library, versionId);
+    return undone;
+  }
+  const action = actions[index]!;
+  apply(library, action.changes);
+  actions.splice(index, 1);
+  writeActions(library, actions);
+  rememberUndone(library, versionId);
+  return { undone: action.id, tool: action.tool, summary: action.summary, origin: action.origin };
+}
