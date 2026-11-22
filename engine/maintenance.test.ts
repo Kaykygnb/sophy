@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { callTool } from './tools.ts';
-import { moveToTrash } from './trash.ts';
+import { moveToTrash, restoreFromTrash } from './trash.ts';
 
 for (const [name, bytes] of [
   ['bytes.bin', Buffer.from([0xff, 0xfe, 0x80, 0x41])],
@@ -55,4 +55,22 @@ test('lixeira devolve o caminho dos metadados sem substituir separadores', (t) =
   );
   assert.match(fs.readFileSync(result.infoPath, 'utf8'), /^\[Trash Info\]/);
   assert.equal(fs.readFileSync(result.trashPath, 'utf8'), 'original');
+});
+
+test('restore da lixeira do sistema usa o sufixo quando o caminho existe', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-restore-sufixo-'));
+  const library = path.join(root, 'biblioteca');
+  const trash = path.join(root, 'trash');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(library, 'Diário'), { recursive: true });
+  const file = path.join(library, 'Diário', '2026-11-21.md');
+  fs.writeFileSync(file, 'velha\n');
+  const moved = moveToTrash(file, { trashRoot: trash });
+  fs.writeFileSync(file, 'nova\n');
+  const restored = restoreFromTrash(library, path.basename(moved.trashPath), { trashRoot: trash });
+  assert.match(restored.path, / \(restaurado\)\.md$/);
+  assert.equal(restored.restored, true);
+  assert.equal('conflict' in restored, false);
+  assert.match(fs.readFileSync(file, 'utf8'), /nova/);
+  assert.match(fs.readFileSync(path.join(library, ...restored.path.split('/')), 'utf8'), /velha/);
 });
