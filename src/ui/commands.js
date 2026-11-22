@@ -31,6 +31,8 @@
     'mention.link',
     'vault.import',
     'view.save',
+    'tag.rename',
+    'note.tags',
     'card.review',
     'card.undo',
     'version.point',

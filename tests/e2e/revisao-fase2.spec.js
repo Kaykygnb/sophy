@@ -56,7 +56,7 @@ test('Configurações é uma tela com seções e itens "em breve"', async () => 
   await app.close();
 });
 
-test('editor: títulos alinhados, + visível, linguagem como botão e exportar "em breve"', async () => {
+test('editor: títulos alinhados, + visível, linguagem como botão e exportar ativo', async () => {
   const { app, page } = await launch(library());
   await page.locator('#arvore').getByText('Leitura', { exact: true }).first().click();
   const heading = page.locator('h2.bloco--titulo', { hasText: 'Conceitos' });
@@ -73,9 +73,10 @@ test('editor: títulos alinhados, + visível, linguagem como botão e exportar "
   await page.locator('#nota-mais').click();
   const pdf = page.locator('.nota-menu .menu__item', { hasText: 'Exportar como PDF' });
   const md = page.locator('.nota-menu .menu__item', { hasText: 'Exportar como Markdown' });
-  await expect(pdf).toBeDisabled();
-  await expect(md).toBeDisabled();
-  await expect(pdf).toContainText('em breve');
+  // exportar deixou de ser "em breve": os dois itens estão ativos (fase 4)
+  await expect(pdf).toBeEnabled();
+  await expect(md).toBeEnabled();
+  await expect(pdf).not.toContainText('em breve');
   await app.close();
 });
 
