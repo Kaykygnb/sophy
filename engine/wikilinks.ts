@@ -22,6 +22,25 @@ export type ResolvedPath = {
 const blank = (value: string) => value.replace(/[^\r\n]/g, ' ');
 const norm = (value: string) => value.normalize('NFC').toLocaleLowerCase();
 
+/** Caminho do motor: separador do Windows vira barra. */
+export function posixPath(value: string) {
+  return String(value ?? '').split('\\').join('/');
+}
+
+/**
+ * Chave do namespace compartilhado por seção e bloco nomeado.
+ * Sem acento, sem caixa; hífen e espaço contam como o mesmo separador.
+ */
+export function anchorKey(value: string) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function parseTarget(target: string) {
   const pipe = target.indexOf('|');
   const destination = (pipe < 0 ? target : target.slice(0, pipe)).trim();
@@ -157,11 +176,17 @@ export function blockIdsOf(source: string) {
   return ids;
 }
 
-export function anchorExists(headings: string[], blockIds: string[], anchor: string) {
+export function anchorExists(
+  headings: string[],
+  blockIds: string[],
+  anchor: string,
+  blockTitles: string[] = [],
+) {
   if (!anchor) return true;
   if (anchor.startsWith('^')) return blockIds.includes(anchor.slice(1));
-  const wanted = norm(anchor);
-  return headings.some((heading) => norm(heading) === wanted);
+  const wanted = anchorKey(anchor);
+  if (headings.some((heading) => anchorKey(heading) === wanted)) return true;
+  return blockTitles.some((title) => anchorKey(title) === wanted);
 }
 
 /**
@@ -196,8 +221,10 @@ export function resolvePath(
   paths: string[],
   index?: PathIndex,
 ): ResolvedPath {
+  note = posixPath(note);
+  source = posixPath(source);
   if (!note) return { path: source, candidates: [source], invalid: false };
-  if (/[\\:\x00-\x1f]/.test(note) || note.startsWith('/'))
+  if (/[:\x00-\x1f]/.test(note) || note.startsWith('/'))
     return { path: null, candidates: [], invalid: true };
   const suffixed = /\.md$/i.test(note) || hasOtherExtension(note) ? note : note + '.md';
   const folder = source.includes('/') ? source.slice(0, source.lastIndexOf('/')) : '';
@@ -218,6 +245,8 @@ export function resolvePath(
 }
 
 export function resolveFile(note: string, source: string, files: string[]): ResolvedPath {
+  note = posixPath(note);
+  source = posixPath(source);
   if (!note) return { path: null, candidates: [], invalid: true };
   const relative = normalizePath(note, note.includes('/') ? '' : '');
   let found = relative === null ? [] : files.filter((file) => norm(file) === norm(relative));
