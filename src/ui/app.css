@@ -3068,6 +3068,9 @@ button.chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Diálogos (confirmar e pedir nome) */
 #overlay .dialogo {
+  position: relative;
+  max-height: none;
+  overflow: visible;
   width: min(420px, calc(100vw - 48px));
   padding: 20px;
   display: grid;
