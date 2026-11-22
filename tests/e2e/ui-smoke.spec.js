@@ -575,7 +575,8 @@ test('a Sofi abre e a chave não entra na biblioteca', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
   );
   await expect(page.getByRole('dialog', { name: 'Sofi' })).toBeVisible();
-  await page.locator('#agente-chave').fill('segredo-da-sofi-teste');
+  await page.locator('[data-nav="config"]').click();
+  await page.locator('#cfg-agente-chave').fill('segredo-da-sofi-teste');
   await page.screenshot({ path: path.join(artifacts, 'ui-sofi-claro.png') });
   const leaked = walk(root).includes('segredo-da-sofi-teste');
   expect(leaked).toBe(false);
@@ -587,7 +588,8 @@ test('a Sofi abre e a chave não entra na biblioteca', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
   );
   await expect(darkPage.getByRole('dialog', { name: 'Sofi' })).toBeVisible();
-  await darkPage.locator('#agente-chave').click();
+  await darkPage.locator('[data-nav="config"]').click();
+  await darkPage.locator('#cfg-agente-chave').click();
   await darkPage.screenshot({ path: path.join(artifacts, 'ui-sofi-escuro.png') });
   await dark.close();
 });
@@ -743,9 +745,9 @@ test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
   await page.evaluate(() =>
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })),
   );
-  await expect(page.locator('.sofi-lista')).toBeVisible();
-  await expect(page.locator('.agente--lateral .sofi-mascote')).toBeVisible();
-  await expect(page.locator('.chip', { hasText: 'cofre' })).toBeVisible();
+  await expect(page.locator('.sofi-chat__topo')).toBeVisible();
+  await expect(page.locator('#sofi-mascote')).toBeVisible();
+  await expect(page.locator('#conexoes')).not.toContainText('origem agent');
   await page.screenshot({ path: path.join(artifacts, 'ui-sofi-painel-claro.png') });
   await page.locator('#seletor-biblioteca').click();
   await page.getByRole('menuitem', { name: 'Nova biblioteca…' }).click();
@@ -788,7 +790,7 @@ test('seletor de capa dentro da janela e a Sofi cabe na coluna', async () => {
   await expect(page.locator('#conexoes .agente--lateral')).toBeVisible();
   const fits = await page.locator('#conexoes').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
   expect(fits).toBe(true);
-  const erase = await page.locator('#agente-apagar').evaluate((button) => {
+  const erase = await page.locator('#agente-enviar').evaluate((button) => {
     const host = document.querySelector('#conexoes').getBoundingClientRect();
     const box = button.getBoundingClientRect();
     return box.right <= host.right + 1 && box.bottom <= host.bottom + 1 && box.width > 0;

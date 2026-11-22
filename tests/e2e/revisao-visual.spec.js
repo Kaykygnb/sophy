@@ -50,7 +50,7 @@ test('Flashcards e Sofi têm entrada visível', async () => {
   await expect(sofi).toContainText('Sofi');
   await page.locator('[data-nav="inicio"]').click();
   await sofi.click();
-  await expect(page.locator('.agente--lateral .sofi-mascote')).toBeVisible();
+  await expect(page.locator('#sofi-mascote')).toBeVisible();
   await expect(sofi).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#agente-fechar').click();
   await expect(sofi).toHaveAttribute('aria-pressed', 'false');

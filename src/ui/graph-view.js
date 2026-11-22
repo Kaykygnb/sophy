@@ -178,6 +178,11 @@
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     };
     let miniMapTransform = null;
+    /* Linha do tempo pelo createdAt (mesma regra do `to` de graph.query); sem ele, cai no modifiedAt. */
+    const createdMs = (node) => {
+      const created = Date.parse(node.createdAt);
+      return Number.isNaN(created) ? node.modifiedAt || 0 : created;
+    };
     const rebuildVisible = (subset = baseGraph) => {
       const allowed = new Set(subset.nodes.map((node) => node.path));
       const subsetDegree = new Map();
@@ -188,7 +193,7 @@
       let nodes = subset.nodes.filter(
         (node) =>
           (showOrphans || (subsetDegree.get(node.path) || 0) > 0) &&
-          (!until || !node.modifiedAt || node.modifiedAt <= until),
+          (!until || !createdMs(node) || createdMs(node) <= until),
       );
       if (mode === 'local' && selected)
         nodes = localGraph(

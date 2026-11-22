@@ -382,6 +382,7 @@
     { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
+    { id: 'lixeira', rotulo: 'Lixeira', grupo: 'Navegar', icone: 'lixeira', atalho: '', quando: 'biblioteca' },
     { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },

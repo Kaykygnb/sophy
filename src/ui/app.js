@@ -201,12 +201,10 @@ function dailyConflictDialog() {
   });
 }
 
+/* Devolve um item da lixeira ao lugar de origem. Se o caminho já estiver
+   ocupado, o back grava com o sufixo “ (restaurado)” e devolve o novo caminho. */
 async function restoreTrashed(id) {
-  const first = await tool('trash.restore', { id });
-  if (first?.conflict !== 'daily-exists') return first;
-  const mode = await dailyConflictDialog();
-  if (!mode) return first;
-  return tool('trash.restore', { id, mode });
+  return tool('trash.restore', { id });
 }
 
 function toast(message, kind = 'ok', action = null) {
@@ -684,7 +682,7 @@ function paintShell() {
         </nav>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
-        <div class="lateral__rodape"><button type="button" class="nav__item" data-nav="config" title="Configurações (Ctrl+,)">${icon('configuracoes')} Configurações</button></div>
+        <div class="lateral__rodape"><button type="button" class="nav__item" data-nav="lixeira" title="Lixeira">${icon('lixeira')} Lixeira</button><button type="button" class="nav__item" data-nav="config" title="Configurações (Ctrl+,)">${icon('configuracoes')} Configurações</button></div>
       </aside>
       <main class="centro" id="centro"></main>
       <aside class="conexoes painel is-oculta" id="conexoes"></aside>
@@ -2137,6 +2135,7 @@ async function syncAgentStatus() {
     const status = await sophy.agentStatus?.();
     const value = status?.value ?? status;
     const ready = Boolean(value?.saved ?? value?.hasKey ?? value?.configured ?? value?.ready ?? value?.ok);
+    state.sofiKey = ready;
     label.textContent = ready ? 'A Sofi está pronta para ajudar' : 'A Sofi ainda não tem uma chave';
     label.closest('.config__sofi')?.classList.toggle('is-pronta', ready);
   } catch {
@@ -2157,12 +2156,17 @@ function paintCards(center) {
   const card = due[0];
   if (!card) {
     const total = (state.cardRows || []).length;
-    center.innerHTML = `<div class="vazio-ensina">${ilustracao('flashcards-vazio')}<h2>${total ? 'Tudo revisado por hoje' : 'Flashcards'}</h2><p>${total ? `Você tem ${total} ${total === 1 ? 'cartão' : 'cartões'}. O próximo volta na data marcada, sem pressa.` : 'Ainda não há cartões. Escreva uma linha assim em qualquer nota:'}</p><p><span class="kbd">pergunta :: resposta</span> vira um cartão. <span class="kbd">frente ::: verso</span> vira dois, um em cada sentido.</p><p>Cada estante vira um baralho.</p></div>`;
+    center.innerHTML = `<div class="vazio-ensina">${ilustracao('flashcards-vazio')}<h2>${total ? 'Tudo revisado por hoje' : 'Flashcards'}</h2><p>${total ? `Você tem ${total} ${total === 1 ? 'cartão' : 'cartões'}. O próximo volta na data marcada, sem pressa.` : 'Ainda não há cartões. Escreva uma linha assim em qualquer nota:'}</p><p><span class="kbd">pergunta :: resposta</span> vira um cartão. <span class="kbd">frente ::: verso</span> vira dois, um em cada sentido.</p><p>Cada estante vira um baralho.</p>${state.cardUndo ? `<p>${undoCardButton()}</p>` : ''}</div>`;
     center.onkeydown = null;
+    bindCardUndo(center);
     return;
   }
   const side = state.cardFace === 'back' ? 'verso' : 'frente';
-  center.innerHTML = `<div class="inicio fc-tela"><h2>Flashcards</h2><p class="fc-contagem">${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p class="fc-acoes"><button type="button" class="btn btn--secundario" id="carta-virar" aria-keyshortcuts="Space">${side === 'verso' ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd></button></p><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao" aria-keyshortcuts="1">Não sabia <kbd class="kbd">1</kbd></button><button type="button" class="btn btn--primario" id="carta-sim" aria-keyshortcuts="2">Sabia <kbd class="kbd">2</kbd></button></div></div>`;
+  const labels = { 1: 'Errei', 2: 'Difícil', 3: 'Bom', 4: 'Fácil' };
+  const grades = [1, 2, 3, 4]
+    .map((grade) => `<button type="button" class="btn ${grade === 3 ? 'btn--primario' : 'btn--secundario'} fc-nota fc-nota--${grade}" data-nota="${grade}" aria-keyshortcuts="${grade}"><span class="fc-nota__nome">${labels[grade]}</span><span class="fc-nota__intervalo">${escapeHtml(card.intervals?.[grade] || '')}</span><kbd class="kbd">${grade}</kbd></button>`)
+    .join('');
+  center.innerHTML = `<div class="inicio fc-tela"><h2>Flashcards</h2><p class="fc-contagem">${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p class="fc-acoes"><button type="button" class="btn btn--secundario" id="carta-virar" aria-keyshortcuts="Space">${side === 'verso' ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd></button>${undoCardButton()}</p><div class="fc-notas" role="group" aria-label="Como foi lembrar?">${grades}</div><p class="fc-dica">Depois da resposta, o intervalo mostra quando o cartão volta.</p></div>`;
   $('#carta-virar').onclick = () => {
     state.cardFace = state.cardFace === 'back' ? 'front' : 'back';
     const back = state.cardFace === 'back';
@@ -2170,24 +2174,215 @@ function paintCards(center) {
     if (stage) stage.dataset.lado = back ? 'verso' : 'frente';
     $('#carta-virar').innerHTML = `${back ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd>`;
   };
-  $('#carta-sim').onclick = () => answerCard(card, true);
-  $('#carta-nao').onclick = () => answerCard(card, false);
+  center.querySelectorAll('[data-nota]').forEach((button) => {
+    button.onclick = () => answerCard(card, Number(button.dataset.nota));
+  });
+  bindCardUndo(center);
   center.onkeydown = (event) => {
-    if (state.view !== 'cards' || event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    if (state.view !== 'cards' || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
     if (event.key === ' ') {
       event.preventDefault();
       $('#carta-virar')?.click();
-    } else if (event.key === '1') $('#carta-nao')?.click();
-    else if (event.key === '2') $('#carta-sim')?.click();
+    } else if (['1', '2', '3', '4'].includes(event.key)) {
+      event.preventDefault();
+      center.querySelector(`[data-nota="${event.key}"]`)?.click();
+    } else if (event.key.toLowerCase() === 'z' || event.key === 'Backspace') {
+      event.preventDefault();
+      undoCardReview();
+    }
   };
   $('#carta-virar').focus();
 }
 
-async function answerCard(card, knew) {
-  await tool('card.review', { id: card.id, knew, today: isoToday() });
+function undoCardButton() {
+  if (!state.cardUndo) return '';
+  return `<button type="button" class="btn btn--fantasma" id="carta-desfazer" aria-keyshortcuts="Z" title="Voltar o último cartão respondido">${icon('desfazer')} Desfazer <kbd class="kbd">Z</kbd></button>`;
+}
+
+function bindCardUndo(center) {
+  const button = center.querySelector('#carta-desfazer');
+  if (button) button.onclick = () => undoCardReview();
+  if (!button) return;
+  if (!center.onkeydown) center.onkeydown = (event) => {
+    if (state.view === 'cards' && (event.key.toLowerCase() === 'z' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey) undoCardReview();
+  };
+}
+
+async function answerCard(card, grade) {
+  try {
+    await tool('card.review', { id: card.id, grade, today: isoToday() });
+  } catch (error) {
+    toast(error.message, 'erro');
+    return;
+  }
+  state.cardUndo = { id: card.id, grade };
   state.cardFace = 'front';
   state.cardRows = await tool('card.list', { today: isoToday() });
   paintCenter();
+}
+
+async function undoCardReview() {
+  const last = state.cardUndo;
+  if (!last) return;
+  try {
+    await tool('card.undo', { id: last.id });
+  } catch (error) {
+    state.cardUndo = null;
+    toast(error.message, 'erro');
+    state.cardRows = await tool('card.list', { today: isoToday() });
+    paintCenter();
+    return;
+  }
+  state.cardUndo = null;
+  state.cardFace = 'front';
+  state.cardRows = await tool('card.list', { today: isoToday() });
+  const index = state.cardRows.findIndex((row) => row.id === last.id);
+  if (index > 0) state.cardRows.unshift(...state.cardRows.splice(index, 1));
+  paintCenter();
+  toast('Resposta desfeita. O cartão voltou.');
+}
+
+/* ------------------------------------------------------------------ Lixeira */
+const TRASH_ICON = { note: 'nota', canvas: 'canvas', attachment: 'anexo', folder: 'pasta' };
+const TRASH_KIND = { note: 'Nota', canvas: 'Canvas', attachment: 'Anexo', folder: 'Pasta' };
+
+function trashWhen(iso) {
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return '';
+  const minutes = Math.floor((Date.now() - time) / 60000);
+  if (minutes < 1) return 'agora há pouco';
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours} ${hours === 1 ? 'hora' : 'horas'}`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'ontem';
+  if (days < 30) return `há ${days} dias`;
+  return new Date(time).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function trashFolder(originalPath) {
+  const parts = String(originalPath || '').split('/');
+  parts.pop();
+  return parts.length ? parts.join(' / ') : 'Raiz da biblioteca';
+}
+
+async function showTrash() {
+  state.view = 'trash';
+  state.nav = 'lixeira';
+  state.trashRows = null;
+  paintCenter();
+  await loadTrash();
+}
+
+async function loadTrash() {
+  try {
+    state.trashRows = await tool('trash.list', {});
+  } catch (error) {
+    state.trashRows = [];
+    toast(error.message, 'erro');
+  }
+  if (state.view === 'trash') paintCenter();
+}
+
+async function afterTrashChange() {
+  await refreshLibrary();
+  paintTree();
+  paintTabs();
+  state.canvasGalleryLoaded = false;
+  await loadTrash();
+}
+
+async function restoreFromTrashView(item) {
+  try {
+    const result = await restoreTrashed(item.id);
+    await afterTrashChange();
+    const renamed = result?.path && result.path !== item.originalPath;
+    toast(
+      renamed
+        ? `“${item.title}” voltou como “${baseName(result.path)}”, porque o nome original já estava em uso.`
+        : `“${item.title}” voltou para ${trashFolder(item.originalPath) === 'Raiz da biblioteca' ? 'a raiz da biblioteca' : trashFolder(item.originalPath)}.`,
+      'ok',
+      item.kind === 'note' && result?.path ? { label: 'Abrir', onClick: () => openNote(result.path) } : null,
+    );
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+async function purgeFromTrashView(item) {
+  const ok = await confirmDialog(`Excluir “${item.title}” de vez? Não dá para desfazer.`, { confirm: 'Excluir de vez', danger: true });
+  if (!ok) return;
+  try {
+    await tool('trash.purge', { id: item.id });
+    await afterTrashChange();
+    toast(`“${item.title}” foi excluído de vez.`);
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+async function emptyTrashFromView() {
+  const count = (state.trashRows || []).length;
+  if (!count) return;
+  const ok = await confirmDialog(
+    `Esvaziar a lixeira? ${count === 1 ? 'O 1 item' : `Os ${count} itens`} serão excluídos de vez. Não dá para desfazer.`,
+    { confirm: 'Esvaziar lixeira', danger: true },
+  );
+  if (!ok) return;
+  try {
+    await tool('trash.empty', {});
+    await afterTrashChange();
+    toast('Lixeira esvaziada.');
+  } catch (error) {
+    toast(error.message, 'erro');
+  }
+}
+
+/* Aviso depois de mandar algo para a lixeira, com Desfazer que devolve só esse item. */
+function toastTrashed(message, id) {
+  toast(message, 'ok', id
+    ? {
+        label: 'Desfazer',
+        onClick: async () => {
+          try {
+            await restoreTrashed(id);
+            await refreshLibrary();
+            state.canvasGalleryLoaded = false;
+            paintTree();
+            paintTabs();
+            paintCenter();
+            toast('Restaurado.');
+          } catch (error) {
+            toast(error.message, 'erro');
+          }
+        },
+      }
+    : null);
+}
+
+function paintTrash(center) {
+  const rows = state.trashRows;
+  if (!rows) {
+    center.innerHTML = `<div class="lixeira"><header class="lixeira__topo"><h2>Lixeira</h2></header><p class="lixeira__nota" role="status">Carregando…</p></div>`;
+    return;
+  }
+  const total = rows.reduce((sum, item) => sum + (item.size || 0), 0);
+  if (!rows.length) {
+    center.innerHTML = `<div class="vazio-ensina lixeira-vazia">${ilustracao('lixeira-vazia')}<h2>A lixeira está vazia</h2><p>O que você apagar aparece aqui, e dá para devolver ao lugar de origem. Nada some sem você confirmar.</p></div>`;
+    return;
+  }
+  center.innerHTML = `<div class="lixeira"><header class="lixeira__topo"><div><h2>Lixeira</h2><p class="lixeira__nota">${rows.length} ${rows.length === 1 ? 'item' : 'itens'} · ${sizeLabel(total)}. Ficam aqui até você restaurar ou excluir de vez.</p></div><button type="button" class="btn btn--secundario btn--perigo" id="lixeira-esvaziar">${icon('lixeira')} Esvaziar lixeira</button></header><ul class="lixeira__lista" aria-label="Itens na lixeira">${rows
+    .map(
+      (item, index) => `<li class="lixeira__item" data-lixeira-id="${escapeHtml(item.id)}"><span class="lixeira__icone">${icon(TRASH_ICON[item.kind] || 'nota')}</span><span class="lixeira__texto"><strong class="lixeira__titulo">${escapeHtml(item.title)}</strong><small class="lixeira__meta">${TRASH_KIND[item.kind] || 'Item'} · ${escapeHtml(trashFolder(item.originalPath))} · apagado ${escapeHtml(trashWhen(item.deletedAt))} · ${sizeLabel(item.size || 0)}</small></span><span class="lixeira__acoes"><button type="button" class="btn btn--secundario" data-restaurar="${index}">${icon('desfazer')} Restaurar</button><button type="button" class="btn btn--fantasma btn--perigo" data-excluir="${index}">Excluir de vez</button></span></li>`,
+    )
+    .join('')}</ul></div>`;
+  $('#lixeira-esvaziar').onclick = () => emptyTrashFromView();
+  center.querySelectorAll('[data-restaurar]').forEach((button) => {
+    button.onclick = () => restoreFromTrashView(rows[Number(button.dataset.restaurar)]);
+  });
+  center.querySelectorAll('[data-excluir]').forEach((button) => {
+    button.onclick = () => purgeFromTrashView(rows[Number(button.dataset.excluir)]);
+  });
 }
 
 function syncWeekly() {
@@ -2392,14 +2587,14 @@ function paintCanvasGallery(center) {
       const file = button.dataset.file;
       if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`, { confirm: 'Mover para a lixeira', danger: true }))) return;
       try {
-        await tool('entry.trash', { path: file });
+        const trashed = await tool('entry.trash', { path: file });
         state.tabs = state.tabs.filter((tab) => tab !== file);
         state.canvasGalleryLoaded = false;
         await refreshLibrary();
         paintTree();
         paintTabs();
         paintCenter();
-        toast('Canvas movido para a lixeira.');
+        toastTrashed('Canvas movido para a lixeira.', trashed?.id);
       } catch (error) {
         toast(error.message, 'erro');
       }
@@ -2460,6 +2655,10 @@ function paintCenterBody(center) {
   }
   if (state.view === 'cards') {
     paintCards(center);
+    return;
+  }
+  if (state.view === 'trash') {
+    paintTrash(center);
     return;
   }
   if (state.view === 'versions') {
@@ -5704,7 +5903,7 @@ function bindTaskDrag(center) {
 }
 
 function runCommand(id) {
-  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'config', 'visoes', 'mencoes'].includes(id);
+  const leaving = ['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'versoes', 'cartas', 'lixeira', 'config', 'visoes', 'mencoes'].includes(id);
   if (leaving && ((state.view === 'note' && state.doc) || state.view === 'canvas')) {
     flushNote().then((saved) => { if (saved) runCommandNow(id); });
     return;
@@ -5713,7 +5912,7 @@ function runCommand(id) {
 }
 
 function runCommandNow(id) {
-  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'cartas'].includes(id)) state.nav = id;
+  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'cartas', 'lixeira'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
     estante: () => createWorkspace(),
@@ -5730,6 +5929,7 @@ function runCommandNow(id) {
     importar: () => importObsidian(),
     foco: () => setFocusMode(!state.focusMode),
     cartas: () => showCards(),
+    lixeira: () => showTrash(),
     config: () => {
       state.view = 'settings';
       state.nav = 'config';
@@ -5797,55 +5997,277 @@ function dailyStrip(notePath) {
   return `<div class="semana-diaria" aria-label="Semana">${days.join('')}</div>`;
 }
 
-function paintSofi(host) {
+const SOFI_SUGGESTIONS = [
+  ['Resumir esta nota', true],
+  ['Criar flashcards desta nota', true],
+  ['Achar notas relacionadas', true],
+  ['Organizar minhas tarefas de hoje', false],
+  ['O que eu escrevi esta semana?', false],
+];
+
+function sofiNoteTitle() {
+  if (!state.active) return '';
+  const found = (state.notes || []).find((note) => note.path === state.active);
+  return found?.title || baseName(state.active).replace(/\.md$/i, '');
+}
+
+function sofiStatusText() {
+  if (state.sofiKey === false) return ['Sem chave', 'sem-chave'];
+  if (state.sofiBusy) return ['Pensando…', 'pensando'];
+  if (state.sofiMood === 'erro') return ['Algo deu errado', 'erro'];
+  return ['Pronta', 'pronta'];
+}
+
+function syncSofiSend() {
+  const send = $('#agente-enviar');
+  if (send) send.disabled = Boolean(state.sofiBusy) || state.sofiKey === false || !($('#agente-pedido')?.value || '').trim();
+}
+
+function syncSofiHeader() {
+  const label = $('#agente-estado');
+  if (!label) return;
+  const [text, kind] = sofiStatusText();
+  label.textContent = text;
+  label.dataset.estado = kind;
+  const mascot = $('#sofi-mascote');
+  const mood = state.sofiBusy ? 'pensando' : state.sofiMood === 'erro' ? 'erro' : 'ocioso';
+  if (mascot && mascot.dataset.estado !== mood) {
+    mascot.dataset.estado = mood;
+    mountSofi(mascot, mood);
+  }
+  const fresh = $('#agente-nova');
+  if (fresh) fresh.disabled = !state.sofiChat.length || state.sofiBusy;
+  syncSofiSend();
+  const trigger = $('#abrir-sofi');
+  if (trigger) {
+    const working = state.sofiBusy && ANIM['agente-trabalhando'];
+    trigger.classList.toggle('is-trabalhando', Boolean(state.sofiBusy));
+    const first = trigger.firstElementChild;
+    if (first && working && !first.classList.contains('anim')) first.outerHTML = anim('agente-trabalhando');
+    else if (first && !working && first.classList.contains('anim')) first.outerHTML = icon('faisca');
+  }
+}
+
+function syncSofiContext() {
+  const slot = $('#agente-contexto-slot');
+  if (!slot) return;
+  const title = sofiNoteTitle();
+  if (!title || state.sofiContext === false) {
+    slot.innerHTML = '';
+    return;
+  }
+  slot.innerHTML = `<span class="sofi-contexto" id="agente-contexto">${icon('nota')}<span class="sofi-contexto__nome">Nota atual: ${escapeHtml(title)}</span><button type="button" class="sofi-contexto__tirar" id="agente-contexto-tirar" aria-label="Não usar a nota atual como contexto" title="Tirar o contexto">${icon('fechar')}</button></span>`;
+  $('#agente-contexto-tirar').onclick = () => {
+    state.sofiContext = false;
+    syncSofiContext();
+  };
+}
+
+function sofiMessageHtml(message) {
+  if (message.role === 'user') return `<div class="sofi-msg sofi-msg--voce"><p>${escapeHtml(message.text)}</p></div>`;
+  const actions = (message.actions || [])
+    .map(
+      (action, index) =>
+        `<div class="sofi-acao"><span class="sofi-acao__selo">${icon('check')}</span><span class="sofi-acao__texto"><b>${escapeHtml(action.label || 'Ação feita')}</b>${action.detail ? `<small>${escapeHtml(action.detail)}</small>` : ''}</span>${action.versionId ? `<button type="button" class="btn btn--fantasma btn--pequeno" data-desfazer="${escapeHtml(action.versionId)}" data-msg="${message.id}" data-acao="${index}">${icon('desfazer')} Desfazer</button>` : ''}</div>`,
+    )
+    .join('');
+  return `<div class="sofi-msg sofi-msg--sofi${message.error ? ' is-erro' : ''}"><p>${escapeHtml(message.text)}</p>${actions}</div>`;
+}
+
+function renderSofiMessages() {
+  const list = $('#agente-mensagens');
+  if (!list) return;
+  const chat = state.sofiChat;
+  const empty = $('#agente-vazio');
+  if (empty) empty.hidden = chat.length > 0 || state.sofiBusy || state.sofiKey === false;
+  list.innerHTML =
+    chat.map(sofiMessageHtml).join('') +
+    (state.sofiBusy
+      ? '<div class="sofi-msg sofi-msg--sofi sofi-msg--digitando" role="status" aria-label="A Sofi está escrevendo"><span class="digitando"><i></i><i></i><i></i></span></div>'
+      : '');
+  list.querySelectorAll('[data-desfazer]').forEach((button) => {
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        await tool('agent.undo', { versionId: button.dataset.desfazer });
+        await refreshLibrary();
+        paintTree();
+        if (state.active) await openNote(state.active, { force: true });
+        toast('Pronto, desfiz o que a Sofi fez.');
+        button.closest('.sofi-acao')?.classList.add('is-desfeita');
+        button.remove();
+      } catch (error) {
+        button.disabled = false;
+        toast(`Não deu para desfazer: ${error.message}`, 'erro');
+      }
+    };
+  });
+  const scroller = $('#agente-rolagem');
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+}
+
+async function sendSofi(raw) {
+  const text = String(raw || '').trim();
+  if (!text || state.sofiBusy || state.sofiKey === false) return;
+  const input = $('#agente-pedido');
+  if (input) {
+    input.value = '';
+    input.style.height = '';
+  }
+  state.sofiDraft = '';
+  state.sofiChat.push({ role: 'user', text });
+  state.sofiBusy = true;
+  state.sofiMood = 'ocioso';
+  syncSofiHeader();
+  renderSofiMessages();
+  const withContext = state.active && state.sofiContext !== false ? `Contexto: a nota atual é “${state.active}”.\n\n${text}` : text;
+  let response;
+  try {
+    response = await sophy.agentAsk(withContext);
+  } catch (error) {
+    response = { ok: false, error: error.message };
+  }
+  state.sofiBusy = false;
+  state.sofiMood = response.ok ? 'pronta' : 'erro';
+  state.sofiChat.push(
+    response.ok
+      ? { role: 'sofi', id: Date.now(), text: response.value.text || 'Pronto.', actions: response.value.actions || [] }
+      : { role: 'sofi', id: Date.now(), error: true, text: `Não consegui responder: ${response.error || 'tente de novo em instantes.'}` },
+  );
+  if (response.ok) {
+    await refreshLibrary();
+    paintTree();
+  }
+  syncSofiHeader();
+  renderSofiMessages();
+  $('#agente-pedido')?.focus();
+}
+
+function newSofiChat() {
+  if (state.sofiBusy) return;
+  state.sofiChat = [];
+  state.sofiMood = 'ocioso';
+  state.sofiContext = true;
+  syncSofiHeader();
+  syncSofiContext();
+  renderSofiMessages();
+  $('#agente-pedido')?.focus();
+}
+
+function openSofiSettings() {
+  if (drawerNarrow()) closeSofi();
+  state.configSection = 'sofi';
+  runCommand('config');
+}
+
+function paintSofi(host, force = false) {
   host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
-  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><div class="sofi-mascote" id="sofi-mascote" data-estado="ocioso" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
-  $('#agente-guardar').onclick = async () => {
-    const response = await sophy.agentKeySet($('#agente-chave').value);
-    $('#agente-chave').value = '';
-    $('#agente-resposta').textContent = response.ok ? 'Chave guardada no cofre.' : response.error;
+  state.sofiChat ||= [];
+  if (!force && host.querySelector('.sofi-chat') && host.dataset.tema === theme) {
+    syncSofiContext();
+    syncSofiHeader();
+    return;
+  }
+  host.dataset.tema = theme;
+  const noKey = state.sofiKey === false;
+  const suggestions = SOFI_SUGGESTIONS.filter(([, needsNote]) => !needsNote || state.active)
+    .map(([label]) => `<button type="button" class="sofi-sugestao" data-sugestao="${escapeHtml(label)}">${escapeHtml(label)}</button>`)
+    .join('');
+  host.innerHTML = `<div class="agente agente--lateral sofi-chat" role="dialog" aria-label="Sofi">
+    <header class="sofi-chat__topo">
+      <div class="sofi-mascote" id="sofi-mascote" data-estado="ocioso" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div>
+      <div class="sofi-chat__titulo"><h3>Sofi</h3><span class="sofi-chat__estado" id="agente-estado" role="status" data-estado="pronta">Pronta</span></div>
+      <button type="button" class="btn btn--icone" id="agente-nova" aria-label="Nova conversa" title="Nova conversa">${icon('novo')}</button>
+      <button type="button" class="btn btn--icone" id="agente-fechar" aria-label="Fechar a Sofi" title="Fechar">${icon('fechar')}</button>
+    </header>
+    <div class="sofi-chat__rolagem" id="agente-rolagem">
+      ${noKey ? `<div class="sofi-conectar"><div class="sofi-mascote sofi-mascote--grande" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div><h4>Conectar a Sofi</h4><p>Para conversar, falta uma chave de acesso. Ela fica guardada no cofre do sistema, nunca dentro da biblioteca.</p><button type="button" class="btn btn--primario" id="agente-conectar">Abrir configurações</button></div>` : ''}
+      <div class="sofi-vazio" id="agente-vazio" ${noKey || state.sofiChat.length ? 'hidden' : ''}>
+        <div class="sofi-mascote sofi-mascote--grande" id="sofi-mascote-vazio" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div>
+        <h4>Oi! Como posso ajudar hoje?</h4>
+        <p>Escolha uma sugestão ou escreva abaixo.</p>
+        <div class="sofi-sugestoes">${suggestions}</div>
+        <p class="sofi-ajuda">Leio só esta biblioteca, uso as mesmas ferramentas que você e gravo um ponto antes de mudar qualquer coisa.</p>
+      </div>
+      <div class="sofi-mensagens" id="agente-mensagens" aria-live="polite"></div>
+    </div>
+    <form class="sofi-chat__rodape" id="agente-form">
+      <div id="agente-contexto-slot"></div>
+      <div class="sofi-campo">
+        <textarea id="agente-pedido" rows="1" aria-label="Mensagem para a Sofi" placeholder="${noKey ? 'Conecte a Sofi para escrever…' : 'Pergunte ou peça algo à Sofi…'}" ${noKey ? 'disabled' : ''}></textarea>
+        <button type="submit" class="btn btn--primario btn--icone sofi-campo__enviar" id="agente-enviar" aria-label="Enviar" title="Enviar (Enter)">${icon('enviar')}</button>
+      </div>
+      <p class="sofi-chat__dica">Enter envia · Shift+Enter quebra a linha</p>
+    </form>
+  </div>`;
+  const input = $('#agente-pedido');
+  input.value = state.sofiDraft || '';
+  const grow = () => {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
   };
-  $('#agente-apagar').onclick = async () => {
-    const response = await sophy.agentKeyClear();
-    $('#agente-resposta').textContent = response.ok ? 'Chave apagada do cofre.' : response.error;
+  grow();
+  input.oninput = () => {
+    state.sofiDraft = input.value;
+    grow();
+    syncSofiSend();
   };
-  const mascot = $('#sofi-mascote');
-  const setMood = (name) => {
-    if (!mascot || mascot.dataset.estado === name) return;
-    mascot.dataset.estado = name;
-    mountSofi(mascot, name);
-  };
-  mountSofi(mascot, 'ocioso');
-  $('#agente-enviar').onclick = async () => {
-    const send = $('#agente-enviar');
-    send.disabled = true;
-    send.setAttribute('aria-busy', 'true');
-    setMood('pensando');
-    $('#agente-resposta').textContent = 'A Sofi está pensando…';
-    const titleButton = $('#abrir-sofi');
-    titleButton?.classList.add('is-trabalhando');
-    if (titleButton && ANIM['agente-trabalhando']) titleButton.firstElementChild.outerHTML = anim('agente-trabalhando');
-    let response;
-    try {
-      response = await sophy.agentAsk($('#agente-pedido').value);
-    } catch (error) {
-      response = { ok: false, error: error.message };
+  input.onkeydown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      sendSofi(input.value);
     }
-    send.disabled = false;
-    send.removeAttribute('aria-busy');
-    if (titleButton) {
-      titleButton.classList.remove('is-trabalhando');
-      titleButton.firstElementChild.outerHTML = icon('faisca');
-    }
-    setMood(response.ok ? 'pronta' : 'erro');
-    $('#agente-resposta').textContent = response.ok ? response.value.text : response.error;
-    if (response.ok) {
-      await refreshLibrary();
-      paintTree();
-    }
   };
+  $('#agente-form').onsubmit = (event) => {
+    event.preventDefault();
+    sendSofi(input.value);
+  };
+  host.querySelectorAll('[data-sugestao]').forEach((button) => {
+    button.onclick = () => sendSofi(button.dataset.sugestao);
+  });
+  $('#agente-nova').onclick = () => newSofiChat();
   $('#agente-fechar').onclick = () => closeSofi();
+  const connect = $('#agente-conectar');
+  if (connect) connect.onclick = () => openSofiSettings();
+  const mascot = $('#sofi-mascote');
+  mountSofi(mascot, 'ocioso');
+  const big = $('#sofi-mascote-vazio');
+  if (big) mountSofi(big, 'ocioso');
+  syncSofiContext();
+  syncSofiHeader();
+  renderSofiMessages();
+  if (state.sofiKey === undefined) {
+    sophy
+      .agentStatus?.()
+      .then((status) => {
+        const value = status?.value ?? status;
+        state.sofiKey = Boolean(value?.saved);
+        if (state.sofiKey === false && $('#conexoes .sofi-chat, #sofi-gaveta .sofi-chat')) {
+          const current = $('.sofi-chat')?.parentElement;
+          if (current) paintSofi(current, true);
+        }
+      })
+      .catch(() => {
+        state.sofiKey = true;
+      });
+  }
+}
+
+/* A chave pode mudar em Configurações: o painel precisa saber na hora. */
+async function refreshSofiKey() {
+  try {
+    const status = await sophy.agentStatus?.();
+    const value = status?.value ?? status;
+    const next = Boolean(value?.saved);
+    if (next !== state.sofiKey) {
+      state.sofiKey = next;
+      const current = $('.sofi-chat')?.parentElement;
+      if (current) paintSofi(current, true);
+    }
+  } catch {
+    /* mantém o último estado conhecido */
+  }
 }
 
 function closeSofi() {
@@ -5869,6 +6291,7 @@ function openAgent() {
     state.sofiOpen = true;
     $('#abrir-sofi')?.setAttribute('aria-pressed', 'true');
     paintSofi(panel);
+    refreshSofiKey();
     panel.classList.add('is-aberta');
     ensureVeil();
     state.drawerOpener = $('#abrir-lateral');
@@ -5879,6 +6302,7 @@ function openAgent() {
   $('#abrir-sofi')?.setAttribute('aria-pressed', 'true');
   state.connectionsOpen = true;
   paintSofi($('#conexoes'));
+  refreshSofiKey();
   syncConnectionsPanel();
 }
 
@@ -6327,6 +6751,7 @@ function openLibraryMenu(anchor) {
       })
       .join('') +
     `<div class="menu__sep"></div>
+    <button type="button" class="menu__item" role="menuitem" data-acao="lixeira">${icon('lixeira')} Lixeira</button>
     <button type="button" class="menu__item" role="menuitem" data-acao="nova">${icon('pasta-nova')} Nova biblioteca…</button>
     <button type="button" class="menu__item" role="menuitem" data-acao="abrir">${icon('pasta-aberta')} Abrir pasta…</button>
     <button type="button" class="menu__item menu__item--perigo" role="menuitem" data-acao="remover">${icon('lixeira')} Remover da lista</button>
@@ -6342,6 +6767,10 @@ function openLibraryMenu(anchor) {
       switchLibrary(button.dataset.lib);
     };
   });
+  menu.querySelector('[data-acao="lixeira"]').onclick = () => {
+    closeMenus();
+    runCommand('lixeira');
+  };
   menu.querySelector('[data-acao="nova"]').onclick = () => {
     closeMenus();
     openNewLibrary();
@@ -6580,7 +7009,7 @@ function openTreeMenu(event, kind, target) {
         (kind === 'canvas' && state.canvasPath === target)
       )
         if (!(await flushNote())) return;
-      await tool('entry.trash', { path: target });
+      const trashed = await tool('entry.trash', { path: target });
       if (kind === 'shelf') {
         state.collapsedShelves.delete(target);
         delete state.treeOrder[target];
@@ -6604,7 +7033,7 @@ function openTreeMenu(event, kind, target) {
       paintTree();
       paintTabs();
       paintCenter();
-      toast('Movido para a lixeira.');
+      toastTrashed('Movido para a lixeira.', trashed?.id);
     } catch (error) {
       toast(error.message, 'erro');
     }
@@ -7083,7 +7512,7 @@ async function paintGraph(center) {
       </div>
       <div class="grafo__local" id="grafo-local" hidden>${icon('foco-no')}<span id="grafo-foco"></span><label>Profundidade <select id="grafo-profundidade"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label></div>
     </div>
-    <div class="grafo__rodape"><label class="grafo__tempo">${icon('calendario')}<span>Linha do tempo</span><input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" aria-label="Mostrar notas até a data" /><output id="grafo-tempo-data">hoje</output></label><div class="grafo__quadros" id="grafo-quadros" aria-hidden="true"></div><span>Layout de força · <span id="grafo-status-rodape">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'pausado' : 'estabilizando'}</span> · Ctrl mostra a nota</span></div>
+    <div class="grafo__rodape"><label class="grafo__tempo">${icon('calendario')}<span>Linha do tempo</span><input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" aria-label="Mostrar notas criadas até a data" /><output id="grafo-tempo-data">hoje</output></label><div class="grafo__quadros" id="grafo-quadros" aria-hidden="true"></div><span>Layout de força · <span id="grafo-status-rodape">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'pausado' : 'estabilizando'}</span> · Ctrl mostra a nota</span></div>
   </div>`;
 
   const readLayout = () => {
@@ -7147,8 +7576,13 @@ async function paintGraph(center) {
     document.querySelectorAll('[data-force], #grafo-simulacao, #grafo-forcas-restaurar').forEach((input) => { input.disabled = true; });
     $('#grafo-simulacao').checked = false;
   }
-  // Linha do tempo: mostra só as notas alteradas até a data escolhida.
-  const times = (graph?.nodes || []).map((node) => node.modifiedAt || 0).filter(Boolean).sort((a, b) => a - b);
+  // Linha do tempo: mostra só as notas criadas até a data escolhida (createdAt, como o `to` de graph.query).
+  // O filtro roda aqui, sobre a mesma consulta, para o desenho não se refazer a cada passo do controle.
+  const createdTime = (node) => {
+    const created = Date.parse(node.createdAt);
+    return Number.isNaN(created) ? node.modifiedAt || 0 : created;
+  };
+  const times = (graph?.nodes || []).map(createdTime).filter(Boolean).sort((a, b) => a - b);
   const timeLabel = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
   const frames = $('#grafo-quadros');
   if (frames && times.length) frames.innerHTML = `<span>${escapeHtml(timeLabel(times[0]))}</span><span>${escapeHtml(timeLabel(times[times.length - 1]))}</span>`;
