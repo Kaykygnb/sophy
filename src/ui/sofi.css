@@ -1,0 +1,367 @@
+/* =====================================================================
+   Sofi: provedores e perfis (Configurações), chat com modos, abinha
+   “Pensamento” e respostas em Markdown. Só tokens: claro e escuro.
+   ===================================================================== */
+
+/* ---------- monograma do provedor ---------- */
+.sofi-marca {
+  --h: 230;
+  display: inline-grid; place-items: center; flex: none;
+  width: 34px; height: 34px; box-sizing: border-box;
+  border-radius: 10px;
+  font: 700 12px/1 var(--font-ui); letter-spacing: .03em;
+  background: hsl(var(--h) 60% 93%);
+  color: hsl(var(--h) 55% 27%);
+  border: 1px solid hsl(var(--h) 45% 83%);
+}
+[data-theme="dark"] .sofi-marca {
+  background: hsl(var(--h) 34% 21%);
+  color: hsl(var(--h) 78% 82%);
+  border-color: hsl(var(--h) 30% 32%);
+}
+.sofi-marca--neutra { background: var(--hover-subtle); color: var(--ink-2); border-color: var(--line-strong); }
+[data-theme="dark"] .sofi-marca--neutra { background: var(--hover-subtle); color: var(--ink-2); border-color: var(--line-strong); }
+.sofi-marca .icon { width: 18px; height: 18px; color: currentColor; }
+.sofi-marca--grande { width: 42px; height: 42px; border-radius: 12px; font-size: 13px; }
+
+/* ---------- grade de provedores ---------- */
+.sofi-cfg { display: grid; gap: 4px; padding-bottom: 8px; }
+.sofi-cfg > h4 { margin-top: 18px; }
+.sofi-provedores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 4px; }
+.sofi-prov {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 10px 12px; box-sizing: border-box;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+  background: var(--surface); color: var(--ink); text-align: left; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+[data-theme="dark"] .sofi-prov { background: var(--raised); }
+.sofi-prov:hover { border-color: var(--accent); background: var(--accent-soft); }
+.sofi-prov:active { transform: scale(.985); }
+.sofi-prov:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sofi-prov.is-escolhido { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+.sofi-prov__texto { display: grid; gap: 2px; min-width: 0; }
+.sofi-prov__texto b { font: 600 13.5px/1.2 var(--font-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sofi-prov__texto small { font: 400 11.5px/1.25 var(--font-ui); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sofi-provedores--compacto { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; margin: 8px 0 2px; }
+.sofi-provedores--compacto .sofi-prov { flex-direction: column; gap: 6px; padding: 9px 4px 8px; text-align: center; }
+.sofi-provedores--compacto .sofi-prov__texto { justify-items: center; width: 100%; }
+.sofi-provedores--compacto .sofi-prov__texto b { font-size: 12px; max-width: 100%; }
+.sofi-provedores--compacto .sofi-prov__texto small { display: none; }
+.sofi-provedores--compacto .sofi-marca { width: 32px; height: 32px; }
+@media (max-width: 720px) { .sofi-provedores:not(.sofi-provedores--compacto) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- perfis ---------- */
+.sofi-perfis { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.sofi-perfil {
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface);
+}
+[data-theme="dark"] .sofi-perfil { background: var(--raised); }
+.sofi-perfil.is-ativo { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.sofi-perfil__texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.sofi-perfil__texto b { display: flex; align-items: center; gap: 8px; font: 600 14px/1.3 var(--font-ui); color: var(--ink); }
+.sofi-perfil__texto span { font: 400 12.5px/1.35 var(--font-ui); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sofi-perfil__chave.is-ok { color: var(--success); }
+.sofi-perfil__acoes { display: flex; align-items: center; gap: 4px; flex: none; }
+.sofi-perfil__acoes .btn--icone { width: 30px; height: 30px; }
+.sofi-perfil__acoes .btn--icone .icon { width: 17px; height: 17px; }
+.sofi-cfg__vazio {
+  display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; padding: 14px;
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-lg); background: var(--hover-subtle);
+}
+.sofi-cfg__vazio > .icon { width: 20px; height: 20px; flex: none; color: var(--accent); margin-top: 2px; }
+.sofi-cfg__vazio b { font: 600 14px var(--font-ui); color: var(--ink); }
+.sofi-cfg__vazio p { margin: 2px 0 0; font: 400 12.5px/1.45 var(--font-ui); color: var(--ink-3); }
+.sofi-cfg__aviso {
+  display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 0; padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--line)); border-radius: var(--radius-md);
+  background: var(--warning-bg); color: var(--ink-2); font: 400 12.5px/1.45 var(--font-ui);
+}
+.sofi-cfg__aviso .icon { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--warning); }
+.sofi-cfg__rodape { align-items: center; margin-top: 16px; }
+.sofi-cfg__nota { color: var(--ink-3); font: 400 12.5px var(--font-ui); }
+
+/* ---------- formulário ---------- */
+.sofi-form-slot:empty { display: none; }
+.sofi-form {
+  display: grid; gap: 14px; margin-top: 12px; padding: 16px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="dark"] .sofi-form { background: var(--raised); }
+.sofi-form__topo { display: flex; align-items: center; gap: 12px; }
+.sofi-form__topo > div { flex: 1; min-width: 0; }
+.sofi-form__topo h4 { margin: 0; font: 600 15px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+.sofi-form__topo p { margin: 2px 0 0; font: 400 12.5px/1.4 var(--font-ui); color: var(--ink-3); }
+.sofi-campo-cfg { display: grid; gap: 6px; min-width: 0; }
+.sofi-campo-cfg > span:first-child { display: flex; align-items: center; gap: 8px; font: 500 12.5px var(--font-ui); color: var(--ink-2); }
+.sofi-campo-cfg > span em { font-style: normal; font-weight: 400; color: var(--ink-3); }
+.sofi-campo-cfg__linha { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sofi-campo-cfg__linha > input, .sofi-campo-cfg__linha > select, .sofi-senha { flex: 1; min-width: 0; }
+.sofi-campo-cfg input[type="text"], .sofi-campo-cfg input[type="password"], .sofi-campo-cfg input[type="number"], .sofi-campo-cfg select { width: 100%; }
+.sofi-campo-cfg__nota { margin: 0; font: 400 12px/1.4 var(--font-ui); color: var(--ink-3); }
+.sofi-senha { position: relative; display: flex; }
+.sofi-senha input { flex: 1; width: 100%; min-width: 0; padding-right: 38px !important; }
+.sofi-senha__ver { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; }
+.sofi-senha__ver .icon { width: 16px; height: 16px; }
+.sofi-chave-ok { font-weight: 600; }
+.sofi-selo {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: var(--radius-full);
+  background: var(--hover); color: var(--ink-2); font: 500 11px var(--font-ui);
+}
+.sofi-selo--carregando { background: var(--accent-soft); color: var(--accent); }
+.sofi-racio { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--hover-subtle); }
+.sofi-racio[hidden] { display: none; }
+.sofi-racio__opcoes { display: grid; gap: 12px; }
+.sofi-racio__opcoes[hidden] { display: none; }
+.sofi-form__ativar { margin-top: 2px; }
+.sofi-form__acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.sofi-form__acoes .btn { display: inline-flex; align-items: center; gap: 6px; }
+.sofi-form__acoes .btn .icon { width: 16px; height: 16px; }
+
+.sofi-seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--hover-subtle); justify-self: start; }
+.sofi-seg button {
+  height: 26px; padding: 0 14px; border: 0; border-radius: var(--radius-full); background: transparent;
+  color: var(--ink-2); font: 500 12.5px var(--font-ui); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sofi-seg button:hover { color: var(--ink); }
+.sofi-seg button[aria-checked="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); font-weight: 600; }
+[data-theme="dark"] .sofi-seg button[aria-checked="true"] { background: var(--accent-soft); }
+.sofi-seg button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---------- resultado do teste ---------- */
+.sofi-teste { display: none; }
+.sofi-teste.is-ok, .sofi-teste.is-erro, .sofi-teste.is-testando {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--hover-subtle);
+}
+.sofi-teste__icone { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; }
+.sofi-teste__icone .icon { width: 14px; height: 14px; color: currentColor; }
+.sofi-teste b { display: block; font: 600 13.5px/1.35 var(--font-ui); color: var(--ink); }
+.sofi-teste p { margin: 2px 0 0; font: 400 12.5px/1.45 var(--font-ui); color: var(--ink-2); }
+.sofi-teste small { display: block; margin-top: 4px; font: 400 11.5px/1.4 var(--font-ui); color: var(--ink-3); overflow-wrap: anywhere; }
+.sofi-teste.is-ok { border-color: color-mix(in srgb, var(--success) 40%, var(--line)); background: var(--success-bg); }
+.sofi-teste.is-ok .sofi-teste__icone { background: color-mix(in srgb, var(--success) 18%, var(--surface)); color: var(--success); }
+.sofi-teste.is-erro { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); background: var(--danger-bg); }
+.sofi-teste.is-erro .sofi-teste__icone { background: color-mix(in srgb, var(--danger) 16%, var(--surface)); color: var(--danger); }
+.sofi-teste.is-testando .sofi-teste__icone { color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not(.motion-reduce) .sofi-teste.is-testando .sofi-teste__icone .icon { animation: sofi-giro 1s linear infinite; }
+}
+
+/* ---------- prompt ---------- */
+#overlay .dialogo.sofi-prompt { width: min(780px, calc(100vw - 48px)); max-height: calc(100vh - 64px); grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.sofi-prompt__topo { display: flex; align-items: flex-start; gap: 12px; }
+.sofi-prompt__topo > div { flex: 1; }
+.sofi-prompt__topo p { margin: 4px 0 0; font: 400 12.5px/1.45 var(--font-ui); color: var(--ink-3); }
+.sofi-prompt__texto {
+  margin: 0; padding: 14px 16px; min-height: 160px; max-height: 52vh; overflow: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--code);
+  color: var(--ink); font: 400 12.5px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.sofi-prompt .dialogo__acoes { align-items: center; }
+.sofi-prompt__conta { margin-right: auto; color: var(--ink-3); font: 400 12px var(--font-ui); }
+
+/* ---------- cartão “Conectar a Sofi” ---------- */
+.sofi-conectar { padding: 18px 14px 14px; }
+.sofi-conectar .sofi-mascote--grande { width: 72px; height: 72px; }
+
+/* ---------- chat: barra de modo e modelo ---------- */
+.sofi-barra { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.sofi-modo { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--hover-subtle); flex: none; }
+.sofi-modo button {
+  display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 11px 0 9px;
+  border: 0; border-radius: var(--radius-full); background: transparent; color: var(--ink-2);
+  font: 500 12px var(--font-ui); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sofi-modo button .icon { width: 13px; height: 13px; color: currentColor; }
+.sofi-modo button:hover:not(:disabled) { color: var(--ink); }
+.sofi-modo button[aria-checked="true"] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: var(--shadow-sm); }
+[data-theme="dark"] .sofi-modo button[aria-checked="true"] { background: var(--accent-soft); }
+.sofi-modo button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sofi-modo button:disabled { cursor: not-allowed; opacity: .6; }
+.sofi-modelo {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 58%; height: 26px; padding: 0 6px 0 8px;
+  border: 1px solid transparent; border-radius: var(--radius-full); background: transparent; color: var(--ink-2);
+  font: 500 11.5px var(--font-ui); cursor: pointer;
+}
+.sofi-modelo:hover { background: var(--hover-subtle); border-color: var(--line); color: var(--ink); }
+.sofi-modelo:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sofi-modelo__ponto { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+.sofi-modelo.is-vazio .sofi-modelo__ponto { background: var(--warning); }
+.sofi-modelo.is-vazio { color: var(--accent); }
+.sofi-modelo__nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sofi-modelo .icon { flex: none; width: 12px; height: 12px; color: var(--ink-3); }
+.sofi-chat .sofi-chat__dica { display: block; line-height: 1.4; }
+#conexoes:not(.is-oculta):has(.sofi-chat.is-larga) { width: 520px; }
+.sofi-chat__largura[aria-pressed="true"] .icon { color: var(--accent); }
+@media (max-width: 900px) { .sofi-chat__largura { display: none; } }
+
+/* ---------- chat: mensagens ---------- */
+.sofi-mensagens--vivo:empty { display: none; }
+.sofi-msg--sofi { width: 100%; max-width: 100%; box-sizing: border-box; }
+.sofi-msg--vivo { gap: 0; }
+.sofi-md {
+  padding: 10px 13px; border: 1px solid var(--line); border-radius: 14px; border-bottom-left-radius: 4px;
+  background: var(--hover-subtle); color: var(--ink); overflow-wrap: anywhere; min-width: 0;
+  font: 400 13.5px/1.55 var(--font-ui);
+}
+.sofi-md > * { margin: 0 0 8px; }
+.sofi-md > *:last-child { margin-bottom: 0; }
+.sofi-p { white-space: normal; }
+.sofi-h { margin: 12px 0 6px !important; font-family: var(--font-ui); font-weight: 600; color: var(--ink); line-height: 1.3; }
+.sofi-md > .sofi-h:first-child { margin-top: 0 !important; }
+.sofi-h--1 { font-size: 17px; font-family: var(--font-display); }
+.sofi-h--2 { font-size: 15px; }
+.sofi-h--3, .sofi-h--4 { font-size: 13.5px; color: var(--ink-2); }
+.sofi-hr { border: 0; border-top: 1px solid var(--line-strong); margin: 10px 0 !important; }
+.sofi-item { display: list-item; list-style: disc; padding-left: 2px; margin-bottom: 3px !important; }
+.sofi-item--num { list-style: decimal; }
+.sofi-item::marker { color: var(--ink-3); }
+.sofi-tarefa { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 3px !important; }
+.sofi-tarefa__caixa { display: grid; place-items: center; flex: none; width: 15px; height: 15px; margin-top: 3px; border: 1.5px solid var(--input-border); border-radius: 4px; background: var(--surface); }
+.sofi-tarefa__caixa .icon { width: 11px; height: 11px; color: var(--on-accent); }
+.sofi-tarefa.is-feita .sofi-tarefa__caixa { background: var(--accent); border-color: var(--accent); }
+.sofi-tarefa.is-feita .sofi-tarefa__texto { color: var(--ink-3); text-decoration: line-through; }
+.sofi-citacao { margin: 0 0 8px; padding: 2px 0 2px 12px; border-left: 3px solid var(--accent); color: var(--ink-2); }
+.sofi-callout { --c: var(--accent); --cbg: var(--accent-soft); border-radius: var(--radius-md); background: var(--cbg); overflow: hidden; }
+.sofi-callout--alerta { --c: var(--callout-alerta); --cbg: var(--callout-alerta-bg); }
+.sofi-callout--pergunta { --c: var(--callout-pergunta); --cbg: var(--callout-pergunta-bg); }
+.sofi-callout--tarefa { --c: var(--callout-tarefa); --cbg: var(--callout-tarefa-bg); }
+.sofi-callout--dica { --c: var(--callout-dica); --cbg: var(--callout-dica-bg); }
+.sofi-callout__rotulo { display: flex; align-items: center; gap: 6px; padding: 8px 12px 0; color: var(--c); font: 600 12px var(--font-ui); user-select: none; }
+.sofi-callout__rotulo .icon { color: currentColor; }
+.sofi-callout__corpo { padding: 4px 12px 10px; border-left: 3px solid var(--c); margin-top: 4px; color: var(--ink); }
+.sofi-md code { padding: 1px 5px; border-radius: 5px; background: var(--code); border: 1px solid var(--line); font: 400 12.5px var(--font-mono); }
+.sofi-md a.wikilink { white-space: normal; }
+.sofi-md .tag-inline { cursor: pointer; }
+.sofi-md mark.marca { background: var(--accent-soft); color: var(--ink); padding: 0 3px; border-radius: 3px; }
+.sofi-md [class*="marca-fundo--"] { padding: 0 3px; border-radius: 3px; }
+.sofi-tabela { max-width: 100%; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); }
+[data-theme="dark"] .sofi-tabela { background: var(--raised); }
+.sofi-tabela table { width: 100%; border-collapse: collapse; font: 400 12.5px/1.45 var(--font-ui); }
+.sofi-tabela th, .sofi-tabela td { padding: 7px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.sofi-tabela th { background: var(--hover-subtle); color: var(--ink-2); font-weight: 600; font-size: 12px; white-space: nowrap; }
+.sofi-tabela tr:last-child td { border-bottom: 0; }
+.sofi-tabela td + td, .sofi-tabela th + th { border-left: 1px solid var(--line); }
+.sofi-tabela .is-centro { text-align: center; }
+.sofi-tabela .is-direita { text-align: right; }
+
+/* ---------- chat: código e diagrama ---------- */
+.sofi-codigo { border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--code); overflow: hidden; }
+.sofi-codigo__barra { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 3px 6px 3px 10px; border-bottom: 1px solid var(--line); background: var(--hover-subtle); }
+.sofi-codigo__nome { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; color: var(--ink-2); font: 600 12px var(--font-ui); }
+.sofi-codigo__nome > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sofi-codigo__nome .icon { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
+.sofi-codigo__lingua { padding: 1px 7px; border-radius: var(--radius-full); background: var(--hover); color: var(--ink-3); font: 500 11px var(--font-ui); }
+.sofi-codigo__acao, .sofi-codigo__alternar button {
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-2); padding: 4px 8px; cursor: pointer; font: 500 12px/1 var(--font-ui);
+}
+.sofi-codigo__acao:hover, .sofi-codigo__alternar button:hover { background: var(--hover); color: var(--ink); }
+.sofi-codigo__alternar { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius-sm); background: var(--hover); }
+.sofi-codigo__alternar button[aria-pressed="true"] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: var(--shadow-sm); }
+[data-theme="dark"] .sofi-codigo__alternar button[aria-pressed="true"] { background: var(--accent-soft); }
+.sofi-codigo__fonte { margin: 0; padding: 10px 12px; overflow-x: auto; color: var(--ink); font: 400 12.5px/1.6 var(--font-mono); tab-size: 2; white-space: pre; }
+.sofi-codigo__fonte code { padding: 0; border: 0; background: none; font: inherit; }
+.sofi-codigo__diagrama { display: none; padding: 12px; overflow-x: auto; text-align: center; background: var(--surface); }
+[data-theme="dark"] .sofi-codigo__diagrama { background: var(--raised); }
+.sofi-codigo__diagrama svg { max-width: 100%; height: auto; }
+.sofi-codigo--mermaid[data-vista="diagrama"] .sofi-codigo__diagrama { display: block; }
+.sofi-codigo--mermaid[data-vista="diagrama"] .sofi-codigo__fonte { display: none; }
+.sofi-codigo__fonte .token.comment, .sofi-codigo__fonte .token.prolog, .sofi-codigo__fonte .token.doctype { color: var(--ink-3); }
+.sofi-codigo__fonte .token.keyword, .sofi-codigo__fonte .token.tag, .sofi-codigo__fonte .token.atrule, .sofi-codigo__fonte .token.selector { color: var(--accent); }
+.sofi-codigo__fonte .token.string, .sofi-codigo__fonte .token.attr-value, .sofi-codigo__fonte .token.char { color: var(--success); }
+.sofi-codigo__fonte .token.number, .sofi-codigo__fonte .token.boolean, .sofi-codigo__fonte .token.constant { color: var(--warning); }
+.sofi-codigo__fonte .token.operator, .sofi-codigo__fonte .token.punctuation { color: var(--ink-2); }
+
+/* ---------- chat: ações, sugestões e avisos ---------- */
+.sofi-acao.is-bloqueada { border-style: dashed; background: var(--hover-subtle); }
+.sofi-acao.is-bloqueada .sofi-acao__selo { background: var(--hover); color: var(--ink-2); }
+.sofi-acao.is-bloqueada .sofi-acao__texto small { white-space: normal; }
+.sofi-sugestao-nota { border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); overflow: hidden; }
+[data-theme="dark"] .sofi-sugestao-nota { background: var(--raised); }
+.sofi-sugestao-nota__cab { display: flex; align-items: center; gap: 10px; padding: 9px 9px 9px 10px; }
+.sofi-sugestao-nota__icone { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent); }
+.sofi-sugestao-nota__icone .icon { width: 15px; height: 15px; color: currentColor; }
+.sofi-sugestao-nota__texto { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.sofi-sugestao-nota__texto b { font: 600 13px/1.3 var(--font-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sofi-sugestao-nota__texto small { font: 400 11.5px var(--font-ui); color: var(--ink-3); }
+.sofi-sugestao-nota .btn { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+.sofi-sugestao-nota .btn .icon { width: 13px; height: 13px; }
+.sofi-sugestao-nota__ok { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--success); font: 600 12px var(--font-ui); }
+.sofi-sugestao-nota__ok .icon { width: 13px; height: 13px; color: currentColor; }
+.sofi-sugestao-nota__previa { border-top: 1px solid var(--line); }
+.sofi-sugestao-nota__previa summary { padding: 7px 12px; color: var(--ink-2); font: 500 12px var(--font-ui); cursor: pointer; user-select: none; }
+.sofi-sugestao-nota__previa summary:hover { color: var(--ink); }
+.sofi-sugestao-nota__previa .sofi-md { margin: 0 8px 8px; }
+.sofi-aviso { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 4px; color: var(--ink-3); font: 500 12px var(--font-ui); }
+.sofi-aviso::before, .sofi-aviso::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.sofi-aviso .icon { width: 14px; height: 14px; color: currentColor; flex: none; }
+.sofi-aviso > span { text-align: center; }
+.sofi-aviso .icon { order: -1; }
+
+/* ---------- abinha “Pensamento” ---------- */
+.sofi-pensa { display: grid; gap: 6px; margin-bottom: 6px; min-width: 0; }
+.sofi-msg--vivo .sofi-pensa { margin-bottom: 0; }
+.sofi-pensa__cab {
+  display: inline-flex; align-items: center; gap: 8px; justify-self: start; max-width: 100%; height: 28px; padding: 0 9px 0 8px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); color: var(--ink-2);
+  font: 500 12.5px var(--font-ui); cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+[data-theme="dark"] .sofi-pensa__cab { background: var(--raised); }
+.sofi-pensa__cab:hover { border-color: var(--input-border); color: var(--ink); background: var(--hover-subtle); }
+.sofi-pensa__cab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sofi-pensa__icone { display: grid; place-items: center; flex: none; width: 14px; height: 14px; }
+.sofi-pensa__icone .icon { width: 14px; height: 14px; color: var(--accent); }
+.sofi-pensa__giro { width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--accent-soft); border-top-color: var(--accent); }
+[data-theme="dark"] .sofi-pensa__giro { border-color: var(--line-strong); border-top-color: var(--accent); }
+.sofi-pensa__titulo { white-space: nowrap; }
+.sofi-pensa__tempo { color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+.sofi-pensa__seta .icon { width: 13px; height: 13px; color: var(--ink-3); transition: transform var(--dur-medium) var(--ease); }
+.sofi-pensa.is-aberta .sofi-pensa__seta .icon { transform: rotate(90deg); }
+.sofi-pensa__corpo {
+  display: grid; grid-template-rows: 0fr; visibility: hidden;
+  transition: grid-template-rows var(--dur-medium) var(--ease), visibility 0s linear var(--dur-medium);
+}
+.sofi-pensa.is-aberta .sofi-pensa__corpo { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
+.sofi-pensa__miolo { min-height: 0; overflow: hidden; }
+.sofi-pensa__passos { list-style: none; margin: 4px 0 2px 11px; padding: 0 0 0 16px; display: grid; gap: 8px; border-left: 2px solid var(--line-strong); }
+.sofi-pensa__passos li { position: relative; display: flex; gap: 8px; align-items: flex-start; font: 400 12.5px/1.4 var(--font-ui); color: var(--ink-2); }
+.sofi-pensa__passos li > div { display: grid; gap: 1px; min-width: 0; }
+.sofi-pensa__passos b { font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.sofi-pensa__passos small { color: var(--ink-3); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sofi-pensa__ponto {
+  position: absolute; left: -26px; top: 0; display: grid; place-items: center; width: 18px; height: 18px; box-sizing: border-box;
+  border-radius: 50%; background: var(--surface); border: 2px solid var(--line-strong); color: var(--success);
+}
+[data-theme="dark"] .sofi-pensa__ponto { background: var(--surface); }
+.sofi-pensa__ponto .icon { width: 10px; height: 10px; color: currentColor; }
+.sofi-pensa__passos li.is-feito .sofi-pensa__ponto { border-color: color-mix(in srgb, var(--success) 55%, var(--line)); }
+.sofi-pensa__passos li.is-ativo .sofi-pensa__ponto { border-color: var(--accent); }
+.sofi-pensa__passos li.is-ativo b { color: var(--accent); }
+.sofi-pensa__raciocinio { margin: 8px 0 2px 11px; padding: 8px 12px; border-radius: var(--radius-md); background: var(--hover-subtle); border: 1px solid var(--line); }
+.sofi-pensa__raciocinio > span { display: block; margin-bottom: 4px; color: var(--ink-3); font: 600 11px var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+.sofi-pensa__texto { color: var(--ink-2); font: 400 12.5px/1.5 var(--font-ui); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+@keyframes sofi-giro { to { transform: rotate(360deg); } }
+@keyframes sofi-pulso { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); } 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); } }
+@keyframes sofi-brilho { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not(.motion-reduce) .sofi-pensa__giro { animation: sofi-giro .8s linear infinite; }
+  :root:not(.motion-reduce) .sofi-pensa__passos li.is-ativo .sofi-pensa__ponto { animation: sofi-pulso 1.4s ease-in-out infinite; }
+  :root:not(.motion-reduce) .is-ao-vivo .sofi-pensa__titulo {
+    background: linear-gradient(100deg, var(--ink-2) 35%, var(--accent) 50%, var(--ink-2) 65%) 120% 0 / 220% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: sofi-brilho 1.8s linear infinite;
+  }
+}
+
+/* O app.css estiliza `.sofi-msg p` como balão; os rótulos do mermaid usam <p> dentro do SVG e não podem herdar isso. */
+.sofi-msg .sofi-codigo__diagrama p, .sofi-msg .sofi-codigo__diagrama span {
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: none; white-space: normal; overflow-wrap: normal;
+}
+.sofi-codigo--mermaid .sofi-codigo__nome > span { display: none; }
+.sofi-codigo--mermaid .sofi-codigo__nome { flex: 1; }
