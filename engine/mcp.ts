@@ -23,6 +23,8 @@ export function createMcpServer(libraryPath: string, options: McpOptions = {}) {
     inputSchema: z.object({}),
   }, async () => ({ content: [{ type: 'text' as const, text: JSON.stringify(catalog) }] }));
   for (const tool of tools) {
+    // A sessão multi-biblioteca já registra library.list com o catálogo autorizado.
+    if (multiple && tool.name === 'library.list') continue;
     if (readonly && (toolMutates(tool.name) || tool.name.startsWith('ui.'))) {
       server.registerTool(
         tool.name,

@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('sophy:agent-confirm', wrapped);
       return () => ipcRenderer.removeListener('sophy:agent-confirm', wrapped);
     },
+    onLibraryChanged: (listener) => {
+      const wrapped = (_event, payload) => listener(payload);
+      ipcRenderer.on('sophy:library-changed', wrapped);
+      return () => ipcRenderer.removeListener('sophy:library-changed', wrapped);
+    },
     window: (action) => ipcRenderer.invoke('sophy:window', action),
     onFlush: (listener) => {
       const wrapped = (_event, requestId) => listener(requestId);

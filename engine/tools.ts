@@ -12,6 +12,11 @@ import {
   type CanvasNode,
 } from './canvas.ts';
 import { createChildNote, isMother, listChildren } from './children.ts';
+import {
+  listLibrariesForAgent,
+  readLibraryForAgent,
+  switchLibraryForAgent,
+} from './agent-libraries.ts';
 import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
 import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
@@ -143,6 +148,28 @@ export const tools = [
     ({ libraryPath: folder, enabled }) => watchLibrary(openLibrary(folder), enabled),
   ),
   define(
+    'library.list',
+    'Lista as bibliotecas cadastradas no app, com a atual marcada.',
+    z.object({ libraryPath: libraryPath.optional() }),
+    ({ libraryPath: folder }) => listLibrariesForAgent(folder),
+  ),
+  define(
+    'library.read',
+    'Lê outra biblioteca sem trocar a atual. Sem path, lista notas e pastas. Com path, devolve a nota.',
+    z.object({
+      id: z.string().min(1),
+      path: z.string().min(1).optional(),
+      libraryPath: libraryPath.optional(),
+    }),
+    ({ id, path, libraryPath: folder }) => readLibraryForAgent(id, path, folder),
+  ),
+  define(
+    'library.switch',
+    'Troca a biblioteca atual. A Sofi pede confirmação antes.',
+    z.object({ id: z.string().min(1), libraryPath: libraryPath.optional() }),
+    ({ id, libraryPath: folder }) => switchLibraryForAgent(id, folder),
+  ),
+  define(
     'workspace.list',
     'Lista as estantes: cada subpasta visível de primeiro nível da biblioteca.',
     z.object({ libraryPath }),
@@ -239,6 +266,15 @@ export const tools = [
       tracked(folder, source, 'note.create', `Criar ${path}`, (library) =>
         createNote(library, path, body ?? '', matter),
       ),
+  ),
+  define(
+    'note.suggest',
+    'Propõe uma nota sem gravar. A tela pode oferecer salvar depois.',
+    z.object({
+      titulo: z.string().min(1).max(200),
+      conteudo: z.string().max(100_000),
+    }),
+    ({ titulo, conteudo }) => ({ titulo: titulo.trim(), conteudo }),
   ),
   define(
     'note.write',
@@ -768,6 +804,7 @@ export function listTools() {
 
 const MUTATIONS = new Set([
   'library.watch',
+  'library.switch',
   'workspace.create',
   'directory.create',
   'note.create',

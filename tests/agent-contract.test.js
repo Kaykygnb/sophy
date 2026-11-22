@@ -16,6 +16,7 @@ test('preload e main expõem o contrato da Sofi', () => {
     'agentConfirmReply',
     'onAgentProgress',
     'onAgentConfirm',
+    'onLibraryChanged',
   ]) {
     assert.equal(preload.includes(name), true, name);
   }
@@ -29,9 +30,12 @@ test('preload e main expõem o contrato da Sofi', () => {
     'sophy:agent-confirm-reply',
     'sophy:agent-cancel',
     'sophy:agent-undo',
+    'sophy:library-changed',
   ]) {
     assert.equal(`${preload}\n${main}`.includes(channel), true, channel);
   }
   assert.equal(main.includes("fail('Guarde a chave no cofre antes de pedir.', 'sem_chave')"), true);
+  assert.equal(main.includes('agent.config.'), true);
+  assert.equal(main.includes("modo `arquivo`"), true);
   assert.equal(preload.includes('src/ui/'), false);
 });
