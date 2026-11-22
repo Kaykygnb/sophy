@@ -17,8 +17,24 @@ function statusOf(mark: string): CalendarSeed['status'] {
   return 'aberta';
 }
 
-function dateOf(suffix: string, mark: string) {
-  const match = suffix.match(new RegExp(`${mark}\\s*(\\d{4}-\\d{2}-\\d{2})`));
+function stripVariant(text: string) {
+  return String(text).replace(/\uFE0F/g, '');
+}
+
+/** Abre um <span data-cor="…"> ou <span data-fundo="…">. O miolo fica de fora. */
+const COLOR_SPAN_OPEN =
+  '<span\\b[^>]*\\bdata-(?:cor|fundo)\\s*=\\s*["\'][^"\']*["\'][^>]*>';
+
+/**
+ * Data ISO depois de 📅, ⏳ ou 🛫.
+ * Sem span: `📅 2026-11-22` e `📅2026-11-22`.
+ * Com span: `📅 <span data-fundo="marrom">2026-11-22</span>`.
+ */
+export function dateOf(suffix: string, mark: string) {
+  const clean = stripVariant(suffix);
+  const match = clean.match(
+    new RegExp(`${mark}\\s*(?:${COLOR_SPAN_OPEN}\\s*)*(\\d{4}-\\d{2}-\\d{2})`, 'i'),
+  );
   return match ? match[1] : null;
 }
 
