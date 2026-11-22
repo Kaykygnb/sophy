@@ -17,10 +17,26 @@ contextBridge.exposeInMainWorld(
     libraryReveal: (folder) => ipcRenderer.invoke('sophy:library-reveal', folder),
     saveSettings: (patch) => ipcRenderer.invoke('sophy:settings', patch),
     exportPdf: (html) => ipcRenderer.invoke('sophy:export-pdf', html),
+    exportMarkdown: (result) => ipcRenderer.invoke('sophy:export-markdown', result),
+    openAttachment: (path) => ipcRenderer.invoke('sophy:open-attachment', path),
     agentStatus: () => ipcRenderer.invoke('sophy:agent-status'),
     agentKeySet: (key) => ipcRenderer.invoke('sophy:agent-key-set', key),
     agentKeyClear: () => ipcRenderer.invoke('sophy:agent-key-clear'),
-    agentAsk: (message) => ipcRenderer.invoke('sophy:agent-ask', message),
+    agentAsk: (message, context) => ipcRenderer.invoke('sophy:agent-ask', message, context),
+    agentCancel: () => ipcRenderer.invoke('sophy:agent-cancel'),
+    agentUndo: (versionId) => ipcRenderer.invoke('sophy:agent-undo', versionId),
+    agentConfirmReply: (confirmId, allow) =>
+      ipcRenderer.invoke('sophy:agent-confirm-reply', confirmId, allow),
+    onAgentProgress: (listener) => {
+      const wrapped = (_event, payload) => listener(payload);
+      ipcRenderer.on('sophy:agent-progress', wrapped);
+      return () => ipcRenderer.removeListener('sophy:agent-progress', wrapped);
+    },
+    onAgentConfirm: (listener) => {
+      const wrapped = (_event, payload) => listener(payload);
+      ipcRenderer.on('sophy:agent-confirm', wrapped);
+      return () => ipcRenderer.removeListener('sophy:agent-confirm', wrapped);
+    },
     window: (action) => ipcRenderer.invoke('sophy:window', action),
     onFlush: (listener) => {
       const wrapped = (_event, requestId) => listener(requestId);

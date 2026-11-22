@@ -19,13 +19,23 @@ export {
   importAttachmentFromPath,
   importAttachmentBytes,
   readAttachmentDataUrl,
+  listAttachments,
+  resolveAttachmentPath,
   readNote,
   createNote,
   writeNote,
   moveEntry,
-  trashEntry,
 } from './library.ts';
-export { scan, resolvePath, parseTarget } from './wikilinks.ts';
+export {
+  trashEntry,
+  listTrash,
+  restoreTrash,
+  purgeTrash,
+  emptyTrash,
+  deletePermanent,
+} from './lixeira.ts';
+export { scan, resolvePath, parseTarget, anchorKey } from './wikilinks.ts';
+export { namedBlocksOf, renameNamedBlock } from './blocks.ts';
 export {
   outgoingLinks,
   backlinks,
@@ -34,6 +44,9 @@ export {
   suggestNotes,
   relocate,
   watchLibrary,
+  resolveLink,
+  previewLink,
+  scanBlocks,
 } from './links.ts';
 export { fold, fuzzyScore, rankByFuzzy } from './fuzzy.ts';
 export { capture, diff, pushHistory } from './history.ts';
@@ -42,9 +55,16 @@ export { queryGraph } from './graph.ts';
 export { parseCanvas, serializeCanvas, readCanvas, createCanvas, updateCanvas } from './canvas.ts';
 export { listTasks, updateTask, queryCalendar } from './tasks.ts';
 export { fillTemplate, unlinkedMentions, linkMentions, importVault, listViews, saveView } from './extras.ts';
-export { listCards, reviewCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
-export { runAgentTurn, agentTools } from './agent.ts';
-export { listHistory, undoLast } from './history.ts';
+export { listCards, reviewCard, undoCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
+export {
+  exportNote,
+  suggestMarkdownName,
+  planMarkdownExport,
+  decodeExportBytes,
+  exportFileRelative,
+} from './export.ts';
+export { runAgentTurn, agentTools, agentConfirmation } from './agent.ts';
+export { listHistory, undoLast, undoById } from './history.ts';
 export { tools, listTools, callTool } from './tools.ts';
 export {
   subscribeUi,

@@ -35,6 +35,8 @@ let sessionPath = null;
 let gate;
 let releasePresence = () => {};
 let mailboxTimer;
+let agentAbort = null;
+const agentConfirms = new Map();
 const windows = new Set();
 let tray;
 let quitting = false;
@@ -81,6 +83,39 @@ function rememberLibrary(folder) {
 
 function agentKeyFile() {
   return path.join(app.getPath('userData'), 'agent-key.bin');
+}
+
+function fail(message, code) {
+  const error = new Error(message);
+  if (code) error.code = code;
+  throw error;
+}
+
+function emitAgent(sender, channel, payload) {
+  if (sender && !sender.isDestroyed()) sender.send(channel, payload);
+}
+
+function waitForAgentConfirm(sender, request, signal) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (allow) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+      agentConfirms.delete(request.confirmId);
+      resolve(allow === true);
+    };
+    const onAbort = () => finish(false);
+    const timer = setTimeout(() => finish(false), 120000);
+    agentConfirms.set(request.confirmId, finish);
+    if (signal?.aborted) {
+      finish(false);
+      return;
+    }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    emitAgent(sender, 'sophy:agent-confirm', request);
+  });
 }
 
 function broadcast(command) {
@@ -146,8 +181,18 @@ function handle(channel, fn) {
 function setupIpc() {
   handle('sophy:open-external', async (_event, address) => {
     const url = new URL(address);
-    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) throw new Error('Tipo de link não permitido.');
+    if (!['http:', 'https:', 'mailto:'].includes(url.protocol))
+      throw new Error('Tipo de link não permitido.');
     await shell.openExternal(url.href);
+    return true;
+  });
+  // Abre um arquivo de Anexos/ no aplicativo do sistema. O caminho fica preso à biblioteca.
+  handle('sophy:open-attachment', async (_event, relative) => {
+    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
+    const library = engine.openLibrary(sessionPath);
+    const full = engine.resolveAttachmentPath(library, relative);
+    const opened = await shell.openPath(full);
+    if (opened) throw new Error(opened);
     return true;
   });
   ipcMain.on('sophy:attention', (event) => {
@@ -199,27 +244,6 @@ function setupIpc() {
       throw new Error('Tool desconhecida.');
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     const body = input && typeof input === 'object' ? input : {};
-    if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
-      const library = engine.openLibrary(sessionPath);
-      const full = engine.resolveInside(library.root, body.path);
-      const before = engine.capture(library);
-      let systemTrashed = false;
-      try {
-        await shell.trashItem(full);
-        systemTrashed = true;
-      } catch {
-        // A lixeira local preserva uma cópia quando o sistema não recebe o item.
-      }
-      if (systemTrashed) {
-        engine.pushHistory(library, {
-          origin: 'ui',
-          tool: 'entry.trash',
-          summary: `Lixeira ${body.path}`,
-          changes: engine.diff(before, engine.capture(library)),
-        });
-        return { path: body.path, trashed: true, trashPath: '' };
-      }
-    }
     return gate(name, body);
   });
 
@@ -241,31 +265,58 @@ function setupIpc() {
     return { saved: false };
   });
 
-  handle('sophy:agent-ask', async (_event, message) => {
+  handle('sophy:agent-ask', async (event, message, context) => {
     if (typeof message !== 'string' || !message.trim()) throw new Error('Escreva o pedido.');
     if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
-    if (!fs.existsSync(agentKeyFile())) throw new Error('Guarde a chave no cofre antes de pedir.');
+    if (!fs.existsSync(agentKeyFile()))
+      fail('Guarde a chave no cofre antes de pedir.', 'sem_chave');
     if (!safeStorage.isEncryptionAvailable())
       throw new Error('O cofre do sistema não está disponível.');
+    if (agentAbort)
+      throw new Error(
+        'A Sofi ainda está respondendo. Cancele o pedido atual antes de enviar outro.',
+      );
     const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
-    const owner = BrowserWindow.getFocusedWindow() || [...windows][0];
-    const turn = await engine.runAgentTurn({
-      libraryPath: sessionPath,
-      message: message.trim(),
-      key,
-      fetchImpl: fetch,
-      confirm: async (question) => {
-        const chosen = await dialog.showMessageBox(owner, {
-          type: 'question',
-          buttons: ['Cancelar', 'Confirmar'],
-          defaultId: 0,
-          cancelId: 0,
-          message: question,
-        });
-        return chosen.response === 1;
-      },
-    });
-    return { text: turn.text };
+    const controller = new AbortController();
+    agentAbort = controller;
+    try {
+      const turn = await engine.runAgentTurn({
+        libraryPath: sessionPath,
+        message: message.trim(),
+        context,
+        key,
+        fetchImpl: fetch,
+        signal: controller.signal,
+        onProgress: (payload) => emitAgent(event.sender, 'sophy:agent-progress', payload),
+        confirm: (request) => waitForAgentConfirm(event.sender, request, controller.signal),
+      });
+      return turn.canceled
+        ? { text: turn.text, actions: turn.actions, canceled: true }
+        : { text: turn.text, actions: turn.actions };
+    } finally {
+      if (agentAbort === controller) agentAbort = null;
+    }
+  });
+
+  handle('sophy:agent-cancel', () => {
+    if (!agentAbort) return { canceled: false };
+    agentAbort.abort();
+    return { canceled: true };
+  });
+
+  handle('sophy:agent-confirm-reply', (_event, confirmId, allow) => {
+    if (typeof confirmId !== 'string' || !agentConfirms.has(confirmId))
+      throw new Error('Essa confirmação não está mais pendente.');
+    const finish = agentConfirms.get(confirmId);
+    finish(allow === true);
+    return { allow: allow === true };
+  });
+
+  handle('sophy:agent-undo', (_event, versionId) => {
+    if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
+    if (typeof versionId !== 'string' || !versionId.trim())
+      throw new Error('Informe a versão para desfazer.');
+    return gate('agent.undo', { versionId: versionId.trim() });
   });
 
   handle('sophy:choose-files', async (event) => {
@@ -420,6 +471,81 @@ function setupIpc() {
       return chosen.filePath;
     } finally {
       paper.destroy();
+    }
+  });
+
+  // Grava o Markdown devolvido por note.export. O retorno é o objeto em si, sem o envelope { value }.
+  ipcMain.handle('sophy:export-markdown', async (event, result) => {
+    const failed = (error) => ({
+      ok: false,
+      path: null,
+      written: [],
+      error: error instanceof Error ? error.message : error || 'Falha na operação.',
+    });
+    if (!trusted(event)) return failed('Origem inválida.');
+    const written = [];
+    try {
+      if (!result || typeof result !== 'object' || typeof result.content !== 'string')
+        return failed('Exportação Markdown inválida.');
+      const files = result.files === undefined ? [] : result.files;
+      if (!Array.isArray(files)) return failed('Exportação Markdown inválida.');
+      const payloads = new Map();
+      for (const file of files) {
+        if (!file || typeof file !== 'object' || !engine.exportFileRelative(file.path))
+          return failed('O anexo precisa ficar na pasta escolhida.');
+        if (payloads.has(file.path)) return failed('Anexo repetido na exportação.');
+        payloads.set(file.path, engine.decodeExportBytes(file.bytesBase64));
+      }
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      const suggested = engine.suggestMarkdownName(result.suggestedName || result.filename);
+      const chosen = await dialog.showSaveDialog(owner || undefined, {
+        title: 'Exportar Markdown',
+        defaultPath: suggested,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (chosen.canceled || !chosen.filePath)
+        return { ok: false, canceled: true, path: null, written: [] };
+      const planInput = {
+        directory: path.dirname(chosen.filePath),
+        noteFile: chosen.filePath,
+        files: files.map((file) => file.path),
+        exists: (target) => fs.existsSync(target),
+      };
+      let plan = engine.planMarkdownExport(planInput);
+      if (!plan.ok) return failed(plan.error);
+      if (plan.action === 'choose') {
+        const answer = await dialog.showMessageBox(owner || undefined, {
+          type: 'question',
+          buttons: ['Substituir', 'Manter os dois', 'Cancelar'],
+          defaultId: 2,
+          cancelId: 2,
+          message: 'Já existe um arquivo neste destino.',
+          detail: plan.conflicts.join('\n'),
+        });
+        const choice =
+          answer.response === 0 ? 'replace' : answer.response === 1 ? 'keep-both' : 'cancel';
+        plan = engine.planMarkdownExport({ ...planInput, choice });
+        if (!plan.ok) return failed(plan.error);
+      }
+      if (plan.action !== 'write')
+        return { ok: false, canceled: true, path: null, written: [] };
+      for (const item of plan.writes) {
+        fs.mkdirSync(path.dirname(item.absolute), { recursive: true });
+        if (item.source === 'note') {
+          fs.writeFileSync(item.absolute, result.content, {
+            encoding: 'utf8',
+            flag: item.replace ? 'w' : 'wx',
+          });
+        } else {
+          const bytes = payloads.get(item.source);
+          if (!bytes) throw new Error('Anexo da exportação inválido.');
+          fs.writeFileSync(item.absolute, bytes, { flag: item.replace ? 'w' : 'wx' });
+        }
+        written.push(item.absolute);
+      }
+      return { ok: true, path: plan.path, written };
+    } catch (error) {
+      return { ...failed(error), written };
     }
   });
 

@@ -19,6 +19,21 @@ test('o menu / abre no começo da linha e de novo depois do Esc', () => {
   assert.ok(session.offer(again, again.length));
 });
 
+test('o menu / acha o diagrama Mermaid por mermaid, fluxo e grafico', () => {
+  const byMerm = commands.filterSlash(commands.SLASH_ITEMS, 'merm');
+  assert.equal(byMerm[0].id, 'mermaid');
+  assert.ok(byMerm.some((item) => item.label === 'Diagrama (Mermaid)'));
+  assert.ok(byMerm.some((item) => item.id === 'mermaid-sequencia'));
+  const byFluxo = commands.filterSlash(commands.SLASH_ITEMS, 'fluxograma');
+  assert.ok(byFluxo.some((item) => item.id === 'mermaid'));
+  const byGrafico = commands.filterSlash(commands.SLASH_ITEMS, 'grafico');
+  assert.ok(byGrafico.some((item) => item.id === 'mermaid'));
+  const bySeq = commands.filterSlash(commands.SLASH_ITEMS, 'sequencia');
+  assert.ok(bySeq.some((item) => item.id === 'mermaid-sequencia'));
+  const byGantt = commands.filterSlash(commands.SLASH_ITEMS, 'cronograma');
+  assert.ok(byGantt.some((item) => item.id === 'mermaid-gantt'));
+});
+
 test('[[ oferece o termo em qualquer posição depois de espaço', () => {
   const text = 'veja [[Est';
   assert.deepEqual(commands.wikiQuery(text, text.length), { start: 5, query: 'Est' });
@@ -70,6 +85,11 @@ test('a chamada da janela força origem ui e ignora o caminho do input', () => {
   assert.equal(prepared.origin, 'ui');
   assert.equal(prepared.libraryPath, '/tmp/biblioteca');
   assert.equal(prepared.body, 'oi [[');
+  for (const name of ['trash.purge', 'trash.empty', 'note.deletePermanent', 'card.undo', 'trash.restore']) {
+    const body = commands.prepareCall(name, { id: 'x', path: 'Nota.md' }, '/tmp/biblioteca');
+    assert.equal(body.origin, 'ui', name);
+    assert.equal(body.libraryPath, '/tmp/biblioteca');
+  }
   const theme = commands.prepareCall(
     'ui.setTheme',
     { theme: 'dark', libraryPath: '/x' },
@@ -166,4 +186,11 @@ test('as tools ui.* chegam na janela pelo mesmo registro', async () => {
   } finally {
     stop();
   }
+});
+
+test('wikiQuery ignora um [[ esquecido no meio do texto', () => {
+  const commands = require('../src/ui/commands.js');
+  const text = 'liga a um [[ incompleto. **vivo**';
+  assert.equal(commands.wikiQuery(text, text.length), null);
+  assert.equal(commands.wikiQuery(`[[${'a'.repeat(61)}`, 63), null);
 });

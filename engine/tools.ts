@@ -13,6 +13,7 @@ import {
 } from './canvas.ts';
 import { createChildNote, isMother, listChildren } from './children.ts';
 import { EngineError } from './errors.ts';
+import { exportNote } from './export.ts';
 import { queryGraph } from './graph.ts';
 import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
 import { readShelfStyles, writeShelfStyle } from './shelves.ts';
@@ -25,16 +26,33 @@ import {
   reviewCard,
   saveVersionPoint,
   semanticSearch,
+  undoCard,
   weeklyReview,
 } from './study.ts';
 import { listTasks, queryCalendar, updateTask, type TaskStatus } from './tasks.ts';
-import { capture, diff, listHistory, pushHistory, undoLast, type Origin } from './history.ts';
+import { capture, diff, listHistory, pushHistory, undoById, undoLast, type Origin } from './history.ts';
+import { renameNamedBlock } from './blocks.ts';
+import {
+  deletePermanent,
+  emptyTrash,
+  listTrash,
+  purgeTrash,
+  restoreTrash,
+  TRASH_ID,
+  trashEntry,
+} from './lixeira.ts';
 import {
   backlinks,
   brokenLinks,
   catalogNotes,
+  forgetCachedNote,
+  forgetLinks,
+  indexedNotes,
   outgoingLinks,
+  previewLink,
   relocate,
+  resolveLink,
+  scanBlocks,
   suggestNotes,
   watchLibrary,
 } from './links.ts';
@@ -44,18 +62,27 @@ import {
   createWorkspace,
   importAttachmentBytes,
   importAttachmentFromPath,
+  listAttachments,
   listFiles,
   listNotes,
   listWorkspaces,
   openLibrary,
   readAttachmentDataUrl,
   readNote,
-  restoreEntry,
-  trashEntry,
   writeNote,
   type Library,
 } from './library.ts';
 import { searchLibrary } from './search.ts';
+import {
+  editStoredTags,
+  listNotesForTag,
+  listTagTree,
+  portablePath,
+  readStoredTags,
+  renameTags,
+  suggestTags,
+  type TagNoteRecord,
+} from './tags.ts';
 import { requestUi } from './ui-bridge.ts';
 
 const libraryPath = z.string().min(1);
@@ -212,6 +239,12 @@ export const tools = [
     ({ libraryPath: folder, path }) => readAttachmentDataUrl(openLibrary(folder), path),
   ),
   define(
+    'attachment.list',
+    'Lista os arquivos da pasta Anexos/ na raiz da biblioteca, com tamanho, tipo e as notas que os citam.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listAttachments(openLibrary(folder)),
+  ),
+  define(
     'note.read',
     'Lê uma nota. O corpo é o Markdown exato. A revisão precisa ser reenviada na escrita.',
     z.object({ libraryPath, path: relativePath }),
@@ -249,6 +282,16 @@ export const tools = [
       ),
   ),
   define(
+    'note.export',
+    'Exporta uma nota em Markdown sem o id do frontmatter, com os anexos citados, ou em HTML de PDF em papel claro. Não grava nem altera a nota.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      format: z.enum(['md', 'pdf']),
+    }),
+    ({ libraryPath: folder, path, format }) => exportNote(openLibrary(folder), path, format),
+  ),
+  define(
     'entry.move',
     'Move ou renomeia um arquivo ou pasta e reescreve os wikilinks que apontavam para ele.',
     z.object({ libraryPath, from: relativePath, to: relativePath, origin }),
@@ -282,26 +325,50 @@ export const tools = [
   ),
   define(
     'entry.trash',
-    'Move um arquivo ou pasta para a lixeira. Não apaga de forma permanente.',
+    'Move um arquivo ou pasta para .sophy/lixeira, dentro da biblioteca. Não apaga de forma permanente.',
     z.object({ libraryPath, path: relativePath, origin }),
     ({ libraryPath: folder, path, origin: source }) =>
-      tracked(folder, source, 'entry.trash', `Lixeira ${path}`, (library) =>
-        trashEntry(library, path),
-      ),
+      tracked(folder, source, 'entry.trash', `Lixeira ${path}`, (library) => trashEntry(library, path)),
+  ),
+  define(
+    'trash.list',
+    'Lista a lixeira da biblioteca, da exclusão mais recente para a mais antiga.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listTrash(openLibrary(folder)),
   ),
   define(
     'trash.restore',
-    'Restaura um item da lixeira. Se o dia já tem nota, devolve o conflito em vez de gravar.',
+    'Devolve um item da lixeira ao caminho original. Se o caminho estiver ocupado, usa o sufixo “ (restaurado)”.',
     z.object({
       libraryPath,
-      id: z.string().min(1),
-      mode: z.enum(['merge', 'asNote']).optional(),
-      trashRoot: z.string().min(1).optional(),
+      id: z.string().regex(TRASH_ID, 'Identificador de lixeira inválido.'),
       origin,
     }),
-    ({ libraryPath: folder, id, mode, trashRoot: root, origin: source }) =>
-      tracked(folder, source, 'trash.restore', `Restaurar ${id}`, (library) =>
-        restoreEntry(library, id, { mode, trashRoot: root }),
+    ({ libraryPath: folder, id }) => restoreTrash(openLibrary(folder), id),
+  ),
+  define(
+    'trash.purge',
+    'Apaga de vez um item da lixeira. O original não volta.',
+    z.object({
+      libraryPath,
+      id: z.string().regex(TRASH_ID, 'Identificador de lixeira inválido.'),
+      origin,
+    }),
+    ({ libraryPath: folder, id }) => purgeTrash(openLibrary(folder), id),
+  ),
+  define(
+    'trash.empty',
+    'Esvazia a lixeira da biblioteca. Não mexe na lixeira do sistema nem no resto de .sophy.',
+    z.object({ libraryPath, origin }),
+    ({ libraryPath: folder }) => emptyTrash(openLibrary(folder)),
+  ),
+  define(
+    'note.deletePermanent',
+    'Apaga de vez um arquivo ou pasta, sem passar pela lixeira. Vale para nota, canvas, anexo ou pasta.',
+    z.object({ libraryPath, path: relativePath, origin }),
+    ({ libraryPath: folder, path, origin: source }) =>
+      tracked(folder, source, 'note.deletePermanent', `Apagar ${path}`, (library) =>
+        deletePermanent(library, path),
       ),
   ),
   define(
@@ -318,7 +385,7 @@ export const tools = [
   ),
   define(
     'links.catalog',
-    'Catálogo de notas para o menu [[: título, apelidos, seções e blocos.',
+    'Catálogo de notas para o menu [[: título, apelidos, seções, blocos ^ e blocos nomeados.',
     z.object({ libraryPath }),
     ({ libraryPath: folder }) => catalogNotes(openLibrary(folder)),
   ),
@@ -335,6 +402,41 @@ export const tools = [
       suggestNotes(openLibrary(folder), query, { source, limit }),
   ),
   define(
+    'links.resolve',
+    'Resolve um wikilink a partir de uma nota. Acrescenta kind: note, section ou block. Bloco nomeado traz o código (até 40 linhas).',
+    z.object({ libraryPath, path: relativePath, target: z.string().min(1) }),
+    ({ libraryPath: folder, path, target }) => resolveLink(openLibrary(folder), path, target),
+  ),
+  define(
+    'links.scan',
+    'Lista os blocos nomeados de uma nota, ou de todas, para o autocompletar [[Nota#.',
+    z.object({ libraryPath, path: z.string().min(1).optional() }),
+    ({ libraryPath: folder, path }) => scanBlocks(openLibrary(folder), path),
+  ),
+  define(
+    'links.preview',
+    'Prévia ao pairar. Bloco nomeado devolve kind, lang, title e code. Seção devolve o trecho markdown.',
+    z.object({ libraryPath, path: relativePath, target: z.string().min(1) }),
+    ({ libraryPath: folder, path, target }) => previewLink(openLibrary(folder), path, target),
+  ),
+  define(
+    'block.rename',
+    'Renomeia um bloco nomeado (title na cerca) e reescreve [[Nota#de]] e [[Nota#de|alias]] num único desfazer.',
+    z.object({
+      libraryPath,
+      notePath: relativePath,
+      de: z.string().min(1),
+      para: z.string().min(1),
+      origin,
+    }),
+    ({ libraryPath: folder, notePath, de, para, origin: source }) =>
+      tracked(folder, source, 'block.rename', `Renomear bloco ${de} para ${para}`, (library) => {
+        const result = renameNamedBlock(library, notePath, de, para);
+        forgetLinks(library, result.updated);
+        return result;
+      }),
+  ),
+  define(
     'links.broken',
     'Lista links quebrados ou ambíguos da biblioteca.',
     z.object({ libraryPath }),
@@ -342,21 +444,92 @@ export const tools = [
   ),
   define(
     'search.query',
-    'Busca em título, corpo em texto limpo, tags e frontmatter. O trecho vem em segmentos, sem Markdown cru.',
-    z.object({ libraryPath, query: z.string().min(1), workspace: z.string().min(1).optional() }),
-    ({ libraryPath: folder, query, workspace }) =>
-      searchLibrary(openLibrary(folder), query, workspace),
+    'Busca em título, corpo em texto limpo, tags e frontmatter. O trecho vem em segmentos, sem Markdown cru. tag e tags filtram a nota, sempre com as descendentes.',
+    z.object({
+      libraryPath,
+      query: z.string().min(1),
+      workspace: z.string().min(1).optional(),
+      tag: z.string().min(1).optional(),
+      tags: z.array(z.string().min(1)).optional(),
+      tagsMode: z.enum(['any', 'all']).optional(),
+    }),
+    ({ libraryPath: folder, query, workspace, tag, tags, tagsMode }) =>
+      searchLibrary(openLibrary(folder), query, workspace, { tag, tags, tagsMode }),
   ),
   define(
     'graph.query',
-    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante e tag.',
+    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante, por tag (com as descendentes) e por intervalo de createdAt. tag e tags se somam. Com filtro, só entram os nós que casam e as arestas entre eles.',
     z.object({
       libraryPath,
       workspace: z.string().min(1).optional(),
       tag: z.string().min(1).optional(),
+      tags: z.array(z.string().min(1)).optional(),
+      tagsMode: z.enum(['any', 'all']).optional(),
+      from: z.string().min(1).optional(),
+      to: z.string().min(1).optional(),
     }),
-    ({ libraryPath: folder, workspace, tag }) =>
-      queryGraph(openLibrary(folder), { workspace, tag }),
+    ({ libraryPath: folder, workspace, tag, tags, tagsMode, from, to }) =>
+      queryGraph(openLibrary(folder), { workspace, tag, tags, tagsMode, from, to }),
+  ),
+  define(
+    'tags.list',
+    'Lista as tags em árvore. count é o número de notas com a tag exata; total inclui as descendentes.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listTagTree(tagRecordsOf(openLibrary(folder))),
+  ),
+  define(
+    'tags.notes',
+    'Lista as notas de uma tag. nested inclui as descendentes. source diz se a tag veio do texto, do frontmatter ou dos dois.',
+    z.object({
+      libraryPath,
+      tag: z.string().min(1),
+      nested: z.boolean().optional(),
+    }),
+    ({ libraryPath: folder, tag, nested }) =>
+      listNotesForTag(tagRecordsOf(openLibrary(folder)), tag, nested !== false),
+  ),
+  define(
+    'tag.rename',
+    'Renomeia uma tag no texto e no frontmatter de todas as notas, inclusive as descendentes. Se o destino já existe, une. Um desfazer volta todas.',
+    z.object({ libraryPath, from: z.string().min(1), to: z.string().min(1), origin }),
+    ({ libraryPath: folder, from, to, origin: source }) =>
+      tracked(folder, source, 'tag.rename', `Renomear tag ${from}`, (library) => {
+        const result = renameTags(library, from, to, tagRecordsOf(library));
+        for (const path of result.paths) forgetCachedNote(library, path);
+        return { changedNotes: result.changedNotes, replaced: result.replaced };
+      }),
+  ),
+  define(
+    'tag.suggest',
+    'Sugere tags para o autocompletar de #, da mais usada para a menos usada.',
+    z.object({
+      libraryPath,
+      prefix: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    }),
+    ({ libraryPath: folder, prefix, limit }) =>
+      suggestTags(tagRecordsOf(openLibrary(folder)), prefix ?? '', limit ?? 10),
+  ),
+  define(
+    'note.tags',
+    'Edita só as tags do frontmatter de uma nota. Cria a lista se faltar e remove a chave se esvaziar.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      add: z.array(z.string().min(1)).optional(),
+      remove: z.array(z.string().min(1)).optional(),
+      origin,
+    }),
+    ({ libraryPath: folder, path, add, remove, origin: source }) => {
+      const adds = add ?? [];
+      const removes = remove ?? [];
+      if (!adds.length && !removes.length) return { tags: readStoredTags(openLibrary(folder), path) };
+      return tracked(folder, source, 'note.tags', `Tags de ${path}`, (library) => {
+        const result = editStoredTags(library, path, adds, removes);
+        forgetCachedNote(library, path);
+        return result;
+      });
+    },
   ),
   define(
     'history.list',
@@ -373,6 +546,12 @@ export const tools = [
       const undone = undoLast(library);
       return { ...undone, requestedBy: source };
     },
+  ),
+  define(
+    'agent.undo',
+    'Desfaz uma ação específica da Sofi pelo versionId do histórico. Falha se a versão não existe ou já foi desfeita.',
+    z.object({ libraryPath, versionId: z.string().min(1) }),
+    ({ libraryPath: folder, versionId }) => undoById(openLibrary(folder), versionId),
   ),
   define(
     'shelf.style.list',
@@ -448,10 +627,26 @@ export const tools = [
   ),
   define(
     'card.review',
-    'Marca um cartão como sabido ou não e grava a próxima data em .sophy/flashcards.json.',
-    z.object({ libraryPath, id: z.string().min(1), knew: z.boolean(), today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), origin }),
-    ({ libraryPath: folder, id, knew, today, origin: source }) =>
-      tracked(folder, source, 'card.review', `Cartão ${id}`, (library) => reviewCard(library, id, knew, today)),
+    'Registra a nota 1 a 4 de um cartão e grava o próximo prazo em .sophy/flashcards.json. knew continua aceito.',
+    z.object({
+      libraryPath,
+      id: z.string().min(1),
+      grade: z.number().optional(),
+      knew: z.boolean().optional(),
+      today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      origin,
+    }),
+    ({ libraryPath: folder, id, grade, knew, today, origin: source }) =>
+      tracked(folder, source, 'card.review', `Cartão ${id}`, (library) =>
+        reviewCard(library, id, grade !== undefined ? grade : knew, today),
+      ),
+  ),
+  define(
+    'card.undo',
+    'Restaura o agendamento anterior de um cartão. Só guarda um nível.',
+    z.object({ libraryPath, id: z.string().min(1), origin }),
+    ({ libraryPath: folder, id, origin: source }) =>
+      tracked(folder, source, 'card.undo', `Desfazer cartão ${id}`, (library) => undoCard(library, id)),
   ),
   define(
     'version.list',
@@ -718,19 +913,27 @@ const MUTATIONS = new Set([
   'note.child.create',
   'note.write',
   'entry.move',
+  'block.rename',
   'entry.trash',
+  'note.deletePermanent',
   'trash.restore',
+  'trash.purge',
+  'trash.empty',
   'history.undo',
+  'agent.undo',
   'shelf.style.set',
   'mention.link',
   'vault.import',
   'view.save',
   'card.review',
+  'card.undo',
   'version.point',
   'version.restore',
   'site.export',
   'search.semantic.enable',
   'task.update',
+  'tag.rename',
+  'note.tags',
   'canvas.create',
   'canvas.update',
   'canvas.node.put',
@@ -750,6 +953,14 @@ export function callTool(name: string, raw: unknown) {
   return tool.run(tool.input.parse(raw) as never);
 }
 
+const trackedVersions = new WeakMap<object, string>();
+
+/** Id do histórico que `tracked()` gravou para este resultado, quando a mutação mudou o disco. */
+export function trackedVersionId(result: unknown) {
+  if (!result || typeof result !== 'object') return undefined;
+  return trackedVersions.get(result);
+}
+
 function tracked<T>(
   folder: string,
   source: Origin,
@@ -761,8 +972,25 @@ function tracked<T>(
   if (source === 'mcp' || source === 'agent') saveVersionPoint(library, `${source}:${tool}`);
   const before = capture(library);
   const result = run(library);
-  pushHistory(library, { origin: source, tool, summary, changes: diff(before, capture(library)) });
+  const entry = pushHistory(library, {
+    origin: source,
+    tool,
+    summary,
+    changes: diff(before, capture(library)),
+  });
+  if (entry?.id && result !== null && typeof result === 'object') trackedVersions.set(result, entry.id);
   return result;
+}
+
+function tagRecordsOf(library: Library): TagNoteRecord[] {
+  return indexedNotes(library)
+    .filter((note) => note.path.toLowerCase().endsWith('.md'))
+    .map((note) => ({
+      path: portablePath(note.path),
+      title: note.title,
+      mtime: note.mtime,
+      tagRecords: note.tagRecords,
+    }));
 }
 
 function define<T>(

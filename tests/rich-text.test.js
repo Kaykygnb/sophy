@@ -51,3 +51,14 @@ test('destaques alertam pergunta tarefa e dica renderizam', () => {
   assert.equal(Rich.isColor('neon'), false);
   assert.deepEqual(Rich.COLORS.length, 9);
 });
+
+test('o texto visível tira o destaque e reconstitui a data cortada pela marca', () => {
+  const cortada = 'Comprar a ração do tobi 2<span data-fundo="marrom">026-11-22</span>';
+  assert.equal(Rich.stripMarkup(cortada), 'Comprar a ração do tobi 2026-11-22');
+  assert.equal(Rich.stripMarkup(cortada).includes('span'), false);
+  assert.equal(Rich.stripMarkup(cortada).includes('data-fundo'), false);
+  const inteira = 'Comprar a ração do tobi <span data-fundo="marrom">2026-11-22</span>';
+  assert.equal(Rich.stripMarkup(inteira), 'Comprar a ração do tobi 2026-11-22');
+  assert.equal(Rich.stripMarkup('<span data-fundo="marrom"></span>').trim(), '');
+  assert.equal(Rich.stripMarkup('   ').trim(), '');
+});
