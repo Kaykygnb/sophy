@@ -285,6 +285,7 @@
   }
 
   function previewInline(text) {
+    text = String(text || '').replace(/<\/?span\b[^>]*>/gi, '');
     const pattern = /!?\[\[([^\]\n]*)\]\]/g;
     let html = '';
     let last = 0;

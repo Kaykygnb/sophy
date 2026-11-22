@@ -578,7 +578,8 @@ function paintShell() {
       <div class="titulo__abas" role="tablist" id="abas"></div>
       <div class="titulo__acoes">
         <button type="button" class="btn btn--icone" id="abrir-lateral" title="Lateral" aria-label="Mostrar a lateral">${icon('painel-lateral')}</button>
-        <button type="button" class="btn btn--icone" id="busca" title="Buscar" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
+        <button type="button" class="btn btn--fantasma btn--pequeno titulo__sofi" id="abrir-sofi" title="Pedir à Sofi (Ctrl+J)" aria-label="Pedir à Sofi (Ctrl+J)" aria-pressed="false">${icon('faisca')}<span>Sofi</span></button>
+        <button type="button" class="btn btn--icone" id="busca" title="Buscar (Ctrl+K)" aria-label="Buscar (Ctrl+K)">${icon('busca')}</button>
         <button type="button" class="btn btn--icone" id="ver-grafo" title="Grafo" aria-label="Mostrar grafo">${icon('grafo')}</button>
         <button type="button" class="btn btn--icone" id="abrir-conexoes" title="Conexões" aria-label="Conexões" aria-pressed="false">${icon('painel-direito')}</button>
         <button type="button" class="btn btn--icone" id="tema" title="Tema" aria-label="Alternar tema">${icon(themeName() === 'dark' ? 'tema-claro' : 'tema-escuro')}</button>
@@ -605,6 +606,7 @@ function paintShell() {
             ['calendario', 'calendario', 'Calendário'],
             ['grafo', 'grafo', 'Grafo'],
             ['canvas', 'canvas', 'Canvas'],
+            ['cartas', 'flashcard', 'Flashcards'],
           ]
             .map(
               ([id, glyph, label]) =>
@@ -625,6 +627,10 @@ function paintShell() {
       <span class="status__fim" id="st-tema"></span>
     </footer>`;
   $('#busca').onclick = () => openPalette();
+  $('#abrir-sofi').onclick = () => {
+    if (state.sofiOpen) closeSofi();
+    else openAgent();
+  };
   $('#ver-grafo').onclick = () => showGraph();
   $('#abrir-conexoes').onclick = () => toggleConnections();
   $('#tema').onclick = () => toggleTheme();
@@ -1907,17 +1913,31 @@ function paintCards(center) {
   const due = (state.cardRows || []).filter((card) => card.due <= today);
   const card = due[0];
   if (!card) {
-    center.innerHTML = `<div class="vazio-ensina"><h2>Flashcards</h2><p>Escreva <span class="kbd">pergunta :: resposta</span> ou <span class="kbd">frente ::: verso</span> numa nota. Cada estante vira um baralho.</p></div>`;
+    const total = (state.cardRows || []).length;
+    center.innerHTML = `<div class="vazio-ensina"><h2>${total ? 'Nada para revisar hoje' : 'Flashcards'}</h2><p>${total ? `Você tem ${total} cartão(ões); o próximo volta na data marcada.` : 'Escreva uma linha assim em qualquer nota:'}</p><p><span class="kbd">pergunta :: resposta</span> vira um cartão. <span class="kbd">frente ::: verso</span> vira dois, um em cada sentido.</p><p>Cada estante vira um baralho.</p></div>`;
+    center.onkeydown = null;
     return;
   }
   const side = state.cardFace === 'back' ? 'verso' : 'frente';
-  center.innerHTML = `<div class="inicio"><h2>Flashcards</h2><p>${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p><button type="button" class="btn btn--secundario" id="carta-virar">Mostrar resposta</button></p><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao">Não sabia</button><button type="button" class="btn btn--primario" id="carta-sim">Sabia</button></div></div>`;
+  center.innerHTML = `<div class="inicio fc-tela"><h2>Flashcards</h2><p class="fc-contagem">${escapeHtml(card.workspace || 'Biblioteca')} · ${due.length} para hoje${card.reversible ? ' · dois lados' : ''}</p><div class="fc-revisao" data-lado="${side}"><div class="fc-cartao"><div class="fc-face"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__p">${escapeHtml(card.front)}</p></div><div class="fc-face fc-face--verso"><span class="fc-face__origem">${escapeHtml(card.workspace || '')}</span><p class="fc-face__r">${escapeHtml(card.back)}</p></div></div></div><p class="fc-acoes"><button type="button" class="btn btn--secundario" id="carta-virar" aria-keyshortcuts="Space">${side === 'verso' ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd></button></p><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="carta-nao" aria-keyshortcuts="1">Não sabia <kbd class="kbd">1</kbd></button><button type="button" class="btn btn--primario" id="carta-sim" aria-keyshortcuts="2">Sabia <kbd class="kbd">2</kbd></button></div></div>`;
   $('#carta-virar').onclick = () => {
     state.cardFace = state.cardFace === 'back' ? 'front' : 'back';
-    paintCenter();
+    const back = state.cardFace === 'back';
+    const stage = center.querySelector('.fc-revisao');
+    if (stage) stage.dataset.lado = back ? 'verso' : 'frente';
+    $('#carta-virar').innerHTML = `${back ? 'Ver pergunta' : 'Mostrar resposta'} <kbd class="kbd">Espaço</kbd>`;
   };
   $('#carta-sim').onclick = () => answerCard(card, true);
   $('#carta-nao').onclick = () => answerCard(card, false);
+  center.onkeydown = (event) => {
+    if (state.view !== 'cards' || event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      $('#carta-virar')?.click();
+    } else if (event.key === '1') $('#carta-nao')?.click();
+    else if (event.key === '2') $('#carta-sim')?.click();
+  };
+  $('#carta-virar').focus();
 }
 
 async function answerCard(card, knew) {
@@ -1933,13 +1953,23 @@ function syncWeekly() {
     existing?.remove();
     return;
   }
+  const dismissedKey = `sophy.revisaoDispensada:${isoToday()}`;
+  if (localStorage.getItem(dismissedKey) || state.view === 'review') {
+    existing?.remove();
+    return;
+  }
   if (existing || !$('#centro')) return;
   const bar = document.createElement('div');
   bar.id = 'revisao-semana';
-  bar.className = 'aviso';
+  bar.className = 'aviso aviso--acao';
   bar.setAttribute('role', 'status');
-  bar.textContent = 'Domingo: a revisão da semana está pronta. A Sofi não altera as notas sozinha.';
+  bar.innerHTML = `<span>Domingo: a revisão da semana está pronta. A Sofi não altera as notas sozinha.</span><button type="button" class="btn btn--secundario btn--pequeno" id="revisao-abrir">Abrir revisão</button><button type="button" class="btn btn--icone" id="revisao-dispensar" aria-label="Dispensar aviso até amanhã" title="Dispensar até amanhã">${icon('fechar')}</button>`;
   $('#centro').prepend(bar);
+  $('#revisao-abrir').onclick = () => showReview();
+  $('#revisao-dispensar').onclick = () => {
+    localStorage.setItem(dismissedKey, '1');
+    bar.remove();
+  };
 }
 
 function paintCenter() {
@@ -2108,8 +2138,7 @@ function paintCanvasGallery(center) {
     button.onclick = async (event) => {
       event.stopPropagation();
       const file = button.dataset.file;
-      if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`))) return;
-      $('#overlay').hidden = true;
+      if (!(await confirmDialog(`Mover o canvas “${baseName(file)}” para a lixeira?`, { confirm: 'Mover para a lixeira', danger: true }))) return;
       try {
         await tool('entry.trash', { path: file });
         state.tabs = state.tabs.filter((tab) => tab !== file);
@@ -3704,7 +3733,7 @@ async function createChildPage() {
     toast('Abra a nota mãe primeiro.', 'erro');
     return;
   }
-  const title = window.prompt('Nome da página filha');
+  const title = await textDialog({ title: 'Nova página filha', label: 'Nome da página', placeholder: 'Ex.: Resumo', confirm: 'Criar página' });
   if (!title?.trim()) return;
   const child = await tool('note.child.create', { parent: state.active, title: title.trim() });
   const link = `[[${child.path.replace(/\.md$/i, '')}]]`;
@@ -5425,7 +5454,7 @@ function runCommand(id) {
 }
 
 function runCommandNow(id) {
-  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas'].includes(id)) state.nav = id;
+  if (['inicio', 'hoje', 'tarefas', 'calendario', 'grafo', 'canvas', 'cartas'].includes(id)) state.nav = id;
   const runs = {
     nota: () => createNote(),
     estante: () => createWorkspace(),
@@ -5512,7 +5541,7 @@ function dailyStrip(notePath) {
 function paintSofi(host) {
   host.classList.remove('is-oculta');
   const theme = themeName() === 'dark' ? 'escuro' : 'claro';
-  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
+  host.innerHTML = `<div class="agente agente--lateral" role="dialog" aria-label="Sofi"><div class="sofi-mascote" id="sofi-mascote" data-estado="ocioso" aria-hidden="true"><img src="ui/assets/sofi/sofi-ocioso-${theme}.svg" alt=""></div><h3>Sofi</h3><ul class="sofi-lista"><li>Lê só esta biblioteca</li><li>Usa as mesmas tools</li><li>Grava um ponto antes de agir</li></ul><div class="inicio__cartoes"><span class="chip">cofre</span><span class="chip">origem agent</span></div><label>Chave <input id="agente-chave" type="password" autocomplete="off" /></label><div class="inicio__cartoes"><button type="button" class="btn btn--secundario" id="agente-guardar">Guardar no cofre</button><button type="button" class="btn btn--fantasma" id="agente-apagar">Apagar chave</button></div><label>Pedido <textarea id="agente-pedido" rows="3"></textarea></label><button type="button" class="btn btn--primario" id="agente-enviar">Pedir</button><button type="button" class="btn btn--fantasma" id="agente-fechar">Fechar</button><p id="agente-resposta" class="nota-privacidade"></p></div>`;
   $('#agente-guardar').onclick = async () => {
     const response = await sophy.agentKeySet($('#agente-chave').value);
     $('#agente-chave').value = '';
@@ -5522,20 +5551,43 @@ function paintSofi(host) {
     const response = await sophy.agentKeyClear();
     $('#agente-resposta').textContent = response.ok ? 'Chave apagada do cofre.' : response.error;
   };
+  const mascot = $('#sofi-mascote');
+  const setMood = (name) => {
+    if (!mascot || mascot.dataset.estado === name) return;
+    mascot.dataset.estado = name;
+    mountSofi(mascot, name);
+  };
+  mountSofi(mascot, 'ocioso');
   $('#agente-enviar').onclick = async () => {
-    const response = await sophy.agentAsk($('#agente-pedido').value);
+    const send = $('#agente-enviar');
+    send.disabled = true;
+    send.setAttribute('aria-busy', 'true');
+    setMood('pensando');
+    $('#agente-resposta').textContent = 'A Sofi está pensando…';
+    let response;
+    try {
+      response = await sophy.agentAsk($('#agente-pedido').value);
+    } catch (error) {
+      response = { ok: false, error: error.message };
+    }
+    send.disabled = false;
+    send.removeAttribute('aria-busy');
+    setMood(response.ok ? 'pronta' : 'erro');
     $('#agente-resposta').textContent = response.ok ? response.value.text : response.error;
     if (response.ok) {
       await refreshLibrary();
       paintTree();
     }
   };
-  $('#agente-fechar').onclick = () => {
-    state.sofiOpen = false;
-    $('#sofi-gaveta')?.classList.remove('is-aberta');
-    if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
-    paintLinks();
-  };
+  $('#agente-fechar').onclick = () => closeSofi();
+}
+
+function closeSofi() {
+  state.sofiOpen = false;
+  $('#sofi-gaveta')?.classList.remove('is-aberta');
+  if (!$('#lateral')?.classList.contains('is-aberta')) $('#gaveta-veu')?.remove();
+  $('#abrir-sofi')?.setAttribute('aria-pressed', 'false');
+  paintLinks();
 }
 
 function openAgent() {
@@ -5549,6 +5601,7 @@ function openAgent() {
       $('.miolo')?.append(panel);
     }
     state.sofiOpen = true;
+    $('#abrir-sofi')?.setAttribute('aria-pressed', 'true');
     paintSofi(panel);
     panel.classList.add('is-aberta');
     ensureVeil();
@@ -5557,6 +5610,7 @@ function openAgent() {
   }
   $('#sofi-gaveta')?.classList.remove('is-aberta');
   state.sofiOpen = true;
+  $('#abrir-sofi')?.setAttribute('aria-pressed', 'true');
   state.connectionsOpen = true;
   paintSofi($('#conexoes'));
   syncConnectionsPanel();
@@ -5710,16 +5764,62 @@ async function showMentions() {
   });
 }
 
-function confirmDialog(message) {
+function closeDialog() {
+  const overlay = $('#overlay');
+  overlay.hidden = true;
+  overlay.innerHTML = '';
+  overlay.onkeydown = null;
+}
+
+function confirmDialog(message, { confirm = 'Confirmar', danger = false } = {}) {
   const overlay = $('#overlay');
   overlay.hidden = false;
-  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog"><p>${escapeHtml(message)}</p><button type="button" id="confirma-sim">Confirmar</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+  overlay.innerHTML = `<div class="menu menu-flutuante dialogo" role="alertdialog" aria-modal="true" aria-labelledby="confirma-texto"><p id="confirma-texto" class="dialogo__texto">${escapeHtml(message)}</p><div class="dialogo__acoes"><button type="button" class="btn btn--fantasma" id="confirma-nao">Cancelar</button><button type="button" class="btn ${danger ? 'btn--perigo' : 'btn--primario'}" id="confirma-sim">${escapeHtml(confirm)}</button></div></div>`;
   return new Promise((resolve) => {
-    $('#confirma-sim').onclick = () => resolve(true);
-    $('#confirma-nao').onclick = () => {
-      overlay.hidden = true;
-      resolve(false);
+    const done = (value) => {
+      closeDialog();
+      resolve(value);
     };
+    $('#confirma-sim').onclick = () => done(true);
+    $('#confirma-nao').onclick = () => done(false);
+    overlay.onkeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        done(false);
+      }
+    };
+    $('#confirma-sim').focus();
+  });
+}
+
+function textDialog({ title, label, placeholder = '', value = '', confirm = 'Criar' }) {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<form class="menu menu-flutuante dialogo" role="dialog" aria-modal="true" aria-labelledby="dialogo-titulo" id="dialogo-texto"><h3 id="dialogo-titulo" class="dialogo__titulo">${escapeHtml(title)}</h3><label class="dialogo__campo"><span>${escapeHtml(label)}</span><input id="dialogo-valor" type="text" autocomplete="off" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}" /></label><div class="dialogo__acoes"><button type="button" class="btn btn--fantasma" id="dialogo-cancelar">Cancelar</button><button type="submit" class="btn btn--primario" id="dialogo-ok">${escapeHtml(confirm)}</button></div></form>`;
+  return new Promise((resolve) => {
+    const done = (result) => {
+      closeDialog();
+      resolve(result);
+    };
+    const input = $('#dialogo-valor');
+    $('#dialogo-texto').onsubmit = (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) {
+        input.focus();
+        return;
+      }
+      done(text);
+    };
+    $('#dialogo-cancelar').onclick = () => done(null);
+    overlay.onkeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        done(null);
+      }
+    };
+    input.focus();
+    input.select();
   });
 }
 
