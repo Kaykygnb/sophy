@@ -13,57 +13,45 @@ No front existe só o visual estático: ••• da nota com "Exportar como PDF
 
 ---
 
-## 1. Anexos
+## 1. Anexos (contrato fechado com Fernando e Kayky)
+
+### Onde fica no disco
+
+- **Pasta única `Anexos/` na raiz da biblioteca.** Exemplo: `Anexos/grafico.png`. Não existe pasta por estante.
+- **Nome repetido** ganha o sufixo ` (2)`, depois ` (3)` e assim por diante. Exemplo: `grafico (2).png`. Nunca sobrescreve.
+- O link na nota é no formato do Obsidian (`![[Anexos/grafico.png]]`), para continuar portátil.
 
 ### Onde fica na interface (para ver, sem decorar atalho)
 
 | Lugar | O que aparece |
 |---|---|
-| Editor | Arrastar arquivo para a nota mostra a faixa "Solte para anexar". Colar imagem (Ctrl+V) também anexa. |
-| Editor, botão visível | Item **Anexo** no menu `+` da margem e no `/`, com o ícone `anexo` que já está no sprite. |
-| Bloco renderizado | Imagem vira `![[anexos/foto.png]]`, exibida inline com legenda. Outro arquivo vira um cartão com ícone, nome, tamanho e os botões Abrir e Mostrar na pasta. |
-| Painel Conexões | Nova seção **Anexos desta nota**, com a lista e a contagem. |
-| Árvore | Anexos ficam escondidos por padrão. Opção de mostrar em Configurações → Editor ("Anexos", hoje "em breve"). |
-| Configurações → Editor | Pasta padrão dos anexos: "ao lado da nota" (padrão) ou "pasta única da biblioteca". |
-
-### Onde fica no disco
-
-- **Padrão:** `<Estante>/anexos/<arquivo>`, ao lado das notas da estante. Exemplo: `Estudos/anexos/grafico.png`.
-- O link na nota é relativo e no formato do Obsidian (`![[anexos/grafico.png]]`). Assim continua portátil e o importador do Obsidian não precisa converter nada.
-- **Alternativa,** escolhida em Configurações: `Anexos/` na raiz da biblioteca.
-- **Nome em conflito:** `grafico (2).png`. Nunca sobrescreve.
-- **Limite sugerido:** 50 MB por arquivo, com aviso amigável.
-- O engine já classifica qualquer arquivo não `.md`/`.canvas` como `attachment` (`engine/library.ts`). O que falta é **criar, listar e apagar**.
+| Editor | Arrastar arquivo para a nota mostra a faixa "Solte para anexar". Colar imagem (Ctrl+V) também anexa. Os dois usam `attachment.import`. |
+| Editor, botão visível | Item **Anexo** no menu `+` da margem e no `/`, com o ícone `anexo` do sprite. |
+| Bloco renderizado | Imagem inline, lida por `attachment.read`. Outro arquivo vira um cartão com ícone, nome, tamanho e os botões Abrir e Mostrar na pasta. |
+| Painel Conexões | Seção **Anexos desta nota**: `attachment.list` filtrado pelos que têm a nota em `referencedBy`. |
+| Configurações → Bibliotecas | "Anexos" com a contagem e o filtro **Órfãos** (`orphan: true`). Hoje está "em breve". |
+| Árvore | `Anexos/` aparece como pasta da raiz, com o ícone de anexo. |
 
 ### APIs
 
-| Tipo | Nome | Entrada → saída |
-|---|---|---|
-| tool | `attachment.add` | `{ notePath, sourcePath? , bytesBase64?, fileName }` → `{ path, link, size, mime }`. Copia (não move) e devolve o `link` pronto para inserir. |
-| tool | `attachment.list` | `{ notePath }` → `[{ path, size, mime, usedBy: [notePath] }]` |
-| tool | `attachment.remove` | `{ path }` → `{ removed, brokenLinks: [notePath] }`. O front confirma antes. |
-| tool | `attachment.rename` | `{ path, name }` → `{ path, updatedNotes }`. Reescreve os links, como `note.rename` já faz. |
-| IPC | `sophy:choose-files` | **Já existe.** Basta devolver os caminhos absolutos para o `attachment.add`. |
-| IPC | `sophy:attachment-open` | `(path)` → `shell.openPath` |
-| IPC | `sophy:attachment-reveal` | `(path)` → `shell.showItemInFolder`. Pode reaproveitar `library-reveal` com caminho. |
-| protocolo | `sophy-file://` | Servir imagens da biblioteca para o `<img>` do editor sem liberar `file://` geral. Só leitura e só dentro da raiz. |
+| Tipo | Nome | Estado | Entrada → saída |
+|---|---|---|---|
+| tool | `attachment.import` | **já existe** | Copia o arquivo para `Anexos/`, aplicando o sufixo ` (2)` em nome repetido. |
+| tool | `attachment.read` | **já existe** | Lê o anexo para exibir no editor. |
+| tool | `attachment.list` | contrato | `{ path? }` → `[{ path, name, size, kind, referencedBy: [notePath], orphan }]`. Sem `path`, lista todos. |
+| IPC | `sophy:open-attachment (path)` | contrato | `resolveInside` (só dentro da biblioteca) e depois `shell.openPath`. Para executáveis, usa `shell.showItemInFolder` em vez de abrir. |
+| IPC | `sophy:choose-files` | já existe | Seletor de arquivos que alimenta o `attachment.import`. |
 
 ---
 
 ## 2. Exportar como PDF e como Markdown (por nota, no menu •••)
 
-**Já existe:** `sophy:export-pdf (html)`. Ele recebe HTML claro, faz `printToPDF`, abre o diálogo de salvar e devolve o caminho. Também existe a exportação de site e PDF da biblioteca, em Configurações → Bibliotecas → Exportar.
+**Contrato:** `exportNote({ path, format: 'pdf' | 'md' })`. O main abre `showSaveDialog` com o título da nota como nome sugerido e devolve o caminho salvo, ou `null` se cancelado.
 
-**O que falta para o ••• da nota:**
+- **`pdf`:** sempre em papel claro, reaproveitando o `printToPDF` do `sophy:export-pdf` atual.
+- **`md`:** o frontmatter exportado sai **sem a linha `id:`** (decisão do Kayky). As outras propriedades ficam.
 
-| Tipo | Nome | Entrada → saída |
-|---|---|---|
-| tool | `note.export.html` | `{ path, theme: 'light' }` → `{ html, title }`. Renderização oficial da nota, com wikilinks resolvidos e embeds e anexos inline. Evita o front montar HTML por conta própria. |
-| IPC | `sophy:export-pdf` | Já existe. Proposta: aceitar `{ html, suggestedName }`, para o diálogo vir com o título da nota em vez de `nota.pdf`. |
-| tool | `note.export.markdown` | `{ path, mode: 'portable' \| 'raw' }` → `{ markdown, attachments: [path] }`. No modo `portable`, os `[[wikilinks]]` viram `[texto](caminho.md)` e as imagens viram caminhos relativos. |
-| IPC | `sophy:save-file` | `{ suggestedName, content, filters, attachments? }` → `path \| null`. Diálogo de salvar. Com anexos, grava uma pasta `<nome>/` com `nota.md` e `anexos/`. |
-
-**Front, quando o back existir:** os itens do ••• saem de `disabled`. O fluxo mostra um toast "Exportando…" com `carregando` animado e termina num toast "PDF salvo" com a ação **Mostrar na pasta**.
+**Front, quando o back existir:** os dois itens do ••• (hoje desabilitados, com "em breve") chamam `exportNote`. O fluxo mostra um toast "Exportando…" com o ícone `carregando` e termina com "PDF salvo" ou "Markdown salvo", com a ação **Mostrar na pasta**.
 
 ---
 
@@ -83,19 +71,18 @@ No front existe só o visual estático: ••• da nota com "Exportar como PDF
 
 ## 4. Harness da Sofi
 
-**Hoje:** `sophy:agent-ask (message)` → `{ text }`, numa ida e volta só. A confirmação vem por `dialog.showMessageBox` nativo, e o status é só `{ saved }`.
+**Hoje:** `sophy:agent-ask (message)` → `{ text }`, numa ida e volta só. A confirmação vem por `dialog.showMessageBox` nativo.
 
-**O que o front precisa para uma Sofi visível e confiável:**
+**Contrato:**
 
 | Tipo | Nome | Para quê |
 |---|---|---|
-| IPC | `sophy:agent-status` | Ampliar para `{ saved, provider, model, ready, lastError }`. Alimenta o cabeçalho de Configurações → Sofi e IA, que hoje diz só "tem chave" ou "ainda não tem". |
-| IPC | `sophy:agent-start (message, { notePath?, selection? })` | Devolve `{ turnId }`. Inicia o turno sem bloquear. |
-| evento | `sophy:agent-event` | `{ turnId, kind: 'thinking' \| 'tool' \| 'text' \| 'confirm' \| 'done' \| 'error', payload }`. Com isso o front mostra o passo a passo ("Lendo Estudos/Leitura.md…"), o mascote pensando e o ícone `agente-trabalhando` na barra. |
-| IPC | `sophy:agent-confirm (turnId, requestId, accepted)` | Substitui o `showMessageBox` nativo por um diálogo do próprio Sophy, com diff do que vai mudar. |
-| IPC | `sophy:agent-cancel (turnId)` | Botão **Parar** visível (ícone `parar` já existe). |
-| IPC | `sophy:agent-config ({ provider, model, permissions })` | Itens "em breve" de Configurações: Provedor e modelo, Permissões. As permissões propostas são ler, criar, editar e apagar, cada uma liga/desliga. |
-| tool | `history.restore (pointId)` | Já existe a gravação de pontos. Precisa do "Desfazer o que a Sofi fez", que o toast oferece com o ícone `desfazer`. |
+| evento | `sophy:agent-progress` | `{ phase: 'thinking' \| 'tool' \| 'confirm' \| 'done' \| 'error', label?, … }`. Na fase `tool`, `label` traz um texto legível, por exemplo "Lendo Estudos/Leitura.md". O front mostra o passo a passo, o mascote no humor certo e o ícone `agente-trabalhando` na barra. |
+| evento | `sophy:agent-confirm` | Pedido de confirmação antes de uma escrita. O front abre um diálogo próprio, com o que vai mudar, no lugar do `showMessageBox`. |
+| preload | `agentConfirmReply (requestId, accepted)` | Resposta do diálogo de confirmação. |
+| preload | `agentCancel ()` | Botão **Parar** visível (ícone `parar`). |
+| tool | `agent.undo { versionId }` | "Desfazer o que a Sofi fez": volta ao ponto gravado antes da ação. O front oferece isso no toast de "done", com o ícone `desfazer`. |
+| IPC | `sophy:agent-status` | Hoje devolve `{ saved }`. Pode crescer depois para provedor e modelo (em Configurações estão "em breve"). |
 
 ---
 
