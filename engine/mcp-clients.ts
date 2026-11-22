@@ -162,6 +162,7 @@ export function clientSnippet(
     comando: hint.comando,
     args: hint.args,
     url: hint.url,
+    electron: hint.electron,
   };
   return {
     stdio: mcpConfigSnippet(cliente, body.chave, 'stdio'),

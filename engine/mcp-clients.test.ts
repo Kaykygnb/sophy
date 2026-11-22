@@ -137,9 +137,21 @@ test('o trecho do Codex e o do Claude não usam a mesma chave nem o mesmo nome',
   assert.equal(serverKey('Claude'), 'sophy-claude');
   assert.match(codex.codex, /\[mcp_servers\.sophy-codex\]/);
   assert.match(codex.codex, /SOPHY_MCP_KEY = "sph_codex"/);
+  assert.equal(codex.codex.includes('ELECTRON_RUN_AS_NODE'), false);
   assert.equal(codex.codex.includes('sph_claude'), false);
+  const codexNode = JSON.parse(codex.claude) as {
+    mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
+  };
+  assert.equal(codexNode.mcpServers['sophy-codex']?.command, 'node');
+  assert.deepEqual(codexNode.mcpServers['sophy-codex']?.args, [
+    '--experimental-strip-types',
+    'engine/cli.ts',
+    'mcp',
+    '--biblioteca',
+    '/biblio',
+  ]);
+  assert.deepEqual(codexNode.mcpServers['sophy-codex']?.env, { SOPHY_MCP_KEY: 'sph_codex' });
   assert.match(codex.claude, /"mcpServers"/);
-  assert.match(codex.claude, /sph_codex/);
   assert.equal(codex.claude.includes('sph_claude'), false);
   assert.match(claude.claude, /sophy-claude/);
   assert.equal(claude.claude.includes('sph_codex'), false);
@@ -162,6 +174,70 @@ test('o trecho do Codex e o do Claude não usam a mesma chave nem o mesmo nome',
     () => mcpAdmin('mcp.clients.snippet', { nome: 'Codex', chave: 'sph_outra' }, userData),
     (error: unknown) => error instanceof EngineError && error.code === 'chave_invalida',
   );
+});
+
+test('mcpConfigSnippet põe ELECTRON_RUN_AS_NODE quando o comando é o Electron', () => {
+  const cli = '/repo/engine/cli.ts';
+  const electron = '/repo/node_modules/electron/dist/electron';
+  const args = ['--experimental-strip-types', cli, 'mcp', '--biblioteca', '/notas'];
+  const snippet = mcpConfigSnippet(
+    { nome: 'Codex', biblioteca: '/notas', comando: electron, args },
+    'sph_codex',
+    'stdio',
+  );
+  const claude = JSON.parse(snippet.claude) as {
+    mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
+  };
+  const server = claude.mcpServers['sophy-codex'];
+  assert.ok(server);
+  assert.equal(server.command, electron);
+  assert.deepEqual(server.args, args);
+  assert.equal(server.args.includes('mcp'), true);
+  assert.equal(server.args.includes(cli), true);
+  assert.deepEqual(server.env, { ELECTRON_RUN_AS_NODE: '1', SOPHY_MCP_KEY: 'sph_codex' });
+  assert.match(snippet.codex, /command = "\/repo\/node_modules\/electron\/dist\/electron"/);
+  assert.match(snippet.codex, /ELECTRON_RUN_AS_NODE = "1"/);
+  assert.match(snippet.codex, /SOPHY_MCP_KEY = "sph_codex"/);
+  assert.match(snippet.codex, /"mcp"/);
+  assert.match(snippet.codex, /engine\/cli\.ts/);
+  const packaged = mcpConfigSnippet(
+    {
+      nome: 'Claude',
+      comando: 'C:\\Program Files\\Sophy\\Sophy.exe',
+      electron: true,
+      args: ['--experimental-strip-types', 'C:\\app\\resources\\app.asar\\engine\\cli.ts', 'mcp'],
+      biblioteca: 'D:\\Notas',
+    },
+    'sph_claude',
+    'stdio',
+  );
+  const packed = JSON.parse(packaged.claude) as {
+    mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
+  };
+  const claudeServer = packed.mcpServers['sophy-claude'];
+  assert.equal(claudeServer?.command, 'C:\\Program Files\\Sophy\\Sophy.exe');
+  assert.equal(claudeServer?.env.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(claudeServer?.env.SOPHY_MCP_KEY, 'sph_claude');
+  assert.equal(claudeServer?.args.includes('mcp'), true);
+  assert.equal(
+    claudeServer?.args.some((arg) => arg.endsWith('cli.ts')),
+    true,
+  );
+  assert.match(packaged.aviso ?? '', /app\.asar/);
+  assert.match(packaged.codex, /ELECTRON_RUN_AS_NODE = "1"/);
+  const nodeSnippet = mcpConfigSnippet(
+    { nome: 'Codex', comando: 'node', args, biblioteca: '/notas' },
+    'sph_codex',
+    'stdio',
+  );
+  const nodeServer = (
+    JSON.parse(nodeSnippet.claude) as {
+      mcpServers: Record<string, { env: Record<string, string> }>;
+    }
+  ).mcpServers['sophy-codex'];
+  assert.deepEqual(nodeServer?.env, { SOPHY_MCP_KEY: 'sph_codex' });
+  assert.equal(nodeSnippet.codex.includes('ELECTRON_RUN_AS_NODE'), false);
+  assert.equal(nodeSnippet.aviso, undefined);
 });
 
 test('clientes e legado não entram no registro, na Sofi nem no callTool', () => {

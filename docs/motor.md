@@ -150,13 +150,13 @@ Notas são resources `sophy://nota/<caminho>`, por exemplo `sophy://nota/Estudos
 
 `ui.openNote`, `ui.openCanvas`, `ui.showGraph` e `ui.setTheme` estão no registro e não são mutações, então entram na leitura. Elas publicam num canal em processo (`subscribeUi`). A janela do Electron assina esse canal. Se o `sophy mcp` for outro processo, ele entrega o pedido numa pasta temporária que a janela lê, desde que ela esteja aberta. Sem a janela, a resposta continua `A interface não está aberta.`
 
-O trecho pronto para o Claude (e o equivalente em `config.toml` para o Codex) sai de `mcpConfigSnippet` / `mcp.clients.snippet`. Exemplo stdio, com a chave que `mcp.clients.create` mostrou uma vez:
+O trecho pronto para o Claude (e o equivalente em `config.toml` para o Codex) sai de `mcpConfigSnippet` / `mcp.clients.snippet`. O comando real do motor é `node --experimental-strip-types engine/cli.ts mcp`. Dentro do app, `process.execPath` é o Electron: o snippet mantém esse binário e acrescenta `ELECTRON_RUN_AS_NODE=1`, senão a janela abre no lugar do servidor. Exemplo em desenvolvimento:
 
 ```json
 {
   "mcpServers": {
     "sophy-claude": {
-      "command": "node",
+      "command": "/caminho/do/electron",
       "args": [
         "--experimental-strip-types",
         "/caminho/absoluto/do/sophy/engine/cli.ts",
@@ -164,11 +164,16 @@ O trecho pronto para o Claude (e o equivalente em `config.toml` para o Codex) sa
         "--biblioteca",
         "/caminho/da/biblioteca"
       ],
-      "env": { "SOPHY_MCP_KEY": "sph_..." }
+      "env": {
+        "ELECTRON_RUN_AS_NODE": "1",
+        "SOPHY_MCP_KEY": "sph_..."
+      }
     }
   }
 }
 ```
+
+Com Node no `PATH`, troque `command` por `node` e tire `ELECTRON_RUN_AS_NODE`. No app empacotado o `cli.ts` está dentro de `app.asar`, que esse modo do Electron não lê. Use `node` com o `engine/cli.ts` do repositório, como no README.
 
 O modo Pergunta da Sofi ainda não está nesta base. `sofiTools('pergunta')` é o gancho: inclui `activity.list` e `activity.diff`. `activity.undo` só no modo agente, com confirmação.
 
