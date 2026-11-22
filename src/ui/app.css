@@ -3639,3 +3639,173 @@ button.chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .lixeira .btn.btn--secundario.btn--perigo { border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line)); }
 .lixeira .icon { width: 15px; height: 15px; }
 @media (max-width: 720px) { .lixeira__item { flex-wrap: wrap; } .lixeira__acoes { width: 100%; justify-content: flex-end; } }
+
+/* =====================================================================
+   Anexos (fase 4)
+   ===================================================================== */
+.nota-ferramentas #nota-anexar .icon { width: 15px; height: 15px; }
+.anexos__barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; margin: 10px 0 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--hover-subtle); font: 500 13px var(--font-ui); color: var(--ink-2); }
+.anexos__vazio { margin: 4px 0 0; color: var(--ink-3); font: var(--text-detail); }
+.anexos__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.anexos__item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.anexos__icone { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--hover-subtle); color: var(--ink-2); }
+.anexos__icone .icon { width: 18px; height: 18px; color: currentColor; }
+.anexos__texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.anexos__texto b { font: 600 13.5px var(--font-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anexos__texto small { color: var(--ink-3); font: 400 12px var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anexos__nota { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.anexos__nota:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 3px; }
+.anexos__tamanho { flex: none; color: var(--ink-2); font: 500 12.5px var(--font-ui); min-width: 52px; text-align: right; }
+.anexos__selo { flex: none; background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.anexos__item.is-orfao { border-style: dashed; }
+.embed--arquivo .embed__corpo { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
+.arquivo__icone { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--hover-subtle); color: var(--ink-2); }
+.arquivo__icone .icon { width: 18px; height: 18px; color: currentColor; }
+.arquivo__texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.arquivo__texto b { font: 600 13.5px var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arquivo__texto small { color: var(--ink-3); font: 400 12px var(--font-ui); }
+
+/* =====================================================================
+   Notificações (fase 4)
+   ===================================================================== */
+.titulo__sino { position: relative; }
+.sino__contador { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--danger); color: var(--on-accent); font: 700 10px/15px var(--font-ui); text-align: center; }
+.sino__contador[hidden] { display: none; }
+.notif { width: 392px; max-width: calc(100vw - 16px); max-height: min(560px, calc(100vh - 80px)); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.notif__topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 10px 18px; border-bottom: 1px solid var(--line); }
+.notif__topo h3 { margin: 0; font: 600 15px var(--font-ui); color: var(--ink); }
+.notif__lista { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
+.notif__item { position: relative; display: flex; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--line); }
+.notif__item:last-child { border-bottom: 0; }
+.notif__item.is-nova::before { content: ""; position: absolute; left: 6px; top: 24px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.notif__icone { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: var(--radius-md); background: var(--hover-subtle); color: var(--ink-3); }
+.notif__item.is-nova .notif__icone { color: var(--accent); }
+.notif__icone .icon { width: 17px; height: 17px; color: currentColor; }
+.notif__texto { flex: 1; min-width: 0; display: grid; gap: 4px; justify-items: start; }
+.notif__texto b { font: 500 13.5px var(--font-ui); color: var(--ink); }
+.notif__item.is-nova .notif__texto b { font-weight: 600; }
+.notif__texto small { color: var(--ink-2); font: 400 12px/1.45 var(--font-ui); overflow-wrap: anywhere; }
+.notif__texto .btn { margin-top: 4px; }
+.notif__lado { display: grid; justify-items: end; align-content: start; gap: 2px; flex: none; }
+.notif__lado time { color: var(--ink-3); font: 400 11px var(--font-ui); white-space: nowrap; }
+.notif__fechar { width: 24px; height: 24px; min-height: 0; padding: 0; }
+.notif__fechar .icon { width: 12px; height: 12px; }
+.notif__vazio { display: grid; justify-items: center; gap: 4px; padding: 36px 24px; text-align: center; color: var(--ink-3); }
+.notif__vazio .icon { width: 32px; height: 32px; color: var(--ink-3); }
+.notif__vazio b { margin-top: 6px; font: 600 15px var(--font-display, var(--font-ui)); color: var(--ink); }
+.notif__vazio p { margin: 0; font: 400 12.5px var(--font-ui); }
+.notif__rodape { padding: 6px 10px; border-top: 1px solid var(--line); text-align: right; }
+
+/* =====================================================================
+   Propriedades da nota: tipos com ícone, adicionar visível, Avançado (fase 4)
+   ===================================================================== */
+.nota-propriedades { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 10px 14px; background: transparent; }
+.nota-propriedades > summary { font-weight: 600; color: var(--ink); }
+.nota-propriedades > summary span { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--hover); text-align: center; font-size: 11px; line-height: 18px; color: var(--ink-2); }
+.nota-propriedades__lista { gap: 2px; padding: 8px 0 2px; }
+.propriedade { padding: 2px 6px; margin: 0 -6px; border-radius: var(--radius-md); transition: background var(--dur-fast) var(--ease); }
+.propriedade:hover, .propriedade:focus-within { background: var(--hover-subtle); }
+.propriedade__nome { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 0; cursor: default; }
+button.propriedade__nome { cursor: text; }
+.propriedade__nome > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.propriedade__tipo { display: grid; place-items: center; flex: none; color: var(--ink-3); }
+.propriedade__tipo .icon { width: 15px; height: 15px; color: currentColor; }
+.propriedade--travada, .propriedade--id { opacity: .85; }
+.propriedade__dica { grid-column: 2 / -1; margin: -4px 0 4px; color: var(--ink-3); font: 400 11.5px var(--font-ui); }
+.propriedade-adicionar { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 34px; margin-top: 8px; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: transparent; color: var(--accent); font: 600 13px var(--font-ui); cursor: pointer; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.propriedade-adicionar .icon { width: 14px; height: 14px; color: currentColor; }
+.propriedade-adicionar:hover { background: var(--accent-soft); border-color: var(--accent); }
+.propriedade-adicionar:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.nota-avancado { margin-top: 10px; }
+.nota-avancado > summary { color: var(--ink-3); font: 600 12px var(--font-ui); cursor: pointer; }
+.nota-avancado[open] > summary { margin-bottom: 6px; }
+
+/* Bloco de código com nome (fase 4) */
+.codigo__nome { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; margin-right: auto; padding: 0 4px 0 2px; color: var(--ink-3); }
+.codigo__nome .icon { width: 14px; height: 14px; color: currentColor; flex: none; }
+.codigo__nome-campo { flex: 1; min-width: 0; max-width: 260px; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--ink); font: 500 12.5px var(--font-ui); transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.codigo__nome-campo::placeholder { color: var(--ink-3); font-weight: 400; }
+.codigo__nome-campo:hover { background: var(--hover-subtle); }
+.codigo__nome-campo:focus { outline: none; border-color: var(--accent); background: var(--surface); box-shadow: var(--focus-ring); }
+
+/* Mermaid: diagrama no lugar do código, com alternância (fase 4) */
+.codigo__alternar { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--hover-subtle); margin-right: 4px; }
+.codigo__alternar button { height: 22px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font: 500 11.5px var(--font-ui); cursor: pointer; }
+.codigo__alternar button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.codigo__alternar button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.codigo__diagrama { display: none; padding: 16px; overflow-x: auto; text-align: center; }
+.codigo__diagrama svg { max-width: 100%; height: auto; }
+.codigo--mermaid[data-vista="diagrama"] .codigo__diagrama { display: block; }
+.codigo--mermaid[data-vista="diagrama"] .codigo__rolagem { display: none; }
+.diagrama__vazio { margin: 0; color: var(--ink-3); font: var(--text-detail); }
+.diagrama__erro { display: grid; justify-items: center; gap: 6px; padding: 8px 12px; text-align: center; }
+.diagrama__erro b { font: 600 14px var(--font-ui); color: var(--ink); }
+.diagrama__erro p { margin: 0; color: var(--ink-2); font: 400 12.5px var(--font-ui); }
+.diagrama__erro small { max-width: 100%; color: var(--ink-3); font: 400 11.5px var(--font-ui); overflow-wrap: anywhere; }
+
+/* =====================================================================
+   Tags no estilo Obsidian (fase 4)
+   ===================================================================== */
+.tags-painel { flex: none; max-height: 34%; overflow-y: auto; padding: 4px 8px 6px; border-top: 1px solid var(--line); }
+.tags-painel__topo { display: flex; align-items: center; gap: 4px; width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--ink-3); font: 600 10.5px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.tags-painel__topo .icon { width: 12px; height: 12px; color: currentColor; }
+.tags-painel__topo:hover { color: var(--ink); }
+.tags-painel__lista, .tags-painel__lista ul { list-style: none; margin: 0; padding: 0; }
+.tag-linha { position: relative; display: flex; align-items: center; border-radius: var(--radius-md); padding-left: calc(var(--nivel, 0) * 14px); }
+.tag-linha:hover { background: var(--hover-subtle); }
+.tag-linha.is-atual { background: var(--hover); }
+.tag-linha__abrir { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 0; background: transparent; color: var(--ink-2); font: 500 13px var(--font-ui); text-align: left; cursor: pointer; }
+.tag-linha.is-atual .tag-linha__abrir { color: var(--accent); font-weight: 600; }
+.tag-linha__abrir .icon { width: 12px; height: 12px; color: var(--ink-3); flex: none; }
+.tag-linha.is-atual .tag-linha__abrir .icon { color: var(--accent); }
+.tag-linha__nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-linha__conta { color: var(--ink-3); font: 500 11.5px var(--font-ui); }
+.tag-linha__mais { display: none; place-items: center; width: 22px; height: 22px; margin-right: 2px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; }
+.tag-linha:hover .tag-linha__mais, .tag-linha__mais:focus-visible { display: grid; }
+.tag-linha:hover .tag-linha__conta { display: none; }
+.tag-linha__mais .icon { width: 14px; height: 14px; color: currentColor; }
+.tag-linha__abrir:focus-visible, .tag-linha__mais:focus-visible, .tags-painel__topo:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.etiqueta-tela { max-width: 760px; margin: 0 auto; padding: 32px 24px 48px; }
+.etiqueta-tela__topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.etiqueta-tela__topo h2 { margin: 0 0 4px; }
+.tag-selo { display: inline-block; padding: 2px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 600 22px var(--font-ui); }
+.etiqueta-tela__lista { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); }
+.etiqueta-tela__lista li + li { border-top: 1px solid var(--line); }
+.etiqueta-nota { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--ink-2); }
+.etiqueta-nota:hover { background: var(--hover-subtle); }
+.etiqueta-nota .icon { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+.etiqueta-nota span { display: grid; gap: 2px; min-width: 0; }
+.etiqueta-nota b { font: 600 14px var(--font-ui); color: var(--ink); }
+.etiqueta-nota small { color: var(--ink-3); font: 400 12px var(--font-ui); }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tag-chip { display: inline-flex; align-items: center; height: 24px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font: 500 12px var(--font-ui); }
+.tag-chip__nome { height: 24px; padding: 0 4px 0 10px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.tag-chip__tirar { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 3px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; opacity: .7; }
+.tag-chip__tirar:hover { opacity: 1; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.tag-chip__tirar .icon { width: 10px; height: 10px; color: currentColor; }
+.tag-chip__nome:focus-visible, .tag-chip__tirar:focus-visible, .tag-chip-mais:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.tag-chip-mais { display: grid; place-items: center; width: 26px; height: 24px; border: 1px dashed var(--line-strong); border-radius: 12px; background: transparent; color: var(--accent); cursor: pointer; }
+.tag-chip-mais:hover { background: var(--accent-soft); border-color: var(--accent); }
+.tag-chip-mais .icon { width: 12px; height: 12px; color: currentColor; }
+.tag-chip-campo { height: 24px; width: 140px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface); color: var(--ink); font: 500 12px var(--font-ui); }
+.tag-chip-campo:focus { outline: none; box-shadow: var(--focus-ring); }
+
+/* =====================================================================
+   Sofi com o harness: fase, confirmação inline, Parar e ação que falhou
+   ===================================================================== */
+.sofi-fase { margin-left: 8px; color: var(--ink-3); font: 500 12px var(--font-ui); }
+.sofi-msg--digitando { display: flex; align-items: center; }
+.sofi-confirma { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); background: var(--accent-soft); }
+.sofi-confirma__icone { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--surface); color: var(--accent); }
+.sofi-confirma__icone .icon { width: 13px; height: 13px; color: currentColor; }
+.sofi-confirma__texto { display: grid; gap: 2px; font: 400 12px/1.35 var(--font-ui); }
+.sofi-confirma__texto b { color: var(--ink); font-weight: 600; font-size: 13px; }
+.sofi-confirma__texto small { color: var(--ink-3); }
+.sofi-confirma__acoes { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.sofi-campo__parar { flex: none; height: 32px; gap: 6px; }
+.sofi-campo__parar .icon { width: 12px; height: 12px; color: currentColor; }
+.sofi-acao.is-falhou { border-color: var(--danger, #c0392b); }
+.sofi-acao.is-falhou .sofi-acao__selo { background: color-mix(in srgb, var(--danger, #c0392b) 14%, transparent); color: var(--danger, #c0392b); }
+.sofi-campo [hidden] { display: none !important; }
+.sofi-campo { position: relative; }
+.sofi-campo__parar { position: absolute; right: 6px; bottom: 6px; height: 28px; padding: 0 10px; }
