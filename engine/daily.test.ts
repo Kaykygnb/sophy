@@ -6,7 +6,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { createNote, openLibrary, trashEntry } from './library.ts';
+import { createNote, openLibrary } from './library.ts';
+import { trashEntry } from './lixeira.ts';
 import { calendarFileReads, queryCalendar, todayIso } from './tasks.ts';
 import { callTool } from './tools.ts';
 
@@ -130,50 +131,32 @@ test('arquivo fora do padrão vira nota comum e o dia fica livre', () => {
   assert.equal(fs.existsSync(path.join(opened.root, 'Diário', 'solta.md')), true);
 });
 
-test('trash.restore devolve o conflito e junta ou restaura como nota', () => {
+test('trash.restore com o dia ocupado devolve a nota com sufixo e recria a pasta', () => {
   const opened = library();
-  const trash = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-lixo-'));
   createNote(opened, 'Diário/2026-11-21.md', 'velha\n');
-  const removed = trashEntry(opened, 'Diário/2026-11-21.md', { trashRoot: trash });
-  const id = path.basename(removed.trashPath);
+  const removed = trashEntry(opened, 'Diário/2026-11-21.md');
   createNote(opened, 'Diário/2026-11-21.md', 'nova\n');
-  const conflict = callTool('trash.restore', {
+  const restored = callTool('trash.restore', {
     libraryPath: opened.root,
-    id,
-    trashRoot: trash,
+    id: removed.id,
     origin: 'ui',
-  }) as { conflict?: string; id?: string; date?: string };
-  assert.deepEqual(conflict, { conflict: 'daily-exists', id, date: '2026-11-21' });
-  assert.equal(fs.readFileSync(path.join(opened.root, 'Diário', '2026-11-21.md'), 'utf8').includes('velha'), false);
-  const merged = callTool('trash.restore', {
-    libraryPath: opened.root,
-    id,
-    mode: 'merge',
-    trashRoot: trash,
-    origin: 'ui',
-  }) as { mode?: string };
-  assert.equal(merged.mode, 'merge');
-  const body = fs.readFileSync(path.join(opened.root, 'Diário', '2026-11-21.md'), 'utf8');
-  assert.match(body, /nova/);
-  assert.match(body, /velha/);
+  }) as { path: string; restored: boolean };
+  assert.equal(restored.restored, true);
+  assert.match(restored.path, / \(restaurado\)\.md$/);
+  assert.match(fs.readFileSync(path.join(opened.root, 'Diário', '2026-11-21.md'), 'utf8'), /nova/);
+  assert.match(fs.readFileSync(path.join(opened.root, ...restored.path.split('/')), 'utf8'), /velha/);
 
   const other = library();
-  const trash2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-lixo-'));
   createNote(other, 'Diário/2026-11-22.md', 'arquivo\n');
-  const second = trashEntry(other, 'Diário/2026-11-22.md', { trashRoot: trash2 });
-  const otherId = path.basename(second.trashPath);
-  createNote(other, 'Diário/2026-11-22.md', 'ocupado\n');
-  const asNote = callTool('trash.restore', {
+  const second = trashEntry(other, 'Diário/2026-11-22.md');
+  fs.rmSync(path.join(other.root, 'Diário'), { recursive: true, force: true });
+  const back = callTool('trash.restore', {
     libraryPath: other.root,
-    id: otherId,
-    mode: 'asNote',
-    trashRoot: trash2,
+    id: second.id,
     origin: 'cli',
-  }) as { path: string; mode: string };
-  assert.equal(asNote.mode, 'asNote');
-  assert.match(asNote.path, / \(restaurado\)\.md$/);
-  assert.equal(fs.readFileSync(path.join(other.root, 'Diário', '2026-11-22.md'), 'utf8').includes('ocupado'), true);
-  assert.match(fs.readFileSync(path.join(other.root, ...asNote.path.split('/')), 'utf8'), /arquivo/);
+  }) as { path: string };
+  assert.equal(back.path, 'Diário/2026-11-22.md');
+  assert.match(fs.readFileSync(path.join(other.root, 'Diário', '2026-11-22.md'), 'utf8'), /arquivo/);
 });
 
 test('calendar.query não repete itens e devolve days', () => {
