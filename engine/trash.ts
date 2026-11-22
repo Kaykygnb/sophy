@@ -1,11 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { dailyDate } from './daily.ts';
 import { EngineError } from './errors.ts';
 
 export type TrashOptions = {
   /** Pasta da lixeira (pai de `files/` e `info/`). Testes usam um diretório temporário. */
   trashRoot?: string;
+  /** Como resolver uma nota do dia cujo dia já está ocupado. */
+  mode?: 'merge' | 'asNote';
 };
 
 /** Move o item para a lixeira. Se a lixeira falhar, o original permanece. */
@@ -58,6 +61,68 @@ function placeInTrash(source: string, destination: string) {
     fs.cpSync(source, destination, { recursive: true, errorOnExist: true });
     fs.rmSync(source, { recursive: true, force: true });
   }
+}
+
+/**
+ * Devolve o item da lixeira para a biblioteca.
+ * Se a nota do dia já existe e não há modo, não restaura.
+ */
+export function restoreFromTrash(libraryRoot: string, id: string, options: TrashOptions = {}) {
+  if (!id || id.includes('/') || id.includes('\\') || id.includes('..'))
+    throw new EngineError('invalid-path', 'Identificador da lixeira inválido.');
+  const root = trashRoot(options);
+  const file = path.join(root, 'files', id);
+  const info = path.join(root, 'info', `${id}.trashinfo`);
+  if (!fs.existsSync(file) || !fs.existsSync(info))
+    throw new EngineError('not-found', 'Esse item não está na lixeira.');
+  const encoded = /^Path=(.*)$/m.exec(fs.readFileSync(info, 'utf8'))?.[1];
+  if (!encoded) throw new EngineError('invalid-path', 'A lixeira não tem o caminho original.');
+  const absolute = decodeURIComponent(encoded);
+  const relative = path.relative(libraryRoot, absolute).split(path.sep).join('/');
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
+    throw new EngineError('invalid-path', 'O item da lixeira está fora da biblioteca.');
+  const dest = path.resolve(libraryRoot, ...relative.split('/'));
+  const destRel = path.relative(libraryRoot, dest);
+  if (destRel.startsWith('..') || path.isAbsolute(destRel))
+    throw new EngineError('invalid-path', 'O item da lixeira está fora da biblioteca.');
+  const date = dailyDate(relative);
+  if (date && fs.existsSync(dest)) {
+    if (!options.mode) return { conflict: 'daily-exists' as const, id, date };
+    if (options.mode === 'merge') {
+      const incoming = fs.readFileSync(file, 'utf8');
+      const current = fs.readFileSync(dest, 'utf8');
+      const separator = current.endsWith('\n') ? '\n' : '\n\n';
+      fs.writeFileSync(dest, current + separator + incoming);
+      fs.rmSync(file, { force: true });
+      fs.rmSync(info, { force: true });
+      return { restored: true as const, path: relative, mode: 'merge' as const };
+    }
+    const restoredName = uniqueRestored(libraryRoot, relative);
+    const restoredDest = path.resolve(libraryRoot, ...restoredName.split('/'));
+    fs.mkdirSync(path.dirname(restoredDest), { recursive: true });
+    fs.renameSync(file, restoredDest);
+    fs.rmSync(info, { force: true });
+    return { restored: true as const, path: restoredName, mode: 'asNote' as const };
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  if (fs.existsSync(dest)) throw new EngineError('exists', 'Já existe um item com esse nome.');
+  fs.renameSync(file, dest);
+  fs.rmSync(info, { force: true });
+  return { restored: true as const, path: relative };
+}
+
+function uniqueRestored(root: string, relative: string) {
+  const slash = relative.lastIndexOf('/');
+  const dot = relative.lastIndexOf('.');
+  const ext = dot > slash ? relative.slice(dot) : '';
+  const base = ext ? relative.slice(0, dot) : relative;
+  let candidate = `${base} (restaurado)${ext}`;
+  let index = 2;
+  while (fs.existsSync(path.resolve(root, ...candidate.split('/')))) {
+    candidate = `${base} (restaurado ${index})${ext}`;
+    index += 1;
+  }
+  return candidate;
 }
 
 function trashRoot(options: TrashOptions) {

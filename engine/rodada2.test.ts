@@ -63,7 +63,7 @@ test('o site formata subtítulo, lista e wikilink', () => {
   assert.doesNotMatch(html, /\[\[Nota\]\]/);
 });
 
-test('importar pula con.md e a terceira cópia ganha sufixo', () => {
+test('importar pula con.md e a terceira cópia ganha sufixo', { skip: process.platform === 'win32' }, () => {
   const opened = library();
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-vault-'));
   fs.writeFileSync(path.join(vault, 'a.md'), '# A\n');
@@ -81,7 +81,7 @@ test('importar pula con.md e a terceira cópia ganha sufixo', () => {
   assert.equal(fs.existsSync(path.join(opened.root, 'Importado', 'a (importado 2).md')), true);
 });
 
-test('um nome inválido não impede gravar, abrir nem renomear', () => {
+test('um nome inválido não impede gravar, abrir nem renomear', { skip: process.platform === 'win32' }, () => {
   const opened = library();
   fs.mkdirSync(path.join(opened.root, 'Estudos'));
   createNote(opened, 'Estudos/A.md', '# A\n\nTexto.\n');
@@ -111,7 +111,7 @@ test('um nome inválido não impede gravar, abrir nem renomear', () => {
   assert.equal(fs.existsSync(path.join(opened.root, 'Estudos', 'nome.md')), true);
 });
 
-test('nota com ? continua na lista, marcada', () => {
+test('nota com ? continua na lista, marcada', { skip: process.platform === 'win32' }, () => {
   const opened = library();
   fs.writeFileSync(path.join(opened.root, 'nome?.md'), '# Pergunta\n');
   const notes = listNotes(opened);
@@ -157,8 +157,8 @@ test('o MCP somente leitura recusa note.create', async () => {
   }
   env.SOPHY_UI_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-ui-mcp-'));
   const transport = new StdioClientTransport({
-    command: path.resolve('engine/bin/sophy'),
-    args: ['mcp', '--biblioteca', root],
+    command: process.execPath,
+    args: ['--experimental-strip-types', path.resolve('engine/cli.ts'), 'mcp', '--biblioteca', root],
     cwd: os.tmpdir(),
     env,
     stderr: 'pipe',

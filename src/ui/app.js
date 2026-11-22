@@ -1,5 +1,14 @@
 const Doc = SophyDoc;
 const Cmd = SophyCommands;
+const Code = SophyCode;
+const Rich = SophyRich;
+
+const CALLOUTS = {
+  alerta: { label: 'Alerta', icon: 'alerta' },
+  pergunta: { label: 'Pergunta', icon: 'ajuda' },
+  tarefa: { label: 'Tarefa', icon: 'tarefa' },
+  dica: { label: 'Dica', icon: 'lampada' },
+};
 
 const state = {
   settings: {},
@@ -25,9 +34,9 @@ const state = {
   recentNotes: [],
   conflict: false,
   graphWorkspace: '',
-  graphTag: '',
-  graphCamera: { x: 0, y: 0, zoom: 1 },
-  graphAnimation: 0,
+  graphPaintSeq: 0,
+  graphView: null,
+  graphKeyHandler: null,
   step: 1,
   folderMode: 'criar',
   folder: '',
@@ -41,6 +50,8 @@ const state = {
   warnedUnsafe: false,
   propertyTemplates: null,
   connectionsOpen: false,
+  collapsedShelves: new Set(),
+  treeOrder: {},
 };
 
 const slash = Cmd.createSlashSession();
@@ -140,10 +151,62 @@ function syncMotion() {
   document.documentElement.classList.toggle('motion-reduce', motionReduced());
 }
 
+function engineMessage(code, message) {
+  if (code === 'daily-locked') return 'Notas do dia têm o nome fixo pela data';
+  if (code === 'daily-exists') return 'Esse dia já tem nota';
+  return message || 'Falha na operação.';
+}
+
 async function tool(name, input) {
   const response = await sophy.tool(name, input || {});
-  if (!response.ok) throw new Error(response.error || 'Falha na operação.');
+  if (!response.ok) {
+    const error = new Error(engineMessage(response.code, response.error));
+    error.code = response.code;
+    throw error;
+  }
   return response.value;
+}
+
+function dailyPathDate(notePath) {
+  const match = String(notePath || '').match(/^Diário\/(\d{4}-\d{2}-\d{2})\.md$/);
+  return match ? match[1] : null;
+}
+
+function dailyHeading(iso) {
+  const weekdays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const [year, month, day] = String(iso).split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  const label = `${weekdays[date.getDay()]}, ${day} de ${months[(month || 1) - 1]} de ${year}`;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function dailyConflictDialog() {
+  const overlay = $('#overlay');
+  overlay.hidden = false;
+  overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Esse dia já tem nota"><p>Esse dia já tem nota</p><button type="button" id="conflito-juntar">Juntar conteúdo</button><button type="button" id="conflito-nota">Restaurar como nota comum</button><button type="button" id="conflito-cancelar">Cancelar</button></div>`;
+  return new Promise((resolve) => {
+    $('#conflito-juntar').onclick = () => {
+      overlay.hidden = true;
+      resolve('merge');
+    };
+    $('#conflito-nota').onclick = () => {
+      overlay.hidden = true;
+      resolve('asNote');
+    };
+    $('#conflito-cancelar').onclick = () => {
+      overlay.hidden = true;
+      resolve(null);
+    };
+  });
+}
+
+async function restoreTrashed(id) {
+  const first = await tool('trash.restore', { id });
+  if (first?.conflict !== 'daily-exists') return first;
+  const mode = await dailyConflictDialog();
+  if (!mode) return first;
+  return tool('trash.restore', { id, mode });
 }
 
 function toast(message, kind = 'ok', action = null) {
@@ -594,8 +657,10 @@ async function showShell() {
 
 async function refreshLibrary() {
   const opened = await tool('library.open', {});
+  const previousPath = state.libraryPath;
   state.libraryPath = opened.root;
   state.libraryName = opened.root.split(/[/\\]/).pop();
+  if (previousPath !== state.libraryPath) loadTreeUi();
   state.workspaces = opened.workspaces || [];
   state.notes = await tool('note.list', {});
   state.propertyTemplates = null;
@@ -613,6 +678,66 @@ async function refreshLibrary() {
   }
 }
 
+function treeUiStorageKey() {
+  return `sophy.treeUi:${state.libraryPath || 'none'}`;
+}
+
+function loadTreeUi() {
+  try {
+    const raw = localStorage.getItem(treeUiStorageKey());
+    if (!raw) {
+      state.collapsedShelves = new Set();
+      state.treeOrder = {};
+      return;
+    }
+    const data = JSON.parse(raw);
+    state.collapsedShelves = new Set(Array.isArray(data.collapsed) ? data.collapsed : []);
+    state.treeOrder = data.order && typeof data.order === 'object' ? data.order : {};
+  } catch {
+    state.collapsedShelves = new Set();
+    state.treeOrder = {};
+  }
+}
+
+function saveTreeUi() {
+  try {
+    localStorage.setItem(
+      treeUiStorageKey(),
+      JSON.stringify({ collapsed: [...state.collapsedShelves], order: state.treeOrder }),
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function workspaceOfPath(filePath) {
+  if (!filePath || !filePath.includes('/')) return null;
+  return filePath.split('/')[0];
+}
+
+function treeOrderKey(workspace) {
+  return workspace || '';
+}
+
+function remapTreeOrderPath(from, to) {
+  for (const key of Object.keys(state.treeOrder)) {
+    state.treeOrder[key] = (state.treeOrder[key] || []).map((path) => (path === from ? to : path));
+  }
+}
+
+function removeFromTreeOrder(path) {
+  for (const key of Object.keys(state.treeOrder)) {
+    state.treeOrder[key] = (state.treeOrder[key] || []).filter((item) => item !== path);
+  }
+}
+
+function toggleShelfCollapsed(name) {
+  if (state.collapsedShelves.has(name)) state.collapsedShelves.delete(name);
+  else state.collapsedShelves.add(name);
+  saveTreeUi();
+  paintTree();
+}
+
 function markFor(name) {
   const base = Cmd.shelfMark(name);
   const saved = state.shelfStyles?.[name];
@@ -621,7 +746,222 @@ function markFor(name) {
 }
 
 function treeNotes(workspace) {
-  return state.notes.filter((note) => note.workspace === workspace);
+  const notes = state.notes.filter((note) => note.workspace === workspace);
+  const order = state.treeOrder[treeOrderKey(workspace)] || [];
+  const rank = new Map(order.map((path, index) => [path, index]));
+  return notes.slice().sort((a, b) => {
+    const ai = rank.has(a.path) ? rank.get(a.path) : Number.MAX_SAFE_INTEGER;
+    const bi = rank.has(b.path) ? rank.get(b.path) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return a.path.localeCompare(b.path, undefined, { sensitivity: 'base' });
+  });
+}
+
+function clearTreeDropUi(host) {
+  host.querySelectorAll('.is-destino, .is-arrastando').forEach((el) => {
+    el.classList.remove('is-destino', 'is-arrastando');
+  });
+  host.querySelectorAll('.arvore__insercao').forEach((el) => el.remove());
+}
+
+function parseTreeDrag(event) {
+  const raw = event.dataTransfer.getData('application/x-sophy-tree');
+  if (raw) {
+    try {
+      const data = JSON.parse(raw);
+      if (data?.path) return data;
+    } catch {
+      /* ignore */
+    }
+  }
+  const path = event.dataTransfer.getData('text/plain');
+  if (!path) return null;
+  return { kind: path.toLowerCase().endsWith('.canvas') ? 'canvas' : 'note', path };
+}
+
+function uniqueNotePath(folder, base, exclude = null) {
+  const prefix = folder ? `${folder}/` : '';
+  const taken = state.notes
+    .filter((note) => note.path !== exclude)
+    .filter((note) => (folder ? note.workspace === folder : !note.workspace))
+    .map((note) => baseName(note.path));
+  const name = taken.includes(base) ? Cmd.uniqueTitle(taken, base) : base;
+  return `${prefix}${name}.md`;
+}
+
+async function moveNoteToWorkspace(from, destShelf) {
+  if (dailyPathDate(from)) {
+    toast('Notas do dia têm o nome fixo pela data', 'erro');
+    return null;
+  }
+  if (!(await flushNote())) return null;
+  const to = uniqueNotePath(destShelf, baseName(from), from);
+  if (to === from) return from;
+  const oldKey = treeOrderKey(workspaceOfPath(from));
+  const newKey = treeOrderKey(destShelf);
+  await tool('entry.move', { from, to });
+  if (state.active === from) state.active = to;
+  state.tabs = state.tabs.map((tab) => (tab === from ? to : tab));
+  remapTreeOrderPath(from, to);
+  if (state.treeOrder[oldKey]) {
+    state.treeOrder[oldKey] = state.treeOrder[oldKey].filter((path) => path !== from && path !== to);
+  }
+  const list = (state.treeOrder[newKey] || []).filter((path) => path !== to);
+  list.push(to);
+  state.treeOrder[newKey] = list;
+  saveTreeUi();
+  return to;
+}
+
+function reorderNoteInShelf(from, targetPath, place) {
+  const shelf = workspaceOfPath(targetPath);
+  const fromShelf = workspaceOfPath(from);
+  if ((shelf || null) !== (fromShelf || null)) return false;
+  const key = treeOrderKey(shelf);
+  const list = treeNotes(shelf)
+    .map((note) => note.path)
+    .filter((path) => path !== from);
+  const index = list.indexOf(targetPath);
+  if (index < 0) list.push(from);
+  else list.splice(place === 'after' ? index + 1 : index, 0, from);
+  state.treeOrder[key] = list;
+  saveTreeUi();
+  return true;
+}
+
+async function handleTreeNoteDrop(from, target) {
+  if (!from || (target.type === 'note' && from === target.path)) return;
+  const fromShelf = workspaceOfPath(from);
+
+  if (target.type === 'shelf') {
+    const destShelf = target.shelf;
+    if ((fromShelf || null) === (destShelf || null)) {
+      const key = treeOrderKey(destShelf);
+      const list = treeNotes(destShelf)
+        .map((note) => note.path)
+        .filter((path) => path !== from);
+      list.push(from);
+      state.treeOrder[key] = list;
+      saveTreeUi();
+      paintTree();
+      return;
+    }
+    try {
+      const moved = await moveNoteToWorkspace(from, destShelf);
+      if (!moved) return;
+      await refreshLibrary();
+      paintTabs();
+      paintTree();
+      if (state.active === moved) await openNote(moved, { force: true });
+      toast('Nota movida.');
+    } catch (error) {
+      toast(error.message, 'erro');
+    }
+    return;
+  }
+
+  if (target.type === 'note') {
+    const destShelf = workspaceOfPath(target.path);
+    if ((fromShelf || null) === (destShelf || null)) {
+      if (reorderNoteInShelf(from, target.path, target.place || 'before')) paintTree();
+      return;
+    }
+    try {
+      const moved = await moveNoteToWorkspace(from, destShelf);
+      if (!moved) return;
+      await refreshLibrary();
+      reorderNoteInShelf(moved, target.path, target.place || 'before');
+      paintTabs();
+      paintTree();
+      if (state.active === moved) await openNote(moved, { force: true });
+      toast('Nota movida.');
+    } catch (error) {
+      toast(error.message, 'erro');
+    }
+  }
+}
+
+function bindTreeDnD(host) {
+  const showInsert = (button, before) => {
+    clearTreeDropUi(host);
+    button.classList.add('is-destino');
+    const line = document.createElement('div');
+    line.className = 'arvore__insercao';
+    const li = button.closest('li');
+    if (!li) return;
+    if (before) li.before(line);
+    else li.after(line);
+    button.dataset.dropPlace = before ? 'before' : 'after';
+  };
+
+  host.querySelectorAll('[data-open]').forEach((button) => {
+    button.draggable = true;
+    button.ondragstart = (event) => {
+      const path = button.dataset.open;
+      event.dataTransfer.setData('text/plain', path);
+      event.dataTransfer.setData('application/x-sophy-tree', JSON.stringify({ kind: 'note', path }));
+      event.dataTransfer.effectAllowed = 'move';
+      button.classList.add('is-arrastando');
+    };
+    button.ondragend = () => clearTreeDropUi(host);
+    button.ondragover = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = button.getBoundingClientRect();
+      showInsert(button, event.clientY < rect.top + rect.height / 2);
+    };
+    button.ondrop = async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const drag = parseTreeDrag(event);
+      clearTreeDropUi(host);
+      if (!drag || drag.kind !== 'note') return;
+      await handleTreeNoteDrop(drag.path, {
+        type: 'note',
+        path: button.dataset.open,
+        place: button.dataset.dropPlace || 'before',
+      });
+    };
+  });
+
+  host.querySelectorAll('[data-shelf]').forEach((button) => {
+    button.ondragover = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearTreeDropUi(host);
+      button.classList.add('is-destino');
+    };
+    button.ondragleave = () => button.classList.remove('is-destino');
+    button.ondrop = async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const drag = parseTreeDrag(event);
+      clearTreeDropUi(host);
+      if (!drag || drag.kind !== 'note') return;
+      await handleTreeNoteDrop(drag.path, { type: 'shelf', shelf: button.dataset.shelf });
+    };
+  });
+
+  const tree = host.querySelector('ul.arvore');
+  if (tree) {
+    tree.ondragover = (event) => {
+      if (event.target !== tree) return;
+      event.preventDefault();
+      tree.classList.add('is-destino');
+    };
+    tree.ondragleave = (event) => {
+      if (event.target === tree) tree.classList.remove('is-destino');
+    };
+    tree.ondrop = async (event) => {
+      if (event.target !== tree) return;
+      event.preventDefault();
+      tree.classList.remove('is-destino');
+      const drag = parseTreeDrag(event);
+      clearTreeDropUi(host);
+      if (!drag || drag.kind !== 'note') return;
+      await handleTreeNoteDrop(drag.path, { type: 'shelf', shelf: null });
+    };
+  }
 }
 
 function paintTree() {
@@ -637,6 +977,7 @@ function paintTree() {
       if (filter && notes.length === 0 && !workspace.name.toLocaleLowerCase().includes(filter))
         return '';
       const color = mark.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+      const expanded = !!filter || !state.collapsedShelves.has(workspace.name);
       const children = notes
         .map((note) => {
           const label =
@@ -662,9 +1003,10 @@ function paintTree() {
           ? `<input class="arvore__renomear" data-rename="shelf" value="${escapeHtml(workspace.name)}" aria-label="Nome da estante" />`
           : `<span class="arvore__nome">${escapeHtml(workspace.name)}</span>`;
       const shelfUnsafe = workspace.unsafe ? ' title="Nome inválido no Windows"' : '';
-      return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="true"${color}${shelfUnsafe}>
+      const group = expanded ? `<ul role="group">${children}${boards}</ul>` : '';
+      return `<li role="treeitem"><button type="button" class="arvore__linha${workspace.unsafe ? ' is-invalido' : ''}" data-shelf="${escapeHtml(workspace.name)}" aria-selected="${Cmd.treeMarked('shelf', workspace.name, state)}" aria-expanded="${expanded}"${color}${shelfUnsafe}>
           ${icon('chevron-direita', 'arvore__seta')}${icon(mark.icon, 'icon--estante')}${shelfLabel}
-          <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button><ul role="group">${children}${boards}</ul></li>`;
+          <span class="arvore__conta">${notes.length + state.canvases.filter((file) => file.workspace === workspace.name).length}</span></button>${group}</li>`;
     })
     .join('');
   const loose = treeNotes(null)
@@ -693,8 +1035,6 @@ function paintTree() {
     toast(`${unsafeCount} item(ns) com nome inválido no Windows continuam na árvore, marcados para renomear.`, 'erro');
   }
   host.querySelectorAll('[data-open]').forEach((button) => {
-    button.draggable = true;
-    button.ondragstart = (event) => event.dataTransfer.setData('text/plain', button.dataset.open);
     button.onclick = () => {
       state.selectedShelf = button.dataset.open.includes('/')
         ? button.dataset.open.split('/')[0]
@@ -710,15 +1050,26 @@ function paintTree() {
   host.querySelectorAll('[data-shelf]').forEach((button) => {
     button.onclick = (event) => {
       if (event.target.closest('input')) return;
+      if (event.target.closest('.arvore__seta')) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleShelfCollapsed(button.dataset.shelf);
+        return;
+      }
       state.treeFocus = 'shelf';
       state.selectedShelf = button.dataset.shelf;
       state.view = 'shelf';
       state.active = null;
+      if (state.collapsedShelves.has(button.dataset.shelf)) {
+        state.collapsedShelves.delete(button.dataset.shelf);
+        saveTreeUi();
+      }
       paintTree();
       paintCenter();
     };
     button.oncontextmenu = (event) => openTreeMenu(event, 'shelf', button.dataset.shelf);
   });
+  bindTreeDnD(host);
   bindNameField(
     host.querySelector('#nome-estante'),
     async (name) => {
@@ -750,7 +1101,11 @@ function paintTree() {
         const to = `${folder}${name}.md`;
         try {
           let moved = null;
-          if (to !== from) moved = await tool('entry.move', { from, to });
+          if (to !== from) {
+            moved = await tool('entry.move', { from, to });
+            remapTreeOrderPath(from, to);
+            saveTreeUi();
+          }
           if (state.active === from) state.active = to;
           state.tabs = state.tabs.map((tab) => (tab === from ? to : tab));
           await refreshLibrary();
@@ -789,6 +1144,17 @@ function paintTree() {
             state.active = `${name}${state.active.slice(from.length)}`;
           if (state.canvasPath?.startsWith(`${from}/`) || state.canvasPath === from)
             state.canvasPath = `${name}${state.canvasPath.slice(from.length)}`;
+          if (state.collapsedShelves.has(from)) {
+            state.collapsedShelves.delete(from);
+            state.collapsedShelves.add(name);
+          }
+          if (state.treeOrder[from]) {
+            state.treeOrder[name] = (state.treeOrder[from] || []).map((path) =>
+              path === from || path.startsWith(`${from}/`) ? `${name}${path.slice(from.length)}` : path,
+            );
+            delete state.treeOrder[from];
+          }
+          saveTreeUi();
         }
         state.selectedShelf = name;
         await refreshLibrary();
@@ -1004,6 +1370,7 @@ async function setNoteLayout(patch) {
 
 async function syncNoteNameFromTitle() {
   if (!state.active || !state.doc || state.conflict || state.renaming) return;
+  if (dailyPathDate(state.active)) return;
   const first = state.doc.blocks[0];
   if (!first || first.type !== 'heading' || (first.level || 1) !== 1) return;
   const title = Doc.visibleOf(first).replace(/\n/g, ' ').trim();
@@ -1249,8 +1616,16 @@ function propertyValueHtml(property) {
 
 function notePropertiesHtml() {
   const properties = noteProperties();
-  const rows = properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
-  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button></div></details>`;
+  const daily = dailyPathDate(state.active);
+  const locked = daily
+    ? `<div class="propriedade propriedade--travada"><span class="propriedade__nome">data</span><input class="propriedade__valor" value="${escapeHtml(daily)}" readonly aria-readonly="true" tabindex="-1" aria-label="data">${icon('cadeado', 'icon--14')}</div>`
+    : '';
+  const rows = locked + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}"><span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
+  const noteId = typeof state.frontmatter?.id === 'string' ? state.frontmatter.id : '';
+  const advanced = noteId
+    ? `<details class="nota-avancado"><summary>Avançado</summary><div class="propriedade propriedade--id"><span class="propriedade__nome">id</span><input class="propriedade__valor" value="${escapeHtml(noteId)}" readonly aria-readonly="true" tabindex="-1" aria-label="id da nota"></div></details>`
+    : '';
+  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="btn btn--fantasma" id="adicionar-propriedade">＋ Adicionar propriedade</button>${advanced}</div></details>`;
 }
 
 function openPropertyValuePicker(propertyId, anchor) {
@@ -1570,12 +1945,20 @@ function syncWeekly() {
 function paintCenter() {
   const center = $('#centro');
   if (!center || state.painting) return;
+  if (state.view !== 'graph' && state.graphView) {
+    state.graphView.dispose();
+    state.graphView = null;
+    if (state.graphKeyHandler) document.removeEventListener('keydown', state.graphKeyHandler);
+    state.graphKeyHandler = null;
+  }
   state.painting = true;
   try {
     paintCenterBody(center);
   } finally {
     state.painting = false;
   }
+  bindCodeChrome();
+  ensureCodeGrammars();
   syncNav();
   bindBlockDrag();
   syncWeekly();
@@ -1903,11 +2286,21 @@ function paintCenterBody(center) {
     : '';
   const chips = tagChips(state.frontmatter);
   const crumb = noteCrumb(state.active);
+  const dailyIso = dailyPathDate(state.active);
   const firstIsTitle = state.doc.blocks[0]?.type === 'heading';
-  const title = firstIsTitle ? renderBlock(state.doc.blocks[0], 0) : '';
+  const hiddenBlocks = collapsedBlockIndexes(state.doc.blocks);
+  const title = dailyIso
+    ? `<h1 class="nota-dia__titulo" aria-readonly="true">${icon('cadeado', 'icon--14')}<span>${escapeHtml(dailyHeading(dailyIso))}</span></h1>`
+    : firstIsTitle
+      ? renderBlock(state.doc.blocks[0], 0)
+      : '';
   const blocks = state.doc.blocks
     .slice(firstIsTitle ? 1 : 0)
-    .map((block, index) => renderBlock(block, index + (firstIsTitle ? 1 : 0)))
+    .map((block, index) => {
+      const at = index + (firstIsTitle ? 1 : 0);
+      if (hiddenBlocks.has(at)) return '';
+      return renderBlock(block, at);
+    })
     .join('');
   const cover = coverBand();
   const strip = dailyStrip(state.active);
@@ -1962,6 +2355,15 @@ function paintCenterBody(center) {
     .querySelectorAll('[data-block]:not(table)')
     .forEach((el) => bindBlock(el));
   $('#coluna')
+    .querySelectorAll('[data-secao-toggle]')
+    .forEach((button) => {
+      button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSection(button.dataset.secaoToggle);
+      };
+    });
+  $('#coluna')
     .querySelectorAll('[data-mais]')
     .forEach((button) => {
       button.onclick = () => insertBlockBelow(Number(button.dataset.mais));
@@ -2009,7 +2411,7 @@ function paintCenterBody(center) {
     if (!link) return;
     event.preventDefault();
     const create = link.classList.contains('wikilink--quebrado');
-    followLink(link.dataset.target, {
+    followLink(link.dataset.raw || link.dataset.target, {
       create,
       newTab: event.ctrlKey || event.metaKey,
     });
@@ -2033,18 +2435,351 @@ function paintCenterBody(center) {
   }
 }
 
+function codeLinesOn() {
+  try {
+    return localStorage.getItem('sophy-code-lines') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function renderCodeBlock(block, index) {
+  const parts = Doc.codeParts(block.raw);
+  const source = parts.body;
+  const info = parts.info || '';
+  const linesOn = codeLinesOn();
+  const highlighted = Code.highlight(source, info, window.Prism);
+  const nums = source.split('\n').map((_, line) => String(line + 1)).join('\n');
+  return `<div class="codigo${linesOn ? ' codigo--linhas' : ''}">
+    <div class="codigo__barra">
+      <button type="button" class="codigo__acao" data-code-lines aria-pressed="${linesOn ? 'true' : 'false'}">Linhas</button>
+      <button type="button" class="codigo__acao" data-code-copy="${index}">Copiar</button>
+      <button type="button" class="codigo__lingua" data-code-lang="${index}" aria-haspopup="listbox" aria-label="Linguagem do bloco">${escapeHtml(Code.labelFor(info))}</button>
+    </div>
+    <div class="codigo__rolagem">
+      <pre class="codigo__nums" aria-hidden="true">${escapeHtml(nums)}</pre>
+      <div class="codigo__camada">
+        <pre class="codigo__realce" aria-hidden="true">${highlighted}</pre>
+        <pre class="bloco bloco--codigo" data-block="${index}" data-info="${escapeHtml(info)}" contenteditable="true" spellcheck="false">${escapeHtml(source)}</pre>
+      </div>
+    </div>
+  </div>`;
+}
+
+function refreshCodeView(pre) {
+  const wrap = pre.closest('.codigo');
+  if (!wrap) return;
+  const source = pre.textContent;
+  const realce = wrap.querySelector('.codigo__realce');
+  if (realce) realce.innerHTML = Code.highlight(source, pre.dataset.info || '', window.Prism);
+  const nums = wrap.querySelector('.codigo__nums');
+  if (nums) nums.textContent = source.split('\n').map((_, line) => String(line + 1)).join('\n');
+}
+
+function bindCodeChrome() {
+  const center = $('#centro');
+  if (!center || center.dataset.codeChrome) return;
+  center.dataset.codeChrome = '1';
+  center.addEventListener('click', onCodeChromeClick);
+}
+
+function onCodeChromeClick(event) {
+  const lang = event.target.closest('[data-code-lang]');
+  if (lang) {
+    event.preventDefault();
+    openCodeLanguageMenu(lang);
+    return;
+  }
+  const copy = event.target.closest('[data-code-copy]');
+  if (copy) {
+    event.preventDefault();
+    copyCode(Number(copy.dataset.codeCopy));
+    return;
+  }
+  const lines = event.target.closest('[data-code-lines]');
+  if (lines) {
+    event.preventDefault();
+    toggleCodeLines();
+  }
+}
+
+function toggleCodeLines() {
+  const next = !codeLinesOn();
+  try {
+    localStorage.setItem('sophy-code-lines', next ? '1' : '0');
+  } catch {
+    /* a preferência fica só nesta sessão */
+  }
+  document.querySelectorAll('.codigo').forEach((el) => {
+    el.classList.toggle('codigo--linhas', next);
+    el.querySelector('[data-code-lines]')?.setAttribute('aria-pressed', next ? 'true' : 'false');
+  });
+}
+
+async function copyCode(index) {
+  const pre = document.querySelector(`pre.bloco--codigo[data-block="${index}"]`);
+  if (!pre) return;
+  const text = pre.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    document.execCommand('copy');
+    area.remove();
+  }
+  toast('Copiado');
+}
+
+function setCodeLanguage(index, info) {
+  const pre = document.querySelector(`pre.bloco--codigo[data-block="${index}"]`);
+  const block = state.doc?.blocks[index];
+  if (!pre || !block || block.type !== 'code') return;
+  const parts = Doc.codeParts(rawFromEditor(pre, block));
+  state.doc = Doc.withBlockRaw(state.doc, index, Doc.codeRaw(parts.fence, info, parts.body));
+  pre.dataset.info = info;
+  const button = pre.closest('.codigo')?.querySelector('.codigo__lingua');
+  if (button) button.textContent = Code.labelFor(info);
+  refreshCodeView(pre);
+  ensureCodeGrammars();
+  scheduleSave();
+}
+
+let codeLangCloser = null;
+
+function openCodeLanguageMenu(button) {
+  closeMenus();
+  const index = Number(button.dataset.codeLang);
+  const block = state.doc?.blocks[index];
+  if (!block || block.type !== 'code') return;
+  const infos = state.doc.blocks.filter((item) => item.type === 'code').map((item) => Doc.codeParts(item.raw).info);
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante codigo-linguas';
+  menu.setAttribute('role', 'listbox');
+  menu.setAttribute('aria-label', 'Linguagem do bloco');
+  const search = document.createElement('input');
+  search.className = 'codigo-linguas__busca';
+  search.type = 'search';
+  search.placeholder = 'Buscar linguagem';
+  search.setAttribute('aria-label', 'Buscar linguagem');
+  search.autocomplete = 'off';
+  const list = document.createElement('div');
+  list.className = 'codigo-linguas__lista';
+  menu.append(search, list);
+  document.body.append(menu);
+  const rect = button.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - 340)}px`;
+  menu.style.left = `${Math.max(8, rect.right - 260)}px`;
+  const paint = () => fillCodeLanguages(list, search.value, infos, index);
+  search.addEventListener('input', paint);
+  search.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeMenus();
+    button.focus();
+  });
+  paint();
+  search.focus();
+  if (codeLangCloser) document.removeEventListener('pointerdown', codeLangCloser, true);
+  codeLangCloser = (event) => {
+    if (!menu.isConnected) {
+      document.removeEventListener('pointerdown', codeLangCloser, true);
+      return;
+    }
+    if (menu.contains(event.target) || button.contains(event.target)) return;
+    document.removeEventListener('pointerdown', codeLangCloser, true);
+    closeMenus();
+  };
+  setTimeout(() => document.addEventListener('pointerdown', codeLangCloser, true), 0);
+}
+
+function fillCodeLanguages(list, query, infos, index) {
+  list.replaceChildren();
+  const q = query.trim();
+  if (q) {
+    const found = Code.search(q);
+    const exact = found.some((item) => item.aliases.some((alias) => alias.toLowerCase() === q.toLowerCase()) || item.fence.toLowerCase() === q.toLowerCase());
+    if (!exact) addCodeLanguageOption(list, index, q.replace(/[`\r\n]/g, ''), q.replace(/[`\r\n]/g, ''));
+    found.forEach((item) => addCodeLanguageOption(list, index, item.fence, item.label));
+    return;
+  }
+  addCodeLanguageOption(list, index, '', 'Texto');
+  const ranked = Code.rank(infos);
+  if (ranked.used.length) {
+    addCodeLanguageHeading(list, 'Nesta nota');
+    ranked.used.forEach((row) => {
+      if (row.known) addCodeLanguageOption(list, index, row.known.fence, row.known.label);
+      else addCodeLanguageOption(list, index, row.key, row.key);
+    });
+  }
+  addCodeLanguageHeading(list, 'Mais usadas');
+  ranked.popular.forEach((id) => {
+    const item = Code.CATALOG.find((entry) => entry.id === id);
+    if (item) addCodeLanguageOption(list, index, item.fence, item.label);
+  });
+  addCodeLanguageHeading(list, 'Outras');
+  ranked.rest.forEach((id) => {
+    const item = Code.CATALOG.find((entry) => entry.id === id);
+    if (item) addCodeLanguageOption(list, index, item.fence, item.label);
+  });
+}
+
+function addCodeLanguageHeading(list, text) {
+  const heading = document.createElement('p');
+  heading.className = 'menu__grupo';
+  heading.textContent = text;
+  list.append(heading);
+}
+
+function addCodeLanguageOption(list, index, fence, label) {
+  const option = document.createElement('button');
+  option.type = 'button';
+  option.className = 'menu__item';
+  option.setAttribute('role', 'option');
+  option.textContent = label;
+  option.addEventListener('mousedown', (event) => event.preventDefault());
+  option.addEventListener('click', () => {
+    setCodeLanguage(index, fence);
+    closeMenus();
+  });
+  list.append(option);
+}
+
+const codeGrammarQueue = new Map();
+let codeGrammarChain = Promise.resolve();
+
+function loadCodeGrammar(name) {
+  if (!window.Prism) return Promise.resolve();
+  if (window.Prism.languages?.[name]) return Promise.resolve();
+  if (codeGrammarQueue.has(name)) return codeGrammarQueue.get(name);
+  const job = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = new URL(`../node_modules/prismjs/components/prism-${name}.min.js`, document.baseURI).href;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+  codeGrammarQueue.set(name, job);
+  return job;
+}
+
+function ensureCodeGrammars() {
+  if (!state.doc) return;
+  const names = [];
+  for (const block of state.doc.blocks) {
+    if (block.type !== 'code') continue;
+    for (const name of Code.grammarPlan(Doc.codeParts(block.raw).info)) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  codeGrammarChain = names
+    .reduce((chain, name) => chain.then(() => loadCodeGrammar(name)), codeGrammarChain)
+    .then(() => {
+      document.querySelectorAll('pre.bloco--codigo').forEach((pre) => refreshCodeView(pre));
+    });
+}
+
+function noteCollapsedSections() {
+  const map = state.settings.collapsedSections || {};
+  const list = state.active ? map[state.active] : null;
+  return new Set(Array.isArray(list) ? list.map((item) => foldText(item)) : []);
+}
+
+function isSectionCollapsed(title) {
+  return noteCollapsedSections().has(foldText(title));
+}
+
+function collapsedBlockIndexes(blocks) {
+  const hidden = new Set();
+  const collapsed = noteCollapsedSections();
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (block.type !== 'heading' || (block.level || 1) > 3) continue;
+    const title = Doc.visibleOf(block).replace(/\n/g, ' ').trim();
+    if (!collapsed.has(foldText(title))) continue;
+    const level = block.level || 1;
+    for (let next = index + 1; next < blocks.length; next += 1) {
+      const other = blocks[next];
+      if (other.type === 'heading' && (other.level || 1) <= level) break;
+      hidden.add(next);
+    }
+  }
+  return hidden;
+}
+
+async function toggleSection(title) {
+  if (!state.active || !title) return;
+  const map = { ...(state.settings.collapsedSections || {}) };
+  const key = state.active;
+  const current = new Set((map[key] || []).map((item) => String(item)));
+  const folded = foldText(title);
+  let next = [...current];
+  if (current.has(folded) || [...current].some((item) => foldText(item) === folded)) {
+    next = next.filter((item) => foldText(item) !== folded);
+  } else next.push(title);
+  if (next.length) map[key] = next;
+  else delete map[key];
+  state.settings.collapsedSections = map;
+  await sophy.saveSettings({ collapsedSections: map });
+  paintCenter();
+}
+
+function scrollToSection(anchor) {
+  if (!anchor) return false;
+  if (anchor.startsWith('^')) {
+    const id = anchor.slice(1);
+    const hit = [...document.querySelectorAll('#coluna [data-block]')].find((el) =>
+      foldText(el.textContent || '').includes(foldText(`^${id}`)),
+    );
+    if (!hit) return false;
+    hit.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
+    hit.classList.add('is-secao-alvo');
+    return true;
+  }
+  const wanted = foldText(anchor);
+  const heading = [...document.querySelectorAll('#coluna .bloco--titulo')].find(
+    (el) => foldText(el.textContent || '') === wanted,
+  );
+  if (!heading) return false;
+  heading.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
+  heading.classList.add('is-secao-alvo');
+  return true;
+}
+
+function noteSectionsFromDoc() {
+  const sections = [];
+  for (let index = 0; index < (state.doc?.blocks || []).length; index += 1) {
+    const block = state.doc.blocks[index];
+    if (block.type !== 'heading' || (block.level || 1) > 3) continue;
+    sections.push({
+      title: Doc.visibleOf(block).replace(/\n/g, ' ').trim(),
+      level: block.level || 1,
+      index,
+    });
+  }
+  return sections;
+}
+
 function renderBlock(block, index) {
   if (block.type === 'blank')
     return `<div class="bloco" data-vazio data-block="${index}" contenteditable="true"><br /></div>`;
   if (block.type === 'hr') return `<hr data-block="${index}" />`;
   if (block.type === 'heading') {
     const text = block.raw.replace(/^#{1,6}\s?/, '').replace(/\n$/, '');
-    return `<h${Math.min(block.level, 6)} class="bloco bloco--titulo bloco--titulo${block.level}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</h${Math.min(block.level, 6)}>`;
+    const level = Math.min(block.level || 1, 6);
+    const title = Doc.visibleOf(block).replace(/\n/g, ' ').trim();
+    const collapsible = level <= 3;
+    const folded = collapsible && isSectionCollapsed(title);
+    const toggle = collapsible
+      ? `<button type="button" class="secao__seta${folded ? ' is-fechada' : ''}" data-secao-toggle="${escapeHtml(title)}" aria-label="${folded ? 'Abrir seção' : 'Recolher seção'}" aria-expanded="${folded ? 'false' : 'true'}">${icon('chevron-direita')}</button>`
+      : '';
+    return `<div class="secao-titulo secao-titulo--${level}${folded ? ' is-recolhida' : ''}" data-secao="${escapeHtml(title)}">${toggle}<h${level} class="bloco bloco--titulo bloco--titulo${level}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</h${level}></div>`;
   }
-  if (block.type === 'code') {
-    const inner = Doc.codeParts(block.raw).body;
-    return `<pre class="bloco bloco--codigo" data-block="${index}" contenteditable="true">${escapeHtml(inner)}</pre>`;
-  }
+  if (block.type === 'code') return renderCodeBlock(block, index);
   if (block.type === 'task' && block.task) {
     const task = block.task;
     const kit = Cmd.kitTaskStatus(task.status);
@@ -2083,6 +2818,12 @@ function renderBlock(block, index) {
     if (text.startsWith('[!toggle]')) {
       const body = text.replace(/^\[!toggle\]\n?/, '');
       return `<details class="bloco bloco--recolhivel" open><summary>Recolhível</summary><div class="bloco bloco--citacao" data-block="${index}" data-toggle="1" contenteditable="true">${inlineHtml(body) || '<br>'}</div></details>`;
+    }
+    const calloutMatch = text.match(/^\[!([a-z]+)\]\s*/i);
+    const kind = calloutMatch?.[1]?.toLowerCase();
+    if (kind && CALLOUTS[kind]) {
+      const body = text.slice(calloutMatch[0].length);
+      return `<div class="bloco bloco--callout bloco--callout-${kind}" data-callout-wrap="${kind}"><span class="callout__rotulo">${icon(CALLOUTS[kind].icon, 'icon--16')}<span>${CALLOUTS[kind].label}</span></span><blockquote class="bloco bloco--citacao bloco--destaque" data-block="${index}" data-callout="${kind}" contenteditable="true">${inlineHtml(body) || '<br>'}</blockquote></div>`;
     }
     const callout = text.startsWith('[!') ? ' bloco--destaque' : '';
     return `<blockquote class="bloco bloco--citacao${callout}" data-block="${index}" contenteditable="true">${inlineHtml(text) || '<br>'}</blockquote>`;
@@ -2199,7 +2940,13 @@ function rawFromEditor(el, block) {
   }
   if (block.type === 'quote') {
     const lines = markdownFromDom(el).replace(/\n$/, '').split('\n');
-    const body = el.dataset.toggle === '1' ? ['[!toggle]', ...lines] : lines;
+    let body = lines;
+    if (el.dataset.toggle === '1') body = ['[!toggle]', ...lines];
+    else if (el.dataset.callout && CALLOUTS[el.dataset.callout]) {
+      const first = lines[0] || '';
+      const stripped = first.replace(new RegExp(`^\\[!${el.dataset.callout}\\]\\s*`, 'i'), '');
+      body = [`[!${el.dataset.callout}] ${stripped}`.trimEnd(), ...lines.slice(1)];
+    }
     return `${body.map((line) => `> ${line}`).join('\n')}\n`;
   }
   const text = markdownFromDom(el).replace(/\n$/, '');
@@ -2253,6 +3000,7 @@ function onBlockInput(el) {
   if (found) showSlash(el, found);
   else if (wiki) showWiki(el, wiki);
   else closeMenus();
+  if (block?.type === 'code') refreshCodeView(el);
   scheduleSave();
   paintStatus();
 }
@@ -2799,8 +3547,11 @@ function offsetAt(el, node, offset) {
   const walk = (current) => {
     if (found) return;
     if (current === node) {
-      if (current.nodeType === Node.TEXT_NODE) count += Math.min(offset, current.textContent.length);
-      else [...current.childNodes].slice(0, offset).forEach((child) => addWhole(child));
+      if (current.nodeType === Node.TEXT_NODE) {
+        const raw = current.textContent || '';
+        const capped = Math.min(offset, raw.length);
+        count += raw.slice(0, capped).replace(/\u200b/g, '').length;
+      } else [...current.childNodes].slice(0, offset).forEach((child) => addWhole(child));
       found = true;
       return;
     }
@@ -2838,17 +3589,32 @@ function offsetAt(el, node, offset) {
   return count;
 }
 
+function domOffsetForPlain(raw, plainOffset) {
+  let plain = 0;
+  const text = String(raw || '');
+  for (let i = 0; i < text.length; i++) {
+    if (plain === plainOffset) return i;
+    if (text[i] !== '\u200b') plain++;
+  }
+  return text.length;
+}
+
 function placeCaret(el, offset) {
   el.focus();
   const selection = getSelection();
   const range = document.createRange();
   let left = Math.max(0, offset);
+  // #region agent log
+  const hasZwsp = !!el.textContent?.includes('\u200b');
+  if (hasZwsp) fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'post-fix',hypothesisId:'D',location:'app.js:placeCaret',message:'placeCaret with zwsp',data:{offset,textLen:el.textContent?.length||0,plainLen:(el.textContent||'').replace(/\u200b/g,'').length,mapped:domOffsetForPlain(el.textContent||'',offset),block:el.dataset?.block||null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const walk = (current) => {
     if (left < 0) return true;
     if (current.nodeType === Node.TEXT_NODE) {
-      const text = current.textContent.replace(/\u200b/g, '');
+      const raw = current.textContent || '';
+      const text = raw.replace(/\u200b/g, '');
       if (left <= text.length) {
-        range.setStart(current, Math.min(left, current.textContent.length));
+        range.setStart(current, domOffsetForPlain(raw, left));
         range.collapse(true);
         left = -1;
         return true;
@@ -2919,6 +3685,11 @@ function showSlash(el, found) {
       pickAndInsertImages().catch((error) => toast(error.message, 'erro'));
       return;
     }
+    if (item.id === 'pagina') {
+      insertAt(el, found.start, found.start + 1 + found.query.length, '');
+      createChildPage().catch((error) => toast(error.message, 'erro'));
+      return;
+    }
     insertAt(
       el,
       found.start,
@@ -2926,6 +3697,29 @@ function showSlash(el, found) {
       item.id === 'hoje' ? today() : item.insert,
     );
   });
+}
+
+async function createChildPage() {
+  if (!state.active) {
+    toast('Abra a nota mãe primeiro.', 'erro');
+    return;
+  }
+  const title = window.prompt('Nome da página filha');
+  if (!title?.trim()) return;
+  const child = await tool('note.child.create', { parent: state.active, title: title.trim() });
+  const link = `[[${child.path.replace(/\.md$/i, '')}]]`;
+  const index = state.caret?.index ?? state.doc.blocks.length - 1;
+  const block = state.doc.blocks[index];
+  if (block) {
+    const text = Doc.visibleOf(block);
+    state.doc = Doc.withBlockRaw(state.doc, index, rawFromPlain(block, `${text}${text ? '\n' : ''}${link}`));
+  } else {
+    state.doc = Doc.replaceBlock(state.doc, state.doc.blocks.length - 1, `${link}\n`);
+  }
+  paintCenter();
+  scheduleSave();
+  await refreshLibrary();
+  toast(`Página “${title.trim()}” criada.`);
 }
 
 function renderSlash(items) {
@@ -3252,7 +4046,7 @@ async function followLink(target, options = {}) {
       state.tabs = [...state.tabs, path];
       paintTabs();
     }
-    await openNote(path);
+    await openNote(path, { anchor: draft.anchor || '' });
     rememberRecent(path);
   } catch {
     toast('Não encontrei essa nota.', 'erro');
@@ -3265,15 +4059,28 @@ function rememberRecent(path) {
 }
 
 let wikiPreviewTimer = 0;
+let wikiPreviewHideTimer = 0;
 let wikiPreviewEl = null;
 let wikiPreviewLink = null;
+let wikiPreviewPath = '';
 
 function closeWikiPreview() {
   clearTimeout(wikiPreviewTimer);
+  clearTimeout(wikiPreviewHideTimer);
   wikiPreviewTimer = 0;
+  wikiPreviewHideTimer = 0;
   wikiPreviewLink = null;
+  wikiPreviewPath = '';
   wikiPreviewEl?.remove();
   wikiPreviewEl = null;
+}
+
+function scheduleCloseWikiPreview() {
+  clearTimeout(wikiPreviewHideTimer);
+  wikiPreviewHideTimer = setTimeout(() => {
+    if (wikiPreviewEl?.matches(':hover') || wikiPreviewLink?.matches(':hover')) return;
+    closeWikiPreview();
+  }, 220);
 }
 
 function bindWikiPreview(host) {
@@ -3282,17 +4089,86 @@ function bindWikiPreview(host) {
   host.addEventListener('pointerover', (event) => {
     const link = event.target.closest('a.wikilink[data-target]');
     if (!link || link.classList.contains('wikilink--quebrado')) return;
-    if (wikiPreviewLink === link) return;
+    clearTimeout(wikiPreviewHideTimer);
+    if (!(event.ctrlKey || event.metaKey)) {
+      if (wikiPreviewLink !== link) closeWikiPreview();
+      return;
+    }
+    if (wikiPreviewLink === link && wikiPreviewEl) return;
     closeWikiPreview();
     wikiPreviewLink = link;
-    wikiPreviewTimer = setTimeout(() => showWikiPreview(link), 400);
+    wikiPreviewTimer = setTimeout(() => showWikiPreview(link), 180);
   });
   host.addEventListener('pointerout', (event) => {
     const link = event.target.closest('a.wikilink[data-target]');
     if (!link || link !== wikiPreviewLink) return;
     if (wikiPreviewEl?.contains(event.relatedTarget)) return;
-    closeWikiPreview();
+    scheduleCloseWikiPreview();
   });
+  host.addEventListener('pointermove', (event) => {
+    const link = event.target.closest('a.wikilink[data-target]');
+    if (!link || link.classList.contains('wikilink--quebrado')) return;
+    if (!(event.ctrlKey || event.metaKey)) return;
+    if (wikiPreviewLink === link && wikiPreviewEl) return;
+    clearTimeout(wikiPreviewHideTimer);
+    if (wikiPreviewLink !== link) {
+      closeWikiPreview();
+      wikiPreviewLink = link;
+      wikiPreviewTimer = setTimeout(() => showWikiPreview(link), 180);
+    }
+  });
+}
+
+function renderPreviewBody(body) {
+  const doc = Doc.parseBody(String(body || ''));
+  const blocks = (doc.blocks || []).slice(0, 28);
+  if (!blocks.length) return '<p class="bloco bloco--texto">Nota vazia.</p>';
+  return blocks
+    .map((block, index) => {
+      if (block.type === 'blank') return '<div class="bloco" data-vazio><br></div>';
+      if (block.type === 'hr') return '<hr class="bloco">';
+      if (block.type === 'heading') {
+        const text = block.raw.replace(/^#{1,6}\s?/, '').replace(/\n$/, '');
+        const level = Math.min(block.level || 1, 6);
+        return `<h${level} class="bloco bloco--titulo bloco--titulo${level}">${inlineHtml(text) || '<br>'}</h${level}>`;
+      }
+      if (block.type === 'code') {
+        const inner = Doc.codeParts(block.raw).body;
+        return `<pre class="bloco bloco--codigo">${escapeHtml(inner)}</pre>`;
+      }
+      if (block.type === 'quote') {
+        const text = block.raw.replace(/^>\s?/gm, '').replace(/\n$/, '');
+        return `<blockquote class="bloco bloco--citacao">${inlineHtml(text) || '<br>'}</blockquote>`;
+      }
+      if (block.type === 'task' && block.task) {
+        const mark = block.task.status === 'x' || block.task.status === 'X' ? '☑' : '☐';
+        return `<div class="bloco bloco--tarefa"><span class="wiki-previa__check">${mark}</span><span>${inlineHtml(block.task.title) || '<br>'}</span></div>`;
+      }
+      if (block.type === 'item') {
+        const text = block.raw.replace(/^\s*(?:[-*+]|\d+\.)\s?/, '').replace(/\n$/, '');
+        return `<div class="bloco bloco--item">${inlineHtml(text) || '<br>'}</div>`;
+      }
+      if (block.type === 'table') {
+        const model = Doc.tableModel(block.raw);
+        const rows = (model.rows || [])
+          .map(
+            (row) =>
+              `<tr>${row.map((cell) => `<td>${inlineHtml(cell) || '<br>'}</td>`).join('')}</tr>`,
+          )
+          .join('');
+        return `<table class="bloco bloco--tabela"><tbody>${rows}</tbody></table>`;
+      }
+      const embed = String(block.raw || '')
+        .trim()
+        .match(/^!\[\[([^\]\n]+)\]\]$/);
+      if (embed) {
+        return `<figure class="embed"><div class="embed__caminho">${escapeHtml(embed[1])}</div></figure>`;
+      }
+      const text = String(block.raw || '').replace(/\n$/, '');
+      if (!text.trim()) return '';
+      return `<p class="bloco bloco--texto">${inlineHtml(text) || '<br>'}</p>`;
+    })
+    .join('');
 }
 
 async function showWikiPreview(link) {
@@ -3314,36 +4190,83 @@ async function showWikiPreview(link) {
     return;
   }
   if (wikiPreviewLink !== link) return;
+  wikiPreviewPath = notePath;
   const cover = Cmd.resolveCover(note.frontmatter);
-  const lines = String(note.body || '')
-    .replace(/^\uFEFF?---[\s\S]*?---\r?\n/, '')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/!?\[\[[^\[\]\n]+\]\]/g, (raw) => raw.replace(/^!?\[\[|\]\]$/g, '').split('|').pop()))
-    .filter((line) => line.trim() && !line.trim().startsWith('#'))
-    .slice(0, 4)
-    .map((line) => escapeHtml(line))
-    .join('<br>');
-  const card = document.createElement('section');
-  card.className = 'wiki-previa menu-flutuante';
-  card.setAttribute('role', 'dialog');
-  card.setAttribute('aria-label', 'Prévia da nota');
+  let coverFileSrc = cover?.kind === 'arquivo' ? cover.src : null;
+  if (coverFileSrc && !/^(https?:|data:|file:|blob:)/i.test(coverFileSrc)) {
+    const folder = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : '';
+    const near = coverFileSrc.includes('/') || coverFileSrc.startsWith('Anexos/')
+      ? coverFileSrc
+      : folder
+        ? `${folder}/${coverFileSrc}`
+        : coverFileSrc;
+    try {
+      const asset = await tool('attachment.read', { path: near });
+      coverFileSrc = asset.dataUrl || coverFileSrc;
+    } catch {
+      coverFileSrc = '';
+    }
+  }
+  // #region agent log
+  fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'post-fix',hypothesisId:'C',location:'app.js:showWikiPreview',message:'wiki preview cover',data:{notePath,kind:cover?.kind||null,resolved:!coverFileSrc?null:!!coverFileSrc.startsWith('data:'),hasSrc:!!coverFileSrc},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const coverHtml = cover
     ? cover.kind === 'cor'
       ? `<div class="wiki-previa__capa wiki-previa__capa--cor" style="--capa-tinta:${cover.color === 'estante' ? noteShelfColor() : `var(--shelf-${cover.color})`}"></div>`
       : cover.kind === 'arte'
         ? `<div class="wiki-previa__capa"><svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><use href="#capa-${escapeHtml(cover.id)}"/></svg></div>`
-        : ''
+        : cover.kind === 'arquivo' && coverFileSrc
+          ? `<div class="wiki-previa__capa"><img class="wiki-previa__capa-img" alt="" src="${escapeHtml(coverFileSrc)}"></div>`
+          : ''
     : '';
-  card.innerHTML = `${coverHtml}<strong class="wiki-previa__titulo">${escapeHtml(baseName(notePath))}</strong><p class="wiki-previa__texto">${lines || 'Nota vazia.'}</p>`;
+  const card = document.createElement('section');
+  card.className = 'wiki-previa menu-flutuante';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', 'Prévia da nota');
+  card.innerHTML = `${coverHtml}
+    <header class="wiki-previa__topo">
+      <strong class="wiki-previa__titulo">${escapeHtml(baseName(notePath))}</strong>
+      <span class="wiki-previa__caminho">${escapeHtml(notePath.replace(/\.md$/i, ''))}</span>
+    </header>
+    <div class="wiki-previa__corpo coluna">${renderPreviewBody(note.body)}</div>
+    <footer class="wiki-previa__rodape">
+      <button type="button" class="btn btn--secundario btn--pequeno" data-abrir>Abrir nota</button>
+      <span class="wiki-previa__dica">Segure o mouse · Esc fecha</span>
+    </footer>`;
   document.body.append(card);
   wikiPreviewEl = card;
   const rect = link.getBoundingClientRect();
-  const width = 320;
+  const width = Math.min(520, window.innerWidth - 24);
   card.style.width = `${width}px`;
   card.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`;
-  const top = rect.bottom + 8;
-  card.style.top = `${Math.max(12, Math.min(top, window.innerHeight - card.offsetHeight - 12))}px`;
-  card.addEventListener('pointerleave', closeWikiPreview);
+  const preferBelow = rect.bottom + 12;
+  const maxHeight = Math.min(window.innerHeight * 0.72, 560);
+  card.style.maxHeight = `${maxHeight}px`;
+  requestAnimationFrame(() => {
+    if (!wikiPreviewEl) return;
+    const height = Math.min(wikiPreviewEl.offsetHeight, maxHeight);
+    const fitsBelow = preferBelow + height <= window.innerHeight - 12;
+    const top = fitsBelow
+      ? preferBelow
+      : Math.max(12, rect.top - height - 12);
+    wikiPreviewEl.style.top = `${top}px`;
+  });
+  card.addEventListener('pointerenter', () => clearTimeout(wikiPreviewHideTimer));
+  card.addEventListener('pointerleave', (event) => {
+    if (wikiPreviewLink?.contains(event.relatedTarget)) return;
+    scheduleCloseWikiPreview();
+  });
+  card.querySelector('[data-abrir]')?.addEventListener('click', async () => {
+    const path = wikiPreviewPath;
+    closeWikiPreview();
+    if (path) await openNote(path);
+  });
+  card.querySelectorAll('a.wikilink[data-target]').forEach((anchor) => {
+    anchor.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+  });
 }
 
 document.addEventListener(
@@ -3352,6 +4275,16 @@ document.addEventListener(
     if (event.key === 'Escape' && wikiPreviewEl) {
       event.preventDefault();
       closeWikiPreview();
+    }
+  },
+  true,
+);
+document.addEventListener(
+  'keyup',
+  (event) => {
+    if ((event.key === 'Control' || event.key === 'Meta') && wikiPreviewEl) {
+      if (!wikiPreviewEl.matches(':hover') && !wikiPreviewLink?.matches(':hover'))
+        scheduleCloseWikiPreview();
     }
   },
   true,
@@ -3420,7 +4353,17 @@ async function flushNote() {
   saveTimer = 0;
   const canvasActive = !!state.canvasPath && !state.active;
   if (canvasActive) {
-    await canvasJob;
+    let guard = 0;
+    while (guard++ < 40) {
+      const pending = canvasJob;
+      await pending;
+      // #region agent log
+      fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'post-fix',hypothesisId:'B',location:'app.js:flushNote',message:'flushNote after canvasJob',data:{canvasDirty:!!state.canvasDirty,conflict:!!state.conflict,jobStale:canvasJob!==pending,guard,canvasPath:state.canvasPath||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      if (canvasJob !== pending) continue;
+      if (!state.canvasDirty && !state.conflict) return true;
+      break;
+    }
     if (!state.canvasDirty && !state.conflict) return true;
     if (!state.conflict) return false;
   } else {
@@ -3536,6 +4479,10 @@ async function saveCanvas(document) {
       if (state.canvasEditSeq === editSeq) {
         state.canvasDoc = result.canvas.document;
         state.canvasDirty = false;
+      } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7516/ingest/a1959dd9-b230-4311-8e6e-2657fe266499',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1de8c6'},body:JSON.stringify({sessionId:'1de8c6',runId:'pre-fix',hypothesisId:'B',location:'app.js:saveCanvas',message:'stale canvas edit kept dirty',data:{editSeq,currentSeq:state.canvasEditSeq,canvasDirty:true},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       }
       const status = $('#st-estado');
       if (status) status.textContent = 'Salvo';
@@ -3642,6 +4589,13 @@ async function openNote(file, options = {}) {
   paintLinks();
   paintStatus();
   fillEmbeds();
+  if (options.anchor) {
+    const found = scrollToSection(options.anchor);
+    if (!found && options.anchor) {
+      const outgoing = state.outgoing.find((link) => link.anchor && foldText(link.anchor) === foldText(options.anchor));
+      if (!outgoing || outgoing.status === 'broken') toast('Essa seção não existe mais.', 'erro');
+    }
+  }
 }
 
 async function loadLinks() {
@@ -3817,9 +4771,19 @@ function paintLinks() {
     )
     .join('');
   const mentionBlock = `<h3 class="conexoes__titulo">Menções sem link</h3><div class="mencoes">${mentions || '<p class="nota-privacidade">Nenhuma menção solta.</p>'}</div>`;
-  host.innerHTML = `${head}<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3><h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}${mentionBlock}
+  const outline = noteSectionsFromDoc()
+    .map(
+      (section) =>
+        `<button type="button" class="sumario__item sumario__item--${section.level}${isSectionCollapsed(section.title) ? ' is-recolhida' : ''}" data-sumario="${escapeHtml(section.title)}">${escapeHtml(section.title)}</button>`,
+    )
+    .join('');
+  const outlineBlock = `<h3 class="conexoes__titulo">Sumário</h3><div class="sumario">${outline || '<p class="nota-privacidade">Nenhuma seção H1–H3.</p>'}</div>`;
+  host.innerHTML = `${head}<p class="nota__caminho">${noteCrumb(state.active)}</p><h3>${escapeHtml(baseName(state.active))}</h3>${outlineBlock}<h3>Links de saída</h3>${out}<h3>Backlinks</h3>${back}${mentionBlock}
     <h3 class="conexoes__titulo">Histórico</h3><button type="button" class="btn btn--fantasma" id="desfazer">${icon('desfazer')} Desfazer</button>`;
   $('#fechar-conexoes').onclick = () => closeConnections();
+  host.querySelectorAll('[data-sumario]').forEach((button) => {
+    button.onclick = () => scrollToSection(button.dataset.sumario);
+  });
   host.querySelectorAll('[data-go]').forEach((button) => {
     button.onclick = () => {
       if (button.dataset.go) openNote(button.dataset.go);
@@ -3925,16 +4889,62 @@ async function showTasks() {
   paintCenter();
 }
 
+function mondayStart(iso) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return isoTodayFrom(date);
+}
+
+function calendarWindow(cursor, mode) {
+  if (mode === 'semana') {
+    const start = mondayStart(cursor);
+    return { start, end: addIso(start, 6) };
+  }
+  const [year, month] = cursor.split('-').map(Number);
+  const first = new Date(year, month - 1, 1);
+  first.setDate(1 - ((first.getDay() + 6) % 7));
+  const start = isoTodayFrom(first);
+  return { start, end: addIso(start, 41) };
+}
+
 async function showCalendar() {
   state.view = 'calendar';
-  state.calendarMode = state.calendarMode || 'mes';
+  if (state.calendarMode !== 'semana') state.calendarMode = 'mes';
   state.calendarCursor = state.calendarCursor || isoToday();
-  const cursor = state.calendarCursor;
-  const mode = state.calendarMode || 'mes';
-  const from = mode === 'semana' || mode === 'agenda' ? weekStart(cursor) : `${cursor.slice(0, 7)}-01`;
-  const to = mode === 'agenda' ? addIso(from, 20) : mode === 'semana' ? addIso(from, 6) : addIso(from, 41);
-  state.calendarItems = await tool('calendar.query', { from, to });
+  state.dayFocus = state.dayFocus || isoToday();
+  const range = calendarWindow(state.calendarCursor, state.calendarMode);
+  const result = await tool('calendar.query', { from: range.start, to: range.end });
+  state.calendarItems = result?.items || [];
+  state.calendarDays = result?.days || [];
+  if (state.dayPanelOpen) await loadDayPanel(state.dayFocus);
+  else paintCenter();
+}
+
+async function loadDayPanel(date) {
+  state.dayFocus = date;
+  state.dayPanelOpen = true;
+  state.dayPanelItems = null;
   paintCenter();
+  const result = await tool('calendar.query', { from: date, to: date });
+  if (state.dayFocus !== date || !state.dayPanelOpen) return;
+  state.dayPanelItems = result?.items || [];
+  paintCenter();
+}
+
+function shiftCalendarDay(delta) {
+  const next = addIso(state.dayFocus || state.calendarCursor || isoToday(), delta);
+  state.dayFocus = next;
+  const mode = state.calendarMode === 'semana' ? 'semana' : 'mes';
+  const visible = calendarWindow(state.calendarCursor || next, mode);
+  const outside = next < visible.start || next > visible.end;
+  if (outside) {
+    state.calendarCursor = next;
+    showCalendar();
+    return;
+  }
+  if (state.dayPanelOpen) loadDayPanel(next);
+  else paintCenter();
 }
 
 function addIso(iso, days) {
@@ -3997,6 +5007,20 @@ function taskBucket(task) {
   return 'Próximas';
 }
 
+function taskDateLabel(task) {
+  const today = isoToday();
+  const date = task.due || task.scheduled;
+  if (!date) return '';
+  if (date === today) return 'hoje';
+  if (date === addIso(today, -1)) return 'ontem';
+  if (date === addIso(today, 1)) return 'amanhã';
+  if (date < today && task.status !== 'feita' && task.status !== 'cancelada') {
+    const days = Math.round((Date.parse(today) - Date.parse(date)) / 86400000);
+    return `${days} dia${days === 1 ? '' : 's'} atrasada`;
+  }
+  return shortDate(date);
+}
+
 function taskCard(task) {
   const kit =
     task.status === 'andamento'
@@ -4006,20 +5030,85 @@ function taskCard(task) {
         : task.status === 'cancelada'
           ? 'cancelada'
           : 'aberta';
-  const priority =
-    task.priority === 'alta'
-      ? '<span class="chip chip--alta">Alta</span>'
-      : task.priority === 'media'
-        ? '<span class="chip chip--media">Média</span>'
-        : task.priority === 'baixa'
-          ? '<span class="chip chip--baixa">Baixa</span>'
-          : '';
-  return `<article class="kcard" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}"><span class="check" data-status="${kit}"></span><button type="button" class="kcard__titulo" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.title)}</button><span class="kcard__meta">${priority}<span class="chip">${escapeHtml(task.due ? shortDate(task.due) : 'sem prazo')}</span><span class="chip">${escapeHtml(task.workspace || 'Biblioteca')}</span></span></article>`;
+  const mark = task.workspace ? markFor(task.workspace) : null;
+  const tint = mark?.color ? ` style="--estante-cor: var(--shelf-${mark.color})"` : '';
+  const late = task.due && task.due < isoToday() && task.status !== 'feita' && task.status !== 'cancelada';
+  const dateLabel = taskDateLabel(task);
+  const priority = task.priority
+    ? `<i class="tarefa-prio tarefa-prio--${task.priority}" title="${task.priority}"></i>`
+    : '';
+  const kids =
+    task.childTotal > 0
+      ? `<span class="chip">${task.childDone}/${task.childTotal}</span>`
+      : '';
+  const indent = task.parentLine ? ' is-sub' : '';
+  return `<article class="kcard${indent}" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}" data-title="${escapeHtml(task.title)}" title="${escapeHtml(task.title)} · ${escapeHtml(task.path)}"><span class="check" data-status="${kit}"></span><span class="chip__ponto" aria-hidden="true"${tint}></span><button type="button" class="kcard__titulo" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.title)}</button><span class="kcard__meta">${priority}${kids}${dateLabel ? `<span class="chip${late ? ' chip--atrasada' : ''}">${escapeHtml(dateLabel)}</span>` : ''}</span></article>`;
+}
+
+function focusTasks(rows) {
+  const today = isoToday();
+  const yesterday = addIso(today, -1);
+  const focus = rows
+    .filter(
+      (task) =>
+        task.status !== 'feita' &&
+        task.status !== 'cancelada' &&
+        (task.scheduled === today || (!task.scheduled && task.due === today)),
+    )
+    .slice(0, 5);
+  const leftover = rows.filter(
+    (task) =>
+      task.status !== 'feita' &&
+      task.status !== 'cancelada' &&
+      (task.scheduled === yesterday || (!task.scheduled && task.due === yesterday)),
+  );
+  return { focus, leftover };
+}
+
+function parseQuickTask(text) {
+  let source = String(text || '').trim();
+  let workspace = null;
+  const shelf = source.match(/(?:^|\s)@([^\s]+)/);
+  if (shelf) {
+    workspace = shelf[1];
+    source = source.replace(shelf[0], ' ').trim();
+  }
+  let priority = null;
+  if (/\b!alta\b/i.test(source) || /\b!!\b/.test(source)) priority = 'alta';
+  if (/\b!media\b/i.test(source)) priority = 'media';
+  if (/\b!baixa\b/i.test(source)) priority = 'baixa';
+  source = source.replace(/\s*!alta\b|\s*!media\b|\s*!baixa\b|\s*!!\b/gi, '').trim();
+  let due = null;
+  const today = isoToday();
+  if (/\bhoje\b/i.test(source)) {
+    due = today;
+    source = source.replace(/\bhoje\b/gi, '').trim();
+  } else if (/\bamanh[aã]\b/i.test(source)) {
+    due = addIso(today, 1);
+    source = source.replace(/\bamanh[aã]\b/gi, '').trim();
+  } else {
+    const iso = source.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    if (iso) {
+      due = iso[1];
+      source = source.replace(iso[0], '').trim();
+    }
+  }
+  return { title: source.replace(/\s+/g, ' ').trim(), due, priority, workspace };
 }
 
 function paintTasks(center) {
   const rows = state.taskRows || [];
   const filter = state.taskFilter || {};
+  state.taskMode = state.taskMode || 'lista';
+  state.taskView = state.taskView || 'todas';
+  const { focus, leftover } = focusTasks(rows);
+  const views = {
+    hoje: rows.filter((task) => taskBucket(task) === 'Hoje' || task.scheduled === isoToday()),
+    proximas: rows.filter((task) => taskBucket(task) === 'Próximas' || taskBucket(task) === 'Esta semana'),
+    atrasadas: rows.filter((task) => taskBucket(task) === 'Atrasadas'),
+    todas: rows,
+  };
+  const openRows = rows.filter((task) => !task.parentLine);
   const taskCounts = {
     aberta: rows.filter((task) => task.status === 'aberta').length,
     andamento: rows.filter((task) => task.status === 'andamento').length,
@@ -4032,40 +5121,46 @@ function paintTasks(center) {
           `<button type="button" class="chip ${filter[key] === value ? 'is-ativa' : ''}" data-filtro="${key}" data-valor="${value}">${label}</button>`,
       )
       .join('');
-  const due = [
-    ['', 'Todos os prazos'],
-    ['atrasada', 'Atrasadas'],
-    ['hoje', 'Hoje'],
-    ['semana', 'Esta semana'],
-    ['sem', 'Sem prazo'],
-  ];
-  const statuses = [
-    ['aberta', 'Abertas'],
-    ['andamento', 'Andamento'],
-    ['feita', 'Feitas'],
-  ];
   const shelves = (state.workspaces || []).map((shelf) => [shelf.name, shelf.name]);
   const columns = ['aberta', 'andamento', 'feita']
     .map((status) => {
-      const label = status === 'aberta' ? 'A fazer' : status === 'andamento' ? 'Em andamento' : 'Concluídas';
-      const cards = rows.filter((task) => task.status === status).map(taskCard).join('');
+      const label = status === 'aberta' ? 'A fazer' : status === 'andamento' ? 'Fazendo' : 'Feito';
+      const cards = openRows.filter((task) => task.status === status).map(taskCard).join('');
       return `<section class="quadro__coluna" data-status="${status}"><h3>${label} <span>${taskCounts[status]}</span></h3>${cards || '<p>Solte aqui</p>'}</section>`;
     })
     .join('');
-  const groups = ['Atrasadas', 'Hoje', 'Esta semana', 'Próximas', 'Sem prazo'];
-  const lista = groups
-    .map((name) => {
-      const items = rows.filter((task) => taskBucket(task) === name);
-      if (!items.length) return '';
-      return `<section class="tarefas__grupo"><h3>${name}</h3>${items.map(taskCard).join('')}</section>`;
-    })
+  const viewButtons = [
+    ['hoje', 'Hoje'],
+    ['proximas', 'Próximas'],
+    ['atrasadas', 'Atrasadas'],
+    ['todas', 'Todas'],
+  ]
+    .map(
+      ([id, label]) =>
+        `<button type="button" class="btn ${state.taskView === id ? 'btn--primario' : 'btn--fantasma'}" data-view="${id}">${label}</button>`,
+    )
     .join('');
+  const lista =
+    state.taskView === 'todas'
+      ? `<details class="tarefas__grupo" open><summary>Todas (${views.todas.length})</summary>${views.todas.filter((task) => !task.parentLine).map(taskCard).join('') || '<p>Nenhuma tarefa.</p>'}</details>`
+      : (views[state.taskView] || []).filter((task) => !task.parentLine).map(taskCard).join('') ||
+        '<p>Nenhuma tarefa nesta visão.</p>';
+  const focusHtml = `<section class="tarefas__foco"><h3>Foco de hoje</h3><div class="tarefas__lista">${focus.map(taskCard).join('') || '<p class="nota-privacidade">Arraste até 5 tarefas para o foco.</p>'}</div>${leftover.length ? `<h3>Ficou de ontem</h3><div class="tarefas__lista">${leftover.map(taskCard).join('')}</div>` : ''}</section>`;
+  const quick = `<form class="tarefas__rapida" id="tarefa-rapida"><input id="tarefa-rapida-texto" placeholder="pagar DAS amanhã !alta" aria-label="Nova tarefa"><select id="tarefa-rapida-estante" aria-label="Estante">${(state.workspaces || []).map((shelf) => `<option value="${escapeHtml(shelf.name)}">${escapeHtml(shelf.name)}</option>`).join('')}</select><button type="submit" class="btn btn--primario">Adicionar</button><div class="tarefas__previa" id="tarefa-rapida-previa"></div></form>`;
   const hasFilter = Object.values(filter).some(Boolean);
-  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} em andamento · ${taskCounts.feita} concluídas</p></div><div class="tarefas__filtros">${chips(due, 'due')}${chips(statuses, 'status')}${chips(shelves, 'workspace')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista || '<p>Nenhuma tarefa com esse filtro.</p>'}</div>`}</div>`;
+  center.innerHTML = `<div class="tarefas"><header class="tarefas__topo"><div><h2>Tarefas</h2><p>${taskCounts.aberta} a fazer · ${taskCounts.andamento} fazendo · ${taskCounts.feita} feitas</p></div><div class="tarefas__filtros">${viewButtons}${chips(shelves, 'workspace')}${[['alta', 'Alta'], ['media', 'Média'], ['baixa', 'Baixa']].map(([value, label]) => `<button type="button" class="chip ${filter.priority === value ? 'is-ativa' : ''}" data-filtro="priority" data-valor="${value}">${label}</button>`).join('')}${hasFilter ? '<button type="button" class="btn btn--fantasma" id="limpar-filtros">Limpar filtros</button>' : ''}</div><div>${['lista', 'quadro'].map((mode) => `<button type="button" class="btn ${state.taskMode === mode ? 'btn--primario' : 'btn--fantasma'}" data-modo="${mode}">${mode === 'lista' ? 'Lista' : 'Quadro'}</button>`).join('')}</div></header>${quick}${focusHtml}${state.taskMode === 'quadro' ? `<div class="quadro">${columns}</div>` : `<div class="tarefas__lista">${lista}</div>`}</div>`;
   center.querySelectorAll('[data-filtro]').forEach((button) => {
     button.onclick = () => {
-      state.taskFilter[button.dataset.filtro] = button.dataset.valor;
+      state.taskFilter[button.dataset.filtro] =
+        state.taskFilter[button.dataset.filtro] === button.dataset.valor ? '' : button.dataset.valor;
+      saveTaskFilters();
       showTasks();
+    };
+  });
+  center.querySelectorAll('[data-view]').forEach((button) => {
+    button.onclick = () => {
+      state.taskView = button.dataset.view;
+      paintCenter();
     };
   });
   center.querySelectorAll('[data-modo]').forEach((button) => {
@@ -4079,75 +5174,158 @@ function paintTasks(center) {
   });
   $('#limpar-filtros')?.addEventListener('click', () => {
     state.taskFilter = {};
+    saveTaskFilters();
     showTasks();
+  });
+  const quickInput = $('#tarefa-rapida-texto');
+  const preview = $('#tarefa-rapida-previa');
+  const paintPreview = () => {
+    const parsed = parseQuickTask(quickInput.value);
+    preview.innerHTML = parsed.title
+      ? `<span class="chip">${escapeHtml(parsed.title)}</span>${parsed.due ? `<span class="chip">${escapeHtml(taskDateLabel({ due: parsed.due, status: 'aberta' }))}</span>` : ''}${parsed.priority ? `<span class="chip">${parsed.priority}</span>` : ''}`
+      : '';
+  };
+  quickInput?.addEventListener('input', paintPreview);
+  $('#tarefa-rapida')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const parsed = parseQuickTask(quickInput.value);
+    if (!parsed.title) return;
+    const shelf = $('#tarefa-rapida-estante')?.value || parsed.workspace || 'Entrada';
+    await createQuickTask(parsed, shelf);
+    quickInput.value = '';
+    paintPreview();
+    await showTasks();
   });
   center.querySelectorAll('.kcard .check').forEach((check) => {
     check.onclick = async () => {
       const card = check.closest('.kcard');
       const current = check.dataset.status;
       const status = current === 'aberta' ? 'andamento' : current === 'andamento' ? 'feita' : 'aberta';
-      await tool('task.update', {
+      const result = await tool('task.update', {
         path: card.dataset.task,
         line: Number(card.dataset.line),
         expectedRevision: card.dataset.rev,
         status,
+        titleHint: card.dataset.title,
       });
+      if (result?.conflict) {
+        toast('A tarefa mudou na nota. Abrir nota?', 'erro', {
+          label: 'Abrir',
+          onClick: () => openNote(card.dataset.task),
+        });
+        return;
+      }
       await showTasks();
     };
   });
   bindTaskDrag(center);
 }
 
+function saveTaskFilters() {
+  try {
+    localStorage.setItem('sophy.taskFilter', JSON.stringify(state.taskFilter || {}));
+  } catch {
+    /* preferência local */
+  }
+}
+
+async function createQuickTask(parsed, shelf) {
+  const day = isoToday();
+  const daily = `Diário/${day}.md`;
+  let note;
+  try {
+    note = await tool('note.read', { path: daily });
+  } catch {
+    note = await tool('note.create', {
+      path: daily,
+      body: `# ${dailyHeading(day)}\n\n`,
+      frontmatter: { data: day },
+    });
+  }
+  const marks = [
+    parsed.due ? `📅 ${parsed.due}` : '',
+    parsed.priority === 'alta' ? '⏫' : parsed.priority === 'media' ? '🔼' : parsed.priority === 'baixa' ? '🔽' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const line = `- [ ] ${parsed.title}${marks ? ` ${marks}` : ''}`;
+  const body = `${String(note.body || '').replace(/\s*$/, '')}\n\n${line}\n`;
+  await tool('note.write', { path: daily, body, expectedRevision: note.revision });
+  if (shelf && shelf !== 'Diário') {
+    /* a tarefa nasce na nota do dia; a estante do seletor só orienta o filtro */
+    state.taskFilter = { ...(state.taskFilter || {}), workspace: '' };
+  }
+}
+
+function shelfDotColor(name) {
+  const mark = markFor(name);
+  return mark.color || 1;
+}
+
+function dayMarks(date) {
+  const summary = (state.calendarDays || []).find((day) => day.date === date);
+  if (!summary || !summary.total) return '';
+  const dots = [];
+  for (const [shelf, count] of Object.entries(summary.byShelf || {})) {
+    for (let index = 0; index < count; index += 1) dots.push(shelf);
+  }
+  const shown = dots.slice(0, 3);
+  const extra = Math.max(0, summary.total - shown.length);
+  const marks = shown
+    .map((shelf) => `<i class="cal-ponto" style="background: var(--shelf-${shelfDotColor(shelf)})"></i>`)
+    .join('');
+  return `<span class="cal-pontos">${marks}${extra ? `<span class="cal-mais">+${extra}</span>` : ''}</span>`;
+}
+
 function paintCalendar(center) {
   const cursor = state.calendarCursor || isoToday();
-  const mode = state.calendarMode || 'mes';
+  const mode = state.calendarMode === 'semana' ? 'semana' : 'mes';
   if (!state.dayFocus) state.dayFocus = isoToday();
-  const start = mode === 'semana' ? weekStart(cursor) : (() => {
-    const [year, month] = cursor.split('-').map(Number);
-    const first = new Date(year, month - 1, 1);
-    const offset = weekOffset(first);
-    first.setDate(1 - offset);
-    return isoTodayFrom(first);
-  })();
+  const range = calendarWindow(cursor, mode);
   const count = mode === 'semana' ? 7 : 42;
-  const days = Array.from({ length: count }, (_, index) => addIso(start, index));
-  const items = state.calendarItems || [];
-  const cells = mode === 'agenda'
-    ? ''
-    : days
+  const days = Array.from({ length: count }, (_, index) => addIso(range.start, index));
+  const cells = days
     .map((date) => {
-      const mine = items.filter((item) => item.date === date);
-      const marks = mine
-        .slice(0, mode === 'semana' ? 6 : 3)
-        .map((item) => {
-          if (item.kind === 'tarefa')
-            return `<button type="button" class="cal-item cal-item--texto" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line}" data-rev="${item.revision}" title="${escapeHtml(item.title)}">□ ${escapeHtml(item.title)}</button>`;
-          const mark = item.kind === 'nota' ? '●' : '◆';
-          return `<button type="button" class="cal-item cal-item--texto" data-open-note="${escapeHtml(item.path)}" title="${escapeHtml(calendarLabel(item.title))}">${mark} ${escapeHtml(calendarLabel(item.title))}</button>`;
-        })
-        .join('');
       const outside = date.slice(0, 7) !== cursor.slice(0, 7) ? ' is-fora' : '';
-      const selected = date === state.dayFocus ? ' is-selecionado' : '';
-      return `<div class="cal-dia${date === isoToday() ? ' is-hoje' : ''}${outside}${selected}" data-date="${date}"><strong>${Number(date.slice(8))}</strong>${marks}${mine.length > 3 && mode !== 'semana' ? `<span class="cal-mais">+${mine.length - 3}</span>` : ''}</div>`;
+      const focus = date === state.dayFocus ? ' is-foco' : '';
+      const daily = (state.calendarItems || []).some((item) => item.path === `Diário/${date}.md`) ? ' is-nota' : '';
+      return `<button type="button" class="cal-dia${date === isoToday() ? ' is-hoje' : ''}${outside}${focus}${daily}" data-date="${date}" aria-selected="${date === state.dayFocus}"><strong class="cal-dia__num">${Number(date.slice(8))}</strong>${dayMarks(date)}</button>`;
     })
     .join('');
   const [year, month] = cursor.split('-').map(Number);
-  const monthName = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  const weekdays = weekdayLabels()
-    .map((name) => `<span>${name}</span>`)
-    .join('');
-  const agenda = (state.calendarItems || [])
-    .filter((item) => item.date >= isoToday())
-    .map((item) => `<li><button type="button" class="menu__item" data-open-note="${escapeHtml(item.path)}"><b>${escapeHtml(readableDate(item.date))}</b> ${escapeHtml(calendarLabel(item.title))}</button></li>`)
-    .join('');
+  const monthLabel = `${['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][month - 1]} de ${year}`;
+  const monthName = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+  const weekdays = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((name) => `<span>${name}</span>`).join('');
   const previous = mode === 'mes' ? 'Mês anterior' : 'Semana anterior';
   const next = mode === 'mes' ? 'Próximo mês' : 'Próxima semana';
-  const dayItems = (state.calendarItems || []).filter((item) => item.date === state.dayFocus);
-  const dayPanel = `<aside class="painel-dia"><h3>${escapeHtml(readableDate(state.dayFocus))}</h3><p class="nota-privacidade">● nota · □ tarefa · ◆ data</p>${dayItems.map((item) => `<p>${item.kind === 'tarefa' ? '□' : item.kind === 'nota' ? '●' : '◆'} ${escapeHtml(calendarLabel(item.title))}</p>`).join('') || '<p>Nada neste dia.</p>'}</aside>`;
-  const body = mode === 'agenda'
-    ? `<div class="calendario__miolo"><ul class="agenda">${agenda || '<li>Nada nesta agenda.</li>'}</ul>${dayPanel}</div>`
-    : `<div class="calendario__miolo"><div><div class="cal-semana">${weekdays}</div><div class="cal-grade ${mode === 'semana' ? 'cal-grade--semana' : ''}">${cells}</div></div>${dayPanel}</div>`;
-  center.innerHTML = `<div class="calendario"><header class="tarefas__topo calendario__topo"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button><button type="button" class="btn ${mode === 'agenda' ? 'btn--primario' : 'btn--fantasma'}" data-cal="agenda">Agenda</button></div></header>${body}</div>`;
+  const focus = state.dayFocus;
+  const panelItems = state.dayPanelItems;
+  const dailyPath = `Diário/${focus}.md`;
+  const hasDaily = Array.isArray(panelItems) && panelItems.some((item) => item.path === dailyPath);
+  const tasks = Array.isArray(panelItems) ? panelItems.filter((item) => item.kind === 'tarefa') : [];
+  const notes = Array.isArray(panelItems)
+    ? panelItems.filter((item) => item.kind !== 'tarefa' && item.path !== dailyPath)
+    : [];
+  const dailyBlock = !state.dayPanelOpen
+    ? ''
+    : panelItems === null
+      ? '<p class="nota-privacidade">Carregando…</p>'
+      : hasDaily
+        ? `<button type="button" class="btn btn--secundario" data-open-note="${escapeHtml(dailyPath)}">${escapeHtml(dailyHeading(focus))}</button>`
+        : `<button type="button" class="btn btn--primario" id="criar-nota-dia">Criar nota do dia</button>`;
+  const taskList = tasks
+    .map(
+      (item) =>
+        `<li><article class="kcard kcard--cal" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line || 1}" data-rev="${escapeHtml(item.revision || '')}" data-title="${escapeHtml(item.title)}"><button type="button" data-open-note="${escapeHtml(item.path)}">${escapeHtml(item.title)}</button></article></li>`,
+    )
+    .join('');
+  const noteList = notes
+    .map((item) => `<li><button type="button" data-open-note="${escapeHtml(item.path)}">${escapeHtml(calendarLabel(item.title))}</button></li>`)
+    .join('');
+  const dayPanel = state.dayPanelOpen
+    ? `<aside class="painel-dia is-aberto" aria-label="${escapeHtml(dailyHeading(focus))}"><header><h3>${escapeHtml(dailyHeading(focus))}</h3><button type="button" class="btn btn--icone" id="fechar-dia" aria-label="Fechar">×</button></header><div class="painel-dia__nota">${dailyBlock}</div><h4>Tarefas</h4>${taskList ? `<ul>${taskList}</ul>` : '<p class="nota-privacidade">Nenhuma tarefa.</p>'}<h4>Notas</h4>${noteList ? `<ul>${noteList}</ul>` : '<p class="nota-privacidade">Nenhuma nota.</p>'}</aside>`
+    : '';
+  center.innerHTML = `<div class="calendario${state.dayPanelOpen ? ' is-dia' : ''}"><header class="calendario__barra"><div class="calendario__navegacao"><button type="button" class="btn btn--icone" data-passo="-1" aria-label="${previous}">‹</button><h2>${escapeHtml(monthName)}</h2><button type="button" class="btn btn--icone" data-passo="1" aria-label="${next}">›</button><button type="button" class="btn btn--fantasma" id="cal-hoje">Hoje</button></div><div class="calendario__modos"><button type="button" class="btn ${mode === 'mes' ? 'btn--primario' : 'btn--fantasma'}" data-cal="mes">Mês</button><button type="button" class="btn ${mode === 'semana' ? 'btn--primario' : 'btn--fantasma'}" data-cal="semana">Semana</button></div></header><div class="calendario__miolo${state.dayPanelOpen ? ' is-aberto' : ''}"><div class="calendario__grade"><div class="cal-semana">${weekdays}</div><div class="cal-grade${mode === 'semana' ? ' cal-grade--semana' : ''}">${cells}</div></div>${dayPanel}</div></div>`;
   $('#cal-hoje').onclick = () => {
     state.calendarCursor = isoToday();
     state.dayFocus = isoToday();
@@ -4155,15 +5333,15 @@ function paintCalendar(center) {
   };
   center.querySelectorAll('[data-cal]').forEach((button) => {
     button.onclick = () => {
-      state.calendarMode = button.dataset.cal;
-      if (button.dataset.cal === 'semana' || button.dataset.cal === 'agenda') state.calendarCursor = isoToday();
+      state.calendarMode = button.dataset.cal === 'semana' ? 'semana' : 'mes';
+      if (state.calendarMode === 'semana') state.calendarCursor = isoToday();
       showCalendar();
     };
   });
   center.querySelectorAll('[data-passo]').forEach((button) => {
     button.onclick = () => {
       const step = Number(button.dataset.passo);
-      if ((state.calendarMode || 'mes') === 'semana' || state.calendarMode === 'agenda') {
+      if (state.calendarMode === 'semana') {
         state.calendarCursor = addIso(state.calendarCursor || isoToday(), step * 7);
       } else {
         const [y, m] = (state.calendarCursor || isoToday()).split('-').map(Number);
@@ -4174,15 +5352,23 @@ function paintCalendar(center) {
     };
   });
   center.querySelectorAll('.cal-dia').forEach((day) => {
-    day.onclick = (event) => {
-      if (event.target.closest('[data-task]')) return;
+    day.onclick = () => {
       state.dayFocus = day.dataset.date;
-      paintCenter();
+      state.dayPanelOpen = true;
+      loadDayPanel(day.dataset.date);
     };
   });
   center.querySelectorAll('[data-open-note]').forEach((button) => {
     button.onclick = () => openNote(button.dataset.openNote);
   });
+  const createDaily = $('#criar-nota-dia');
+  if (createDaily) createDaily.onclick = () => openDailyOn(state.dayFocus);
+  const closeDay = $('#fechar-dia');
+  if (closeDay)
+    closeDay.onclick = () => {
+      state.dayPanelOpen = false;
+      paintCenter();
+    };
   bindTaskDrag(center);
 }
 
@@ -4195,19 +5381,34 @@ function bindTaskDrag(center) {
           path: card.dataset.task,
           line: Number(card.dataset.line),
           revision: card.dataset.rev,
+          title: card.dataset.title || '',
         }),
       );
     });
   });
-  center.querySelectorAll('[data-status], [data-date]').forEach((target) => {
+  center.querySelectorAll('[data-status], [data-date], .tarefas__foco').forEach((target) => {
     target.addEventListener('dragover', (event) => event.preventDefault());
     target.addEventListener('drop', async (event) => {
       event.preventDefault();
       const payload = JSON.parse(event.dataTransfer.getData('text/plain') || '{}');
-      const patch = { path: payload.path, line: payload.line, expectedRevision: payload.revision };
+      if (!payload.path) return;
+      const patch = {
+        path: payload.path,
+        line: payload.line,
+        expectedRevision: payload.revision,
+        titleHint: payload.title || undefined,
+      };
       if (target.dataset.status) patch.status = target.dataset.status;
       if (target.dataset.date) patch.due = target.dataset.date;
-      await tool('task.update', patch);
+      if (target.classList.contains('tarefas__foco')) patch.scheduled = isoToday();
+      const result = await tool('task.update', patch);
+      if (result?.conflict) {
+        toast('A tarefa mudou na nota. Abrir nota?', 'erro', {
+          label: 'Abrir',
+          onClick: () => openNote(payload.path),
+        });
+        return;
+      }
       if (state.view === 'calendar') await showCalendar();
       else await showTasks();
     });
@@ -4946,12 +6147,14 @@ function openTreeMenu(event, kind, target) {
           ['nota', 'Nova nota aqui'],
           ['cor', 'Cor e ícone…'],
           ['renomear', 'Renomear'],
-          ['lixo', 'Mover para a lixeira'],
+          ['lixo', 'Excluir…'],
         ]
-      : [
-          ['renomear', 'Renomear'],
-          ['lixo', 'Mover para a lixeira'],
-        ];
+      : kind === 'canvas'
+        ? [['lixo', 'Excluir…']]
+        : [
+            ['renomear', 'Renomear'],
+            ['lixo', 'Excluir…'],
+          ].filter(([id]) => !(id === 'renomear' && dailyPathDate(target)));
   menu.innerHTML = items
     .map(([id, label]) => `<button type="button" class="menu__item" role="menuitem" data-arvore="${id}">${label}</button>`)
     .join('');
@@ -4959,12 +6162,14 @@ function openTreeMenu(event, kind, target) {
   menu.style.position = 'fixed';
   menu.style.left = `${event.clientX}px`;
   menu.style.top = `${event.clientY}px`;
-  menu.querySelector('[data-arvore="renomear"]').onclick = () => {
-    closeMenus();
-    if (kind === 'shelf') state.renaming = { kind: 'shelf', name: target };
-    else state.renaming = { kind: 'note', path: target };
-    paintTree();
-  };
+  const rename = menu.querySelector('[data-arvore="renomear"]');
+  if (rename)
+    rename.onclick = () => {
+      closeMenus();
+      if (kind === 'shelf') state.renaming = { kind: 'shelf', name: target };
+      else state.renaming = { kind: 'note', path: target };
+      paintTree();
+    };
   const note = menu.querySelector('[data-arvore="nota"]');
   if (note)
     note.onclick = () => {
@@ -4981,25 +6186,51 @@ function openTreeMenu(event, kind, target) {
   menu.querySelector('[data-arvore="lixo"]').onclick = async () => {
     closeMenus();
     try {
-      if (kind === 'shelf') {
-        const count = state.notes.filter((note) => note.workspace === target || note.path.startsWith(`${target}/`)).length;
-        const overlay = $('#overlay');
-        overlay.hidden = false;
-        overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Mover estante"><p>Mover a estante ${escapeHtml(target)} para a lixeira, com ${count} nota(s)?</p><button type="button" id="confirma-sim">Mover</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
-        const ok = await new Promise((resolve) => {
-          $('#confirma-nao').onclick = () => { overlay.hidden = true; resolve(false); };
-          $('#confirma-sim').onclick = () => { overlay.hidden = true; resolve(true); };
-        });
-        if (!ok) return;
-      }
-      if (state.active === target || (kind === 'shelf' && state.active?.startsWith(`${target}/`)))
+      const overlay = $('#overlay');
+      const label =
+        kind === 'shelf'
+          ? target
+          : baseName(target);
+      const detail =
+        kind === 'shelf'
+          ? `Excluir a estante ${escapeHtml(label)}, com ${state.notes.filter((item) => item.workspace === target || item.path.startsWith(`${target}/`)).length} nota(s)? Os arquivos vão para a lixeira.`
+          : `Excluir ${escapeHtml(label)}? O arquivo vai para a lixeira.`;
+      overlay.hidden = false;
+      overlay.innerHTML = `<div class="menu menu-flutuante" role="dialog" aria-label="Excluir"><p>${detail}</p><button type="button" id="confirma-sim">Excluir</button><button type="button" id="confirma-nao">Cancelar</button></div>`;
+      const ok = await new Promise((resolve) => {
+        $('#confirma-nao').onclick = () => {
+          overlay.hidden = true;
+          resolve(false);
+        };
+        $('#confirma-sim').onclick = () => {
+          overlay.hidden = true;
+          resolve(true);
+        };
+      });
+      if (!ok) return;
+      if (
+        state.active === target ||
+        (kind === 'shelf' && state.active?.startsWith(`${target}/`)) ||
+        (kind === 'canvas' && state.canvasPath === target)
+      )
         if (!(await flushNote())) return;
       await tool('entry.trash', { path: target });
+      if (kind === 'shelf') {
+        state.collapsedShelves.delete(target);
+        delete state.treeOrder[target];
+      } else removeFromTreeOrder(target);
+      saveTreeUi();
       const prefix = kind === 'shelf' ? `${target}/` : target;
       state.tabs = state.tabs.filter((tab) => tab !== target && !tab.startsWith(prefix));
       if (state.active === target || (kind === 'shelf' && state.active?.startsWith(prefix))) {
         state.active = null;
         state.doc = null;
+        state.view = 'home';
+        state.nav = 'inicio';
+      }
+      if (kind === 'canvas' && state.canvasPath === target) {
+        state.canvasPath = null;
+        state.canvasDoc = null;
         state.view = 'home';
         state.nav = 'inicio';
       }
@@ -5088,10 +6319,11 @@ function applyWrap(index, selected, prefix, suffix = '') {
   if (Writing.format(prefix)) return;
   const editable = document.querySelector(`[data-block="${index}"][contenteditable="true"]`);
   if (prefix === '[') { editWritingLink(editable); return; }
-  if (['# ', '- ', '- [ ] ', '> '].includes(prefix)) {
+  if (['# ', '- ', '- [ ] ', '> '].includes(prefix) || prefix === '```\n') {
     checkpoint(true);
     const text = Doc.visibleOf(state.doc.blocks[index]);
-    state.doc = Doc.replaceBlock(state.doc, index, prefix + text + '\n');
+    const raw = prefix === '```\n' ? Doc.codeRaw('```', '', text) : `${prefix}${text}\n`;
+    state.doc = Doc.replaceBlock(state.doc, index, raw);
     state.caret = { index, offset: text.length };
     paintCenter();
     scheduleSave();
@@ -5164,30 +6396,133 @@ function showFormatBar(range) {
   bar.innerHTML = [
     ['Negrito', 'negrito', '**', '**'],
     ['Itálico', 'italico', '*', '*'],
-    ['Link', 'link', '[', '](https://)'],
-    ['Wikilink', 'nota', '[[', ']]'],
-    ['Título', 'titulo', '# ', ''],
-    ['Lista', 'lista', '- ', ''],
-    ['Tarefa', 'tarefa', '- [ ] ', ''],
-    ['Citação', 'citacao', '> ', ''],
-    ['Código', 'codigo', '`', '`'],
     ['Riscado', 'tachado', '~~', '~~'],
-    ['Destacar', 'marca-texto', '==', '=='],
+    ['Código', 'codigo', '`', '`'],
+    ['Link', 'link', '[', '](https://)'],
   ]
     .map(
       ([label, glyph, prefix, suffix]) =>
         `<button type="button" class="btn btn--icone" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}" aria-label="${label}" title="${label}">${icon(glyph)}</button>`,
     )
-    .join('');
+    .join('') +
+    `<button type="button" class="btn btn--icone barra-formato__a" data-cor aria-label="Cor e fundo" title="Cor e fundo"><span aria-hidden="true">A</span></button>` +
+    `<button type="button" class="btn btn--icone" data-transformar aria-label="Transformar em" title="Transformar em">${icon('mais')}</button>`;
   document.body.append(bar);
   const rect = range.getBoundingClientRect();
   bar.style.left = `${Math.max(8, rect.left)}px`;
   bar.style.top = `${Math.max(8, rect.top - 44)}px`;
-  bar.querySelectorAll('button').forEach((button) => {
+  bar.querySelectorAll('[data-prefix]').forEach((button) => {
     button.onmousedown = (event) => {
       event.preventDefault();
       applyWrap(index, selected, button.dataset.prefix, button.dataset.suffix);
       bar.remove();
+    };
+  });
+  bar.querySelector('[data-cor]').onmousedown = (event) => {
+    event.preventDefault();
+    openColorPalette(bar, index, selected);
+  };
+  bar.querySelector('[data-transformar]').onmousedown = (event) => {
+    event.preventDefault();
+    openTransformMenu(bar, index, selected);
+  };
+}
+
+function openColorPalette(anchor, index, selected) {
+  document.querySelector('.barra-formato__paleta')?.remove();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante barra-formato__paleta';
+  menu.innerHTML = `<p class="menu__grupo">Texto</p><div class="barra-formato__cores" data-kind="cor">${Rich.COLORS.map((color) => `<button type="button" class="barra-formato__swatch marca-cor--${color}" data-value="${color}" aria-label="${color}" title="${color}"></button>`).join('')}<button type="button" class="menu__item" data-value="">Sem cor</button></div><p class="menu__grupo">Fundo</p><div class="barra-formato__cores" data-kind="fundo">${Rich.COLORS.map((color) => `<button type="button" class="barra-formato__swatch marca-fundo--${color}" data-value="${color}" aria-label="${color}" title="${color}"></button>`).join('')}<button type="button" class="menu__item" data-value="">Sem fundo</button></div>`;
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.max(8, rect.left)}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.querySelectorAll('[data-kind]').forEach((group) => {
+    group.querySelectorAll('[data-value]').forEach((button) => {
+      button.onmousedown = (event) => {
+        event.preventDefault();
+        applyColor(index, selected, group.dataset.kind, button.dataset.value || null);
+        menu.remove();
+        document.querySelector('.barra-formato')?.remove();
+      };
+    });
+  });
+}
+
+function syncSpanClasses(span) {
+  const cor = span.getAttribute('data-cor');
+  const fundo = span.getAttribute('data-fundo');
+  span.className = ['marca-cor', cor ? `marca-cor--${cor}` : '', fundo ? `marca-fundo--${fundo}` : '']
+    .filter(Boolean)
+    .join(' ');
+}
+
+function applyColor(index, selected, kind, value) {
+  const el = document.querySelector(`[data-block="${index}"][contenteditable="true"]`);
+  const selection = getSelection();
+  if (!el || !selection?.rangeCount || !selected) return;
+  checkpoint(true);
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.commonAncestorContainer)) return;
+  const ancestor =
+    (range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement
+    )?.closest?.('span[data-cor], span[data-fundo]');
+  state.richApplying = true;
+  try {
+    if (ancestor && el.contains(ancestor)) {
+      if (kind === 'cor') {
+        if (value) ancestor.setAttribute('data-cor', value);
+        else ancestor.removeAttribute('data-cor');
+      } else if (value) ancestor.setAttribute('data-fundo', value);
+      else ancestor.removeAttribute('data-fundo');
+      if (!ancestor.getAttribute('data-cor') && !ancestor.getAttribute('data-fundo')) {
+        const parent = ancestor.parentNode;
+        while (ancestor.firstChild) parent.insertBefore(ancestor.firstChild, ancestor);
+        ancestor.remove();
+      } else syncSpanClasses(ancestor);
+    } else if (value) {
+      const wrapper = document.createElement('span');
+      if (kind === 'cor') wrapper.setAttribute('data-cor', value);
+      else wrapper.setAttribute('data-fundo', value);
+      syncSpanClasses(wrapper);
+      wrapper.append(range.extractContents());
+      range.insertNode(wrapper);
+    }
+  } finally {
+    state.richApplying = false;
+  }
+  state.doc = Doc.withBlockRaw(state.doc, index, Rich.sanitize(rawFromEditor(el, state.doc.blocks[index])));
+  paintCenter();
+  scheduleSave();
+}
+
+function openTransformMenu(anchor, index, selected) {
+  document.querySelector('.barra-formato__transformar')?.remove();
+  const menu = document.createElement('div');
+  menu.className = 'menu menu-flutuante barra-formato__transformar';
+  const options = [
+    ['Título', '# '],
+    ['Lista', '- '],
+    ['Citação', '> '],
+    ['Código', '```\n'],
+  ];
+  menu.innerHTML = options
+    .map(([label, prefix]) => `<button type="button" class="menu__item" data-prefix="${escapeHtml(prefix)}">${escapeHtml(label)}</button>`)
+    .join('');
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.max(8, rect.left)}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.querySelectorAll('[data-prefix]').forEach((button) => {
+    button.onmousedown = (event) => {
+      event.preventDefault();
+      applyWrap(index, selected, button.dataset.prefix, button.dataset.prefix === '```\n' ? '\n```' : '');
+      menu.remove();
+      document.querySelector('.barra-formato')?.remove();
     };
   });
 }
@@ -5323,239 +6658,369 @@ async function showGraph(workspace) {
 }
 
 async function paintGraph(center) {
+  state.graphView?.dispose();
+  state.graphView = null;
+  const request = ++state.graphPaintSeq;
+  let graph;
+  try {
+    graph = await tool('graph.query', {});
+  } catch (error) {
+    if (request === state.graphPaintSeq)
+      center.innerHTML = `<div class="vazio-ensina"><h2>Não foi possível carregar o grafo</h2><p>${escapeHtml(error.message || 'Tente abrir esta tela novamente.')}</p></div>`;
+    return;
+  }
+  if (request !== state.graphPaintSeq || state.view !== 'graph') return;
+  const shelves = state.workspaces.map((item) => item.name);
+  const tags = [...new Set((graph?.nodes || []).flatMap((node) => node.tags || []))].sort((a, b) =>
+    a.localeCompare(b),
+  );
   const legend = state.workspaces
     .map((item) => {
       const mark = markFor(item.name);
       const color = mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
-      return `<span class="chip"><span class="arvore__ponto" style="background:${color}"></span>${escapeHtml(item.name)}</span>`;
+      return `<span class="grafo__legenda-item"><i style="--grafo-cor:${color}"></i>${escapeHtml(item.name)}</span>`;
     })
     .join('');
   center.innerHTML = `<div class="grafo">
     <div class="grafo__barra">
-      <label>Estante <select id="grafo-estante"><option value="">Todas</option>${state.workspaces
-        .map(
-          (item) =>
-            `<option value="${escapeHtml(item.name)}" ${item.name === state.graphWorkspace ? 'selected' : ''}>${escapeHtml(item.name)}</option>`,
-        )
-        .join('')}</select></label>
-      <label>Tag <input id="grafo-tag" value="${escapeHtml(state.graphTag)}" placeholder="filtrar" /></label>
-      <label>Linha do tempo <input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" /></label>
-      <span class="nota-privacidade" id="grafo-foco">${state.active ? `Foco: ${escapeHtml(baseName(state.active))}` : ''}</span>
+      <div class="segmentado grafo__modo" role="group" aria-label="Escopo do grafo"><button type="button" class="is-escolhida" data-graph-mode="global">${icon('globo')} Global</button><button type="button" data-graph-mode="local">${icon('foco-no')} Local</button></div>
+      <label class="grafo__busca">${icon('busca')}<input id="grafo-busca" type="search" placeholder="Nota, tag ou #tag" aria-label="Buscar nota ou tag" /><kbd>/</kbd></label>
+      <label class="grafo__filtro"><span>Estante</span><select id="grafo-estante"><option value="">Todas</option>${shelves.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}</select></label>
+      <label class="grafo__filtro"><span>Tag</span><select id="grafo-tag"><option value="">Todas</option>${tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join('')}</select></label>
+      <label class="grafo__filtro"><span>Cor</span><select id="grafo-cor" aria-label="Cor das notas"><option value="estante">Estante</option><option value="tag">Tag</option></select></label>
+      <button type="button" class="btn btn--secundario" id="grafo-forcas-toggle" aria-expanded="false">${icon('configuracoes')} Forças</button>
     </div>
+    <div class="grafo__chips" id="grafo-chips" hidden></div>
     <div class="grafo__palco">
-      <canvas id="grafo-canvas"></canvas>
-      <div class="grafo__legenda">${legend}</div>
-      <div class="grafo__quadros" id="grafo-quadros"></div>
+      <canvas id="grafo-canvas" tabindex="0" role="application" aria-label="Grafo de notas. Use as setas para navegar e Enter para abrir uma nota."></canvas>
+      <div class="grafo__legenda">${legend}<span id="grafo-contagem">Carregando…</span></div>
+      <div class="grafo__cartao" id="grafo-cartao" hidden></div>
+      <aside class="grafo__forcas" id="grafo-forcas" hidden aria-label="Controles de forças">
+        <header><strong>${icon('foco-no')} Forças</strong><button type="button" class="btn btn--icone" id="grafo-forcas-fechar" aria-label="Fechar">${icon('fechar')}</button></header>
+        <label><span>Distância</span><output>90</output><input type="range" min="35" max="220" value="90" data-force="distance" /></label>
+        <label><span>Repulsão</span><output>500</output><input type="range" min="80" max="1400" value="500" data-force="repulsion" /></label>
+        <label><span>Força dos links</span><output>18</output><input type="range" min="2" max="80" value="18" data-force="linkForce" /></label>
+        <label><span>Centro</span><output>6</output><input type="range" min="0" max="30" value="6" data-force="center" /></label>
+        <label><span>Ímã da estante</span><output>0</output><input type="range" min="0" max="30" value="0" data-force="shelfAttraction" /></label>
+        <label class="grafo__alternar"><input type="checkbox" id="grafo-rotulos" checked /> Mostrar rótulos</label>
+        <label class="grafo__alternar"><input type="checkbox" id="grafo-orfas" checked /> Mostrar órfãs</label>
+        <label class="grafo__alternar"><input type="checkbox" id="grafo-simulacao" ${matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'checked'} /> Simulação ativa</label>
+        <button type="button" class="btn btn--secundario" id="grafo-forcas-restaurar">${icon('voltar')} Restaurar forças</button>
+        <p id="grafo-status" aria-live="polite">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'Pausado' : 'Organizando…'}</p>
+      </aside>
+      <div class="grafo__minimapa"><canvas id="grafo-minimapa" aria-label="Minimapa do grafo"></canvas></div>
       <div class="grafo__zoom">
         <button type="button" class="btn btn--icone" id="grafo-mais" aria-label="Aproximar">${icon('zoom-mais')}</button>
+        <span id="grafo-zoom-valor">100%</span>
         <button type="button" class="btn btn--icone" id="grafo-menos" aria-label="Afastar">${icon('zoom-menos')}</button>
-        <button type="button" class="btn btn--icone" id="grafo-ajustar" aria-label="Ajustar">1</button>
+        <button type="button" class="btn btn--icone" id="grafo-ajustar" aria-label="Ajustar à rede">${icon('ajustar')}</button>
       </div>
+      <div class="grafo__local" id="grafo-local" hidden>${icon('foco-no')}<span id="grafo-foco"></span><label>Profundidade <select id="grafo-profundidade"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label></div>
     </div>
+    <div class="grafo__rodape"><span>Layout de força · <span id="grafo-status-rodape">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'pausado' : 'estabilizando'}</span> · Ctrl mostra a nota</span></div>
   </div>`;
-  $('#grafo-estante').onchange = (event) => {
-    state.graphWorkspace = event.target.value;
-    paintGraph(center);
-  };
-  $('#grafo-tag').onchange = (event) => {
-    state.graphTag = event.target.value.trim();
-    paintGraph(center);
-  };
-  $('#grafo-tempo').oninput = (event) => {
-    state.graphUntil = Number(event.target.value) / 100;
-    drawGraph(state.graphData);
-  };
-  const graph = await tool('graph.query', {
-    workspace: state.graphWorkspace || undefined,
-    tag: state.graphTag || undefined,
-  });
-  state.graphData = graph;
-  drawGraph(graph);
-}
 
-function drawGraph(graph) {
-  if (!graph) return;
-  if (state.graphAnimation) cancelAnimationFrame(state.graphAnimation);
-  const until = state.graphUntil ?? 1;
-  const times = graph.nodes.map((node) => node.modifiedAt || 0).filter(Boolean).sort((a, b) => a - b);
-  const cutoff = times.length ? times[Math.min(times.length - 1, Math.floor(until * (times.length - 1)))] : Infinity;
-  const visibleNodes = until >= 1 ? graph.nodes : graph.nodes.filter((node) => (node.modifiedAt || 0) <= cutoff);
-  const visible = new Set(visibleNodes.map((node) => node.path));
-  graph = {
-    nodes: visibleNodes,
-    edges: graph.edges.filter((edge) => visible.has(edge.from) && visible.has(edge.to)),
+  const readLayout = () => {
+    try {
+      const parsed = JSON.parse(
+        localStorage.getItem(`sophy-graph:${state.libraryPath || 'default'}`) || '{}',
+      );
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
   };
-  const frames = $('#grafo-quadros');
-  if (frames && times.length) {
-    const thirds = [0.33, 0.66, 1].map((ratio, index) => {
-      const end = times[Math.min(times.length - 1, Math.floor(ratio * (times.length - 1)))];
-      const start = index === 0 ? 0 : times[Math.min(times.length - 1, Math.floor([0, 0.33, 0.66][index] * (times.length - 1)))];
-      const count = graph.nodes.filter((node) => (node.modifiedAt || 0) <= end && (index === 0 || (node.modifiedAt || 0) > start)).length;
-      return `<section><h3>${['Antes', 'Agora', 'Depois'][index]}</h3><p>${count}</p></section>`;
-    });
-    frames.innerHTML = thirds.join('');
-  }
-  const canvas = $('#grafo-canvas');
-  if (!canvas) return;
-  const stage = canvas.parentElement;
-  const fit = () => {
-    const rect = stage.getBoundingClientRect();
-    canvas.width = Math.max(320, Math.floor(rect.width));
-    canvas.height = Math.max(280, Math.floor(rect.height));
-  };
-  fit();
-  const degree = new Map();
-  for (const edge of graph.edges) {
-    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
-    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
-  }
-  const targetNodes = layout(graph.nodes, graph.edges, canvas.width, canvas.height);
-  const nodes = targetNodes.map((node, index) => {
-    const angle = (index / Math.max(targetNodes.length, 1)) * Math.PI * 2;
-    const startRadius = Math.min(canvas.width, canvas.height) * 0.08;
-    return {
-      ...node,
-      targetX: node.x,
-      targetY: node.y,
-      x: canvas.width / 2 + Math.cos(angle) * startRadius,
-      y: canvas.height / 2 + Math.sin(angle) * startRadius,
-      degree: degree.get(node.path) || 0,
-    };
-  });
-  const byPath = new Map(nodes.map((node) => [node.path, node]));
+  const savedLayout = readLayout();
+  if (state.view !== 'graph' || !$('#grafo-canvas')) return;
   const styles = getComputedStyle(document.documentElement);
-  const colorOf = (workspace) => {
+  const tagPalette = ['#6d64d8', '#c45b45', '#2f8f72', '#c4922a', '#3a78b4', '#b15486', '#6a8a32', '#8a623c'];
+  const tagColor = (tag) => {
+    let hash = 0;
+    const text = String(tag || '');
+    for (let i = 0; i < text.length; i += 1) hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
+    return tagPalette[hash % tagPalette.length];
+  };
+  let colorMode = savedLayout.colorMode === 'tag' ? 'tag' : 'estante';
+  const shelfColor = (workspace) => {
     const mark = markFor(workspace || '');
     return mark.color
       ? styles.getPropertyValue(`--shelf-${mark.color}`).trim()
       : styles.getPropertyValue('--ink-3').trim();
   };
-  const project = (node) => {
-    const camera = state.graphCamera;
-    return {
-      x: canvas.width / 2 + (node.x - canvas.width / 2 + camera.x) * camera.zoom,
-      y: canvas.height / 2 + (node.y - canvas.height / 2 + camera.y) * camera.zoom,
-    };
+  const colorOf = (node) => {
+    if (colorMode === 'tag') {
+      const tag = node?.tags?.[0];
+      if (tag) return tagColor(tag);
+    }
+    return shelfColor(node?.workspace || '');
   };
-  const redraw = () => {
-    const ctx = canvas.getContext('2d');
-    const ink = styles.getPropertyValue('--ink').trim();
-    const dot = styles.getPropertyValue('--canvas-dot').trim() || '#D9D5CE';
-    const bg = styles.getPropertyValue('--bg').trim();
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let x = 12; x < canvas.width; x += 22) {
-      for (let y = 12; y < canvas.height; y += 22) {
-        ctx.fillStyle = dot;
-        ctx.fillRect(x, y, 1.4, 1.4);
+  state.graphView = SophyGraphView.create({
+    canvas: $('#grafo-canvas'),
+    minimap: $('#grafo-minimapa'),
+    graph,
+    activePath: state.active,
+    saved: savedLayout,
+    libraryKey: state.libraryPath || state.libraryName,
+    reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    colorOf,
+    escape: escapeHtml,
+    icon,
+    tagColor,
+    onSelect: (path) => {
+      const node = graph.nodes.find((item) => item.path === path);
+      if (node) {
+        const focus = $('#grafo-foco');
+        if (focus) focus.textContent = node.title || baseName(path);
       }
-    }
-    for (const edge of graph.edges) {
-      const from = byPath.get(edge.from);
-      const to = byPath.get(edge.to);
-      if (!from || !to) continue;
-      const a = project(from);
-      const b = project(to);
-      ctx.beginPath();
-      ctx.strokeStyle = colorOf(from.workspace);
-      ctx.globalAlpha = 0.45;
-      ctx.lineWidth = 1.4;
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    for (const node of nodes) {
-      const at = project(node);
-      const focused = node.path === state.active;
-      const radius = (4 + Math.min(node.degree, 8) * 1.7) * state.graphCamera.zoom;
-      const color = colorOf(node.workspace);
-      if (focused) {
-        ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.18;
-        ctx.arc(at.x, at.y, radius + 14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      ctx.beginPath();
-      ctx.fillStyle = color || '#6E72B0';
-      ctx.arc(at.x, at.y, focused ? radius + 3 : radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = ink;
-      ctx.font = `${focused ? 600 : 400} 13px Inter, sans-serif`;
-      ctx.fillText(node.title || baseName(node.path), at.x + radius + 8, at.y + 4);
-    }
-  };
-  state.graphRedraw = redraw;
-  redraw();
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    for (const node of nodes) {
-      node.x = node.targetX;
-      node.y = node.targetY;
-    }
-    redraw();
-  } else {
-    const animationStart = performance.now();
-    const animateGraph = (now) => {
-      const elapsed = Math.min(1, (now - animationStart) / 720);
-      const eased = 1 - Math.pow(1 - elapsed, 3);
-      for (const node of nodes) {
-        node.x += (node.targetX - node.x) * Math.max(0.12, eased);
-        node.y += (node.targetY - node.y) * Math.max(0.12, eased);
-      }
-      redraw();
-      if (elapsed < 1) state.graphAnimation = requestAnimationFrame(animateGraph);
-      else state.graphAnimation = 0;
-    };
-    state.graphAnimation = requestAnimationFrame(animateGraph);
+    },
+    onActivate: (path) => focusGraphNote(path),
+  });
+  if (!state.graphView.supportsWorker) {
+    $('#grafo-status').textContent = 'Layout estático';
+    $('#grafo-status-rodape').textContent = 'estático';
+    document.querySelectorAll('[data-force], #grafo-simulacao, #grafo-forcas-restaurar').forEach((input) => { input.disabled = true; });
+    $('#grafo-simulacao').checked = false;
   }
-  const zoomBy = (factor) => {
-    state.graphCamera.zoom = Math.min(2.4, Math.max(0.4, state.graphCamera.zoom * factor));
-    redraw();
-  };
-  $('#grafo-mais').onclick = () => zoomBy(1.2);
-  $('#grafo-menos').onclick = () => zoomBy(1 / 1.2);
-  $('#grafo-ajustar').onclick = () => {
-    state.graphCamera = { x: 0, y: 0, zoom: 1 };
-    redraw();
-  };
-  canvas.onwheel = (event) => {
-    event.preventDefault();
-    zoomBy(event.deltaY > 0 ? 1 / 1.08 : 1.08);
-  };
-  let drag = null;
-  canvas.onpointerdown = (event) => {
-    drag = { x: event.clientX, y: event.clientY, moved: false };
-    canvas.setPointerCapture(event.pointerId);
-  };
-  canvas.onpointermove = (event) => {
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    if (Math.hypot(dx, dy) > 3) drag.moved = true;
-    state.graphCamera.x += dx / state.graphCamera.zoom;
-    state.graphCamera.y += dy / state.graphCamera.zoom;
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    redraw();
-  };
-  canvas.onpointerup = (event) => {
-    if (!drag) return;
-    const moved = drag.moved;
-    drag = null;
-    if (moved) return;
-    const bounds = canvas.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left) / bounds.width) * canvas.width;
-    const y = ((event.clientY - bounds.top) / bounds.height) * canvas.height;
-    const hit = nodes.find((node) => {
-      const at = project(node);
-      return Math.hypot(at.x - x, at.y - y) < 18;
-    });
-    if (hit) focusGraphNote(hit.path);
-  };
-}
 
+  const applyFilters = () => {
+    const rawQuery = ($('#grafo-busca')?.value || '').trim();
+    const fold = (value) =>
+      String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+    const query = fold(rawQuery);
+    const tagSearch = query.startsWith('#')
+      ? query.slice(1).trim()
+      : query.startsWith('tag:')
+        ? query.slice(4).trim()
+        : '';
+    const workspace = $('#grafo-estante')?.value || '';
+    const tag = $('#grafo-tag')?.value || '';
+    const filtered = {
+      nodes: graph.nodes.filter((node) => {
+        const tags = (node.tags || []).map(fold);
+        const queryOk =
+          !query ||
+          (tagSearch
+            ? tags.some((item) => item.includes(tagSearch))
+            : fold(`${node.title} ${node.path} ${tags.join(' ')}`).includes(query));
+        return (
+          (!workspace || node.workspace === workspace) &&
+          (!tag || (node.tags || []).includes(tag)) &&
+          queryOk
+        );
+      }),
+      edges: [],
+    };
+    const paths = new Set(filtered.nodes.map((node) => node.path));
+    filtered.edges = graph.edges.filter((edge) => paths.has(edge.from) && paths.has(edge.to));
+    state.graphView?.setGraph(filtered);
+    let empty = $('#grafo-vazio');
+    if (!filtered.nodes.length) {
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.id = 'grafo-vazio';
+        empty.className = 'grafo__vazio';
+        empty.innerHTML =
+          '<div><strong>Nenhuma nota com esses filtros</strong><p>Remova um filtro para ver mais conexões.</p></div>';
+        $('.grafo__palco')?.append(empty);
+      }
+    } else empty?.remove();
+    const chips = [];
+    if (workspace)
+      chips.push([
+        'Estante',
+        workspace,
+        () => {
+          $('#grafo-estante').value = '';
+          applyFilters();
+        },
+      ]);
+    if (tag)
+      chips.push([
+        'Tag',
+        tag,
+        () => {
+          $('#grafo-tag').value = '';
+          applyFilters();
+        },
+      ]);
+    if (query)
+      chips.push([
+        tagSearch ? 'Tag' : 'Busca',
+        tagSearch || rawQuery,
+        () => {
+          $('#grafo-busca').value = '';
+          applyFilters();
+        },
+      ]);
+    if ($('#grafo-orfas')?.checked === false)
+      chips.push([
+        'Órfãs',
+        'Ocultas',
+        () => {
+          $('#grafo-orfas').checked = true;
+          state.graphView?.setShowOrphans(true);
+          applyFilters();
+        },
+      ]);
+    const host = $('#grafo-chips');
+    if (host) {
+      host.hidden = !chips.length;
+      host.innerHTML =
+        chips
+          .map(
+            ([label, value], index) =>
+              `<button type="button" data-chip="${index}">${escapeHtml(label)}: ${escapeHtml(value)} ${icon('fechar')}</button>`,
+          )
+          .join('') +
+        (chips.length ? '<button type="button" data-clear-graph>Limpar filtros</button>' : '');
+      host.querySelectorAll('[data-chip]').forEach((button) => {
+        button.onclick = chips[Number(button.dataset.chip)][2];
+      });
+      host.querySelector('[data-clear-graph]')?.addEventListener('click', () => {
+        $('#grafo-estante').value = '';
+        $('#grafo-tag').value = '';
+        $('#grafo-busca').value = '';
+        $('#grafo-orfas').checked = true;
+        state.graphView?.setShowOrphans(true);
+        applyFilters();
+      });
+    }
+    const legendHost = document.querySelector('.grafo__legenda');
+    const legendCount = legendHost?.querySelector('#grafo-contagem');
+    if (legendHost && legendCount) {
+      const items =
+        colorMode === 'tag'
+          ? [...new Set(filtered.nodes.flatMap((node) => node.tags || []))]
+              .slice(0, 8)
+              .map(
+                (name) =>
+                  `<span class="grafo__legenda-item"><i style="--grafo-cor:${tagColor(name)}"></i>${escapeHtml(name)}</span>`,
+              )
+              .join('')
+          : legend;
+      legendHost.innerHTML = `${items}<span id="grafo-contagem">${legendCount.textContent}</span>`;
+    }
+    const count = $('#grafo-contagem');
+    if (count)
+      count.textContent = `${filtered.nodes.length} ${filtered.nodes.length === 1 ? 'nota' : 'notas'} · ${filtered.edges.length} ${filtered.edges.length === 1 ? 'link' : 'links'}`;
+  };
+  $('#grafo-estante').value = state.graphWorkspace || '';
+  $('#grafo-estante').onchange = (event) => {
+    state.graphWorkspace = event.target.value;
+    applyFilters();
+  };
+  $('#grafo-tag').onchange = applyFilters;
+  const colorSelect = $('#grafo-cor');
+  if (colorSelect) {
+    colorSelect.value = colorMode;
+    colorSelect.onchange = (event) => {
+      colorMode = event.target.value === 'tag' ? 'tag' : 'estante';
+      try {
+        const key = `sophy-graph:${state.libraryPath || state.libraryName || 'default'}`;
+        const stored = JSON.parse(localStorage.getItem(key) || '{}');
+        stored.colorMode = colorMode;
+        localStorage.setItem(key, JSON.stringify(stored));
+      } catch {}
+      applyFilters();
+    };
+  }
+  $('#grafo-busca').oninput = applyFilters;
+  $('#grafo-busca').onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      const result = state.graphView?.graph.nodes[0];
+      if (result) {
+        state.graphView?.focus(result.path);
+        $('#grafo-canvas').focus();
+      }
+    }
+  };
+  document.querySelectorAll('[data-graph-mode]').forEach((button) => {
+    button.onclick = () => {
+      document
+        .querySelectorAll('[data-graph-mode]')
+        .forEach((item) => item.classList.toggle('is-escolhida', item === button));
+      const local = button.dataset.graphMode === 'local';
+      const localPanel = $('#grafo-local');
+      if (localPanel) localPanel.hidden = !local;
+      state.graphView?.setMode(local ? 'local' : 'global');
+      if (local) {
+        const centerPath = state.active || graph.nodes[0]?.path;
+        if (centerPath) {
+          state.graphView?.setSelected(centerPath);
+          $('#grafo-foco').textContent = baseName(centerPath);
+        }
+      }
+    };
+  });
+  $('#grafo-profundidade').onchange = (event) =>
+    state.graphView?.setDepth(Number(event.target.value));
+  $('#grafo-forcas-toggle').onclick = () => {
+    const panel = $('#grafo-forcas');
+    panel.hidden = !panel.hidden;
+    $('#grafo-forcas-toggle').setAttribute('aria-expanded', String(!panel.hidden));
+  };
+  $('#grafo-forcas-fechar').onclick = () => {
+    $('#grafo-forcas').hidden = true;
+    $('#grafo-forcas-toggle').setAttribute('aria-expanded', 'false');
+  };
+  $('#grafo-forcas-restaurar').onclick = () => {
+    const defaults = { distance: 90, repulsion: 500, linkForce: 0.018, center: 0.006, shelfAttraction: 0 };
+    document.querySelectorAll('[data-force]').forEach((input) => {
+      const value = defaults[input.dataset.force];
+      input.value = String(['linkForce', 'center', 'shelfAttraction'].includes(input.dataset.force) ? value * 1000 : value);
+      input.parentElement.querySelector('output').value = input.value;
+    });
+    state.graphView?.resetOptions(defaults);
+  };
+  document.querySelectorAll('[data-force]').forEach((input) => {
+    const key = input.dataset.force;
+    const savedValue = Number(savedLayout.options?.[key]);
+    if (Number.isFinite(savedValue))
+      input.value = String(
+        key === 'linkForce' || key === 'center' || key === 'shelfAttraction'
+          ? savedValue * 1000
+          : savedValue,
+      );
+    input.parentElement.querySelector('output').value = input.value;
+    input.oninput = () => {
+      const val = Number(input.value);
+      const output = input.parentElement.querySelector('output');
+      output.value = String(val);
+      state.graphView?.setOption(
+        key,
+        ['linkForce', 'center', 'shelfAttraction'].includes(key) ? val / 1000 : val,
+      );
+    };
+  });
+  $('#grafo-rotulos').checked = savedLayout.showLabels !== false;
+  $('#grafo-orfas').checked = savedLayout.showOrphans !== false;
+  $('#grafo-rotulos').onchange = (event) => state.graphView?.setShowLabels(event.target.checked);
+  $('#grafo-orfas').onchange = (event) => {
+    state.graphView?.setShowOrphans(event.target.checked);
+    applyFilters();
+  };
+  $('#grafo-simulacao').onchange = (event) =>
+    state.graphView?.setForcesRunning(event.target.checked);
+  $('#grafo-mais').onclick = () => state.graphView?.zoomBy(1.2);
+  $('#grafo-menos').onclick = () => state.graphView?.zoomBy(1 / 1.2);
+  $('#grafo-ajustar').onclick = () => state.graphView?.fit();
+  if (state.graphKeyHandler) document.removeEventListener('keydown', state.graphKeyHandler);
+  state.graphKeyHandler = (event) => {
+    if (
+      event.key === '/' &&
+      !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) &&
+      state.view === 'graph'
+    ) {
+      event.preventDefault();
+      $('#grafo-busca')?.focus();
+    }
+  };
+  document.addEventListener('keydown', state.graphKeyHandler);
+  applyFilters();
+}
 async function focusGraphNote(path) {
   state.active = path;
   if (!state.tabs.includes(path)) state.tabs.push(path);
@@ -5569,54 +7034,7 @@ async function focusGraphNote(path) {
   paintTabs();
   paintLinks();
   paintStatus();
-  if (state.graphRedraw) state.graphRedraw();
-}
-
-function layout(nodes, edges, width, height) {
-  const placed = nodes.map((node, index) => {
-    const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
-    const radius = Math.min(width, height) * 0.28;
-    return {
-      ...node,
-      x: width / 2 + Math.cos(angle) * radius,
-      y: height / 2 + Math.sin(angle) * radius,
-      vx: 0,
-      vy: 0,
-    };
-  });
-  const index = new Map(placed.map((node) => [node.path, node]));
-  for (let step = 0; step < 80; step += 1) {
-    for (let a = 0; a < placed.length; a += 1) {
-      for (let b = a + 1; b < placed.length; b += 1) {
-        let dx = placed[a].x - placed[b].x;
-        let dy = placed[a].y - placed[b].y;
-        const dist = Math.hypot(dx, dy) || 0.1;
-        const force = dist < 120 ? (120 - dist) * 0.9 : 2400 / (dist * dist);
-        placed[a].vx += (dx / dist) * force;
-        placed[a].vy += (dy / dist) * force;
-        placed[b].vx -= (dx / dist) * force;
-        placed[b].vy -= (dy / dist) * force;
-      }
-    }
-    for (const edge of edges) {
-      const from = index.get(edge.from);
-      const to = index.get(edge.to);
-      if (!from || !to) continue;
-      from.vx += (to.x - from.x) * 0.02;
-      from.vy += (to.y - from.y) * 0.02;
-      to.vx -= (to.x - from.x) * 0.02;
-      to.vy -= (to.y - from.y) * 0.02;
-    }
-    for (const node of placed) {
-      node.vx += (width / 2 - node.x) * 0.02;
-      node.vy += (height / 2 - node.y) * 0.02;
-      node.vx *= 0.75;
-      node.vy *= 0.75;
-      node.x = Math.max(28, Math.min(width - 28, node.x + node.vx));
-      node.y = Math.max(28, Math.min(height - 28, node.y + node.vy));
-    }
-  }
-  return placed;
+  state.graphView?.setSelected(path);
 }
 
 function openPalette() {
@@ -5804,9 +7222,54 @@ document.addEventListener('keydown', (event) => {
       closeDrawer();
       return;
     }
+    if (state.view === 'calendar' && state.dayPanelOpen) {
+      state.dayPanelOpen = false;
+      paintCenter();
+      return;
+    }
     if (state.focusMode) {
       setFocusMode(false);
       return;
+    }
+  }
+  if (
+    state.view === 'calendar' &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.target.closest('input, textarea, [contenteditable="true"]')
+  ) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      shiftCalendarDay(-1);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      shiftCalendarDay(1);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      shiftCalendarDay(-7);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      shiftCalendarDay(7);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      state.dayPanelOpen = true;
+      loadDayPanel(state.dayFocus || state.calendarCursor || isoToday());
+      return;
+    }
+    if (event.key === 't' || event.key === 'T') {
+      event.preventDefault();
+      state.calendarCursor = isoToday();
+      state.dayFocus = isoToday();
+      showCalendar();
     }
   }
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
@@ -5883,6 +7346,10 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.key === 'F2' && !event.target.closest('[contenteditable="true"], input, textarea')) {
     event.preventDefault();
+    if (state.active && dailyPathDate(state.active)) {
+      toast('Notas do dia têm o nome fixo pela data', 'erro');
+      return;
+    }
     if (state.active) state.renaming = { kind: 'note', path: state.active };
     else if (state.selectedShelf) state.renaming = { kind: 'shelf', name: state.selectedShelf };
     else return;

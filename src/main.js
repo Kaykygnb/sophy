@@ -1,4 +1,15 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, safeStorage, session, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  nativeImage,
+  dialog,
+  ipcMain,
+  safeStorage,
+  session,
+  shell,
+} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -25,6 +36,11 @@ let gate;
 let releasePresence = () => {};
 let mailboxTimer;
 const windows = new Set();
+let tray;
+let quitting = false;
+let quitJob;
+let flushSequence = 0;
+const pendingCommands = [];
 
 function settingsFile() {
   return path.join(app.getPath('userData'), 'ui.json');
@@ -54,8 +70,13 @@ function rememberLibrary(folder) {
     ...(Array.isArray(settings.libraries) ? settings.libraries : []).filter(
       (item) => typeof item === 'string' && item !== folder,
     ),
-  ].slice(0, 5);
-  return writeSettings({ libraryPath: folder, onboarded: true, libraries, recentLibraries: libraries });
+  ];
+  return writeSettings({
+    libraryPath: folder,
+    onboarded: true,
+    libraries,
+    recentLibraries: libraries.slice(0, 5),
+  });
 }
 
 function agentKeyFile() {
@@ -63,6 +84,23 @@ function agentKeyFile() {
 }
 
 function broadcast(command) {
+  if (command.type === 'window') {
+    if (command.action === 'show') {
+      showWindow();
+      return;
+    }
+    const window = [...windows].find((item) => !item.isDestroyed());
+    if (!window) return;
+    if (command.action === 'hide') requestClose(window);
+    else if (command.action === 'minimize') window.minimize();
+    else if (command.action === 'maximize') window.maximize();
+    return;
+  }
+  const window = showWindow();
+  if (!window.__sophyReady) {
+    pendingCommands.push(command);
+    return;
+  }
   for (const window of windows) {
     if (!window.isDestroyed()) window.webContents.send('sophy:command', command);
   }
@@ -106,6 +144,28 @@ function handle(channel, fn) {
 }
 
 function setupIpc() {
+  handle('sophy:open-external', async (_event, address) => {
+    const url = new URL(address);
+    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) throw new Error('Tipo de link não permitido.');
+    await shell.openExternal(url.href);
+    return true;
+  });
+  ipcMain.on('sophy:attention', (event) => {
+    if (!trusted(event)) return;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      window.show();
+      window.focus();
+    }
+  });
+  ipcMain.on('sophy:ui-ready', (event) => {
+    if (!trusted(event)) return;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return;
+    window.__sophyReady = true;
+    for (const command of pendingCommands.splice(0))
+      window.webContents.send('sophy:command', command);
+  });
   handle('sophy:boot', () => {
     const settings = readSettings();
     if (presetLibrary) {
@@ -140,23 +200,24 @@ function setupIpc() {
     if (/key|chave|secret|token|senha/i.test(name)) throw new Error('Tool desconhecida.');
     const body = input && typeof input === 'object' ? input : {};
     if (name === 'entry.trash' && sessionPath && typeof body.path === 'string') {
-      const full = path.resolve(sessionPath, ...body.path.split('/').filter(Boolean));
-      const root = path.resolve(sessionPath) + path.sep;
-      if (full.startsWith(root)) {
-        try {
-          const library = engine.openLibrary(sessionPath);
-          const before = engine.capture(library);
-          await shell.trashItem(full);
-          engine.pushHistory(library, {
-            origin: 'ui',
-            tool: 'entry.trash',
-            summary: `Lixeira ${body.path}`,
-            changes: engine.diff(before, engine.capture(library)),
-          });
-          return { path: body.path, trashed: true, trashPath: '' };
-        } catch {
-          /* a engine copia e apaga quando a lixeira do sistema recusa */
-        }
+      const library = engine.openLibrary(sessionPath);
+      const full = engine.resolveInside(library.root, body.path);
+      const before = engine.capture(library);
+      let systemTrashed = false;
+      try {
+        await shell.trashItem(full);
+        systemTrashed = true;
+      } catch {
+        // A lixeira local preserva uma cópia quando o sistema não recebe o item.
+      }
+      if (systemTrashed) {
+        engine.pushHistory(library, {
+          origin: 'ui',
+          tool: 'entry.trash',
+          summary: `Lixeira ${body.path}`,
+          changes: engine.diff(before, engine.capture(library)),
+        });
+        return { path: body.path, trashed: true, trashPath: '' };
       }
     }
     return gate(name, body);
@@ -167,7 +228,8 @@ function setupIpc() {
   }));
 
   handle('sophy:agent-key-set', (_event, key) => {
-    if (typeof key !== 'string' || key.trim().length < 8) throw new Error('A chave é curta demais.');
+    if (typeof key !== 'string' || key.trim().length < 8)
+      throw new Error('A chave é curta demais.');
     if (!safeStorage.isEncryptionAvailable())
       throw new Error('O cofre do sistema não está disponível.');
     fs.writeFileSync(agentKeyFile(), safeStorage.encryptString(key.trim()));
@@ -183,7 +245,8 @@ function setupIpc() {
     if (typeof message !== 'string' || !message.trim()) throw new Error('Escreva o pedido.');
     if (!sessionPath) throw new Error('Nenhuma biblioteca aberta.');
     if (!fs.existsSync(agentKeyFile())) throw new Error('Guarde a chave no cofre antes de pedir.');
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('O cofre do sistema não está disponível.');
+    if (!safeStorage.isEncryptionAvailable())
+      throw new Error('O cofre do sistema não está disponível.');
     const key = safeStorage.decryptString(fs.readFileSync(agentKeyFile()));
     const owner = BrowserWindow.getFocusedWindow() || [...windows][0];
     const turn = await engine.runAgentTurn({
@@ -205,6 +268,21 @@ function setupIpc() {
     return { text: turn.text };
   });
 
+  handle('sophy:choose-files', async (event) => {
+    if (!trusted(event)) throw new Error('Origem não confiável.');
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(owner || undefined, {
+      title: 'Inserir imagem',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Imagens', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] },
+        { name: 'Todos', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled) return [];
+    return result.filePaths || [];
+  });
+
   handle('sophy:choose-folder', async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(owner, {
@@ -222,10 +300,8 @@ function setupIpc() {
       throw new Error('Esse nome é reservado pelo Windows.');
     fs.mkdirSync(target, { recursive: true });
     fs.mkdirSync(path.join(target, '.sophy'), { recursive: true });
-    const opened = gate('library.open', { path: target });
-    rememberLibrary(opened.root);
-    gate('library.watch', { enabled: true });
-    return opened;
+    // Criar a pasta não troca a sessão antes de o editor autorizar a saída.
+    return engine.openLibrary(target);
   });
 
   handle('sophy:switch-library', (_event, folder) => {
@@ -253,7 +329,9 @@ function setupIpc() {
 
   handle('sophy:library-list', () => {
     const settings = readSettings();
-    const source = Array.isArray(settings.recentLibraries) ? settings.recentLibraries : settings.libraries;
+    const source = Array.isArray(settings.recentLibraries)
+      ? settings.recentLibraries
+      : settings.libraries;
     return (Array.isArray(source) ? source : [])
       .filter((item) => typeof item === 'string')
       .slice(0, 5)
@@ -278,7 +356,26 @@ function setupIpc() {
   handle('sophy:settings', (_event, patch) => {
     if (!patch || typeof patch !== 'object') throw new Error('Configuração inválida.');
     const allowed = {};
-    for (const key of ['onboarded', 'libraryPath', 'theme', 'readingFont', 'reduceMotion', 'libraries', 'accent', 'accentSystem', 'semantic', 'weekStartsOn']) {
+    for (const key of [
+      'onboarded',
+      'libraryPath',
+      'theme',
+      'readingFont',
+      'reduceMotion',
+      'libraries',
+      'accent',
+      'accentSystem',
+      'semantic',
+      'weekStartsOn',
+      'collapsedSections',
+    ]) {
+      if (key === 'collapsedSections' && 'collapsedSections' in patch) {
+        const value = patch.collapsedSections;
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+          throw new Error('Seções recolhidas inválidas.');
+        allowed.collapsedSections = value;
+        continue;
+      }
       if (key in patch) allowed[key] = patch[key];
     }
     if ('weekStartsOn' in allowed && ![0, 1].includes(allowed.weekStartsOn))
@@ -287,7 +384,12 @@ function setupIpc() {
       throw new Error('A cor do sistema é ligada ou desligada.');
     if ('semantic' in allowed && typeof allowed.semantic !== 'boolean')
       throw new Error('A busca por significado é ligada ou desligada.');
-    if ('accent' in allowed && !['indigo', 'azul', 'verde-agua', 'musgo', 'ambar', 'vinho', 'grafite'].includes(allowed.accent))
+    if (
+      'accent' in allowed &&
+      !['indigo', 'azul', 'verde-agua', 'musgo', 'ambar', 'vinho', 'grafite'].includes(
+        allowed.accent,
+      )
+    )
       throw new Error('Cor de destaque inválida.');
     if ('theme' in allowed && !['light', 'dark', 'system'].includes(allowed.theme))
       throw new Error('Tema inválido.');
@@ -329,23 +431,88 @@ function setupIpc() {
       if (window.isMaximized()) window.unmaximize();
       else window.maximize();
     } else if (action === 'close') requestClose(window);
+    else if (action === 'quit') requestQuit();
     else throw new Error('Ação de janela desconhecida.');
     return true;
   });
 }
 
-function requestClose(window) {
-  if (window.__sophyClosing) return;
-  window.__sophyClosing = true;
-  const timer = setTimeout(() => window.destroy(), 1500);
-  const done = () => {
-    clearTimeout(timer);
-    if (!window.isDestroyed()) window.destroy();
-  };
-  ipcMain.once('sophy:flushed', (event) => {
-    if (event.sender === window.webContents) done();
+function flushWindow(window) {
+  if (window.isDestroyed() || !window.__sophyReady) return Promise.resolve(true);
+  if (window.__sophyFlush) return window.__sophyFlush;
+  const requestId = ++flushSequence;
+  window.__sophyFlush = new Promise((resolve) => {
+    const done = (saved) => {
+      ipcMain.removeListener('sophy:flushed', receive);
+      window.removeListener('closed', closed);
+      window.__sophyFlush = null;
+      resolve(saved);
+    };
+    const receive = (event, saved, id) => {
+      if (event.sender === window.webContents && id === requestId) done(saved === true);
+    };
+    const closed = () => done(false);
+    ipcMain.on('sophy:flushed', receive);
+    window.once('closed', closed);
+    window.webContents.send('sophy:flush-request', requestId);
   });
-  window.webContents.send('sophy:flush-request');
+  return window.__sophyFlush;
+}
+
+async function requestClose(window) {
+  if (!(await flushWindow(window)) || window.isDestroyed()) return false;
+  // Sem bandeja no ambiente Linux, manter a janela acessível pela barra de tarefas.
+  if (tray) window.hide();
+  else window.minimize();
+  return true;
+}
+
+function showWindow() {
+  const window = [...windows].find((item) => !item.isDestroyed()) || createWindow();
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  return window;
+}
+
+async function requestQuit() {
+  if (quitJob) return quitJob;
+  quitJob = (async () => {
+    for (const window of windows) {
+      if (!(await flushWindow(window))) {
+        showWindow();
+        return false;
+      }
+    }
+    quitting = true;
+    app.quit();
+    return true;
+  })();
+  try {
+    return await quitJob;
+  } finally {
+    quitJob = null;
+  }
+}
+
+function createTray() {
+  try {
+    const image = nativeImage
+      .createFromPath(path.join(__dirname, 'ui/assets/app/sophy.png'))
+      .resize({ width: 20, height: 20 });
+    tray = new Tray(image);
+    tray.setToolTip('Sophy');
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Abrir Sophy', click: () => showWindow() },
+        { type: 'separator' },
+        { label: 'Sair do Sophy', click: () => requestQuit() },
+      ]),
+    );
+    tray.on('click', () => showWindow());
+  } catch {
+    tray = null;
+  }
 }
 
 function createWindow() {
@@ -364,12 +531,22 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      devTools: true,
       backgroundThrottling: !testData,
     },
   });
   windows.add(window);
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = input.key.toLowerCase();
+    if (key === 'f12' || ((input.control || input.meta) && input.shift && key === 'i')) {
+      event.preventDefault();
+      if (window.webContents.isDevToolsOpened()) window.webContents.closeDevTools();
+      else window.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
   window.on('close', (event) => {
-    if (window.__sophyClosing) return;
+    if (quitting) return;
     event.preventDefault();
     requestClose(window);
   });
@@ -385,11 +562,7 @@ function createWindow() {
 }
 
 app.on('second-instance', () => {
-  const window = [...windows][0];
-  if (!window) return;
-  if (window.isMinimized()) window.restore();
-  window.show();
-  window.focus();
+  showWindow();
 });
 
 app.whenReady().then(async () => {
@@ -411,17 +584,26 @@ app.whenReady().then(async () => {
   } catch {
     /* o dicionário pt-BR pode não estar neste Electron */
   }
-  createWindow();
+  createTray();
+  if (!process.argv.includes('--background') || !tray) createWindow();
   app.on('activate', () => {
-    if (windows.size === 0) createWindow();
+    showWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // O motor e a presença MCP continuam ativos sem janelas.
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (!quitting) {
+    event.preventDefault();
+    requestQuit();
+  }
+});
+
+app.on('will-quit', () => {
   if (mailboxTimer) clearInterval(mailboxTimer);
   releasePresence();
+  tray?.destroy();
 });

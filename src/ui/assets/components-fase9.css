@@ -78,11 +78,15 @@
 .bloco-insercao { height: 2px; margin: -1px 0; border-radius: 2px; background: var(--accent); }
 /* dica de linha vazia: só na linha com o cursor (não polui a nota) */
 .bloco[data-vazio]:focus::before, .bloco[data-vazio].is-foco::before {
-  content: attr(data-placeholder); color: var(--ink-3); pointer-events: none;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: color-mix(in srgb, var(--ink-3) 55%, transparent);
+  pointer-events: none;
 }
 .bloco { outline: none; min-height: 1.65em; padding: 2px 0; font: var(--reading-size, 16px)/1.65 var(--font-reading); color: var(--ink); }
 .bloco:focus-visible { box-shadow: none; }
-.bloco--titulo2 { font: 600 22px/1.4 var(--font-ui); margin-top: 10px; }
+.bloco--titulo2 { font: 600 22px/1.4 var(--font-reading); margin-top: 10px; }
 
 /* menu do ⋮⋮ */
 .menu--bloco { width: 300px; }

@@ -57,3 +57,30 @@ function dump(directory: string): string {
   }
   return text;
 }
+
+test('Sofi só move notas e altera canvas depois da confirmação', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophy-agent-confirm-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'Estudos'));
+  fs.writeFileSync(path.join(root, 'Estudos', 'A.md'), 'original\n');
+  fs.writeFileSync(path.join(root, 'Mapa.canvas'), JSON.stringify({ nodes: [], edges: [] }));
+  for (const [name, args, changed] of [
+    ['entry.move', { from: 'Estudos/A.md', to: 'Estudos/B.md' }, () => fs.existsSync(path.join(root, 'Estudos', 'B.md'))],
+    ['canvas.node.put', { path: 'Mapa.canvas', node: { id: 'novo', type: 'text', x: 0, y: 0, width: 100, height: 100, text: 'confirmado' } }, () => fs.readFileSync(path.join(root, 'Mapa.canvas'), 'utf8').includes('confirmado')],
+  ] as const) {
+    for (const allowed of [false, true]) {
+      let confirmations = 0;
+      const input = { ...args };
+      if (name === 'canvas.node.put') {
+        const { readCanvas } = await import('./canvas.ts');
+        Object.assign(input, { expectedRevision: readCanvas(openLibrary(root), 'Mapa.canvas').revision });
+      }
+      await runAgentTurn({ libraryPath: root, message: 'executar', key: 'chave-ficticia',
+        confirm: () => { confirmations += 1; return allowed; },
+        fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ message: { tool_calls: [{ function: { name, arguments: JSON.stringify(input) } }] } }] }) }),
+      });
+      assert.equal(confirmations, 1);
+      assert.equal(changed(), allowed);
+    }
+  }
+});

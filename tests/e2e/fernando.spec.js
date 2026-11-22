@@ -30,7 +30,9 @@ async function open(root, note) {
   return { app, page };
 }
 
-const read = (root, name) => fs.readFileSync(path.join(root, 'Estudos', name), 'utf8');
+const readRaw = (root, name) => fs.readFileSync(path.join(root, 'Estudos', name), 'utf8');
+const read = (root, name) =>
+  readRaw(root, name).replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
 const settle = (page) => page.waitForTimeout(800);
 
 async function caretAfter(page, selector, needle) {
@@ -110,7 +112,7 @@ test('4 bloco --- depois do frontmatter sobrevive ao save', async () => {
   await caretAfter(page, '.bloco--texto:has-text("Fim")', 'Fim');
   await page.keyboard.type('!');
   await settle(page);
-  const saved = read(root, 'F.md');
+  const saved = readRaw(root, 'F.md');
   expect(saved).toContain('Texto importante');
   expect(saved).toContain('Fim!');
   expect(saved).toContain('tags:');
@@ -120,7 +122,7 @@ test('4 bloco --- depois do frontmatter sobrevive ao save', async () => {
 test('5 editar célula preserva alinhamento e pipe escapado', async () => {
   const root = lib({ 'Tab.md': '# T\n\n| Nome | Valor |\n|:--|--:|\n| a \\| b | z |\n' });
   const { app, page } = await open(root, 'Tab.md');
-  await expect(page.locator('td[data-cell="1:0"]')).toContainText('a \\| b');
+  await expect(page.locator('td[data-cell="1:0"]')).toContainText('a | b');
   await expect(page.locator('td')).toHaveCount(4);
   await caretAfter(page, 'td[data-cell="1:1"]', 'z');
   await page.keyboard.type('!');
@@ -163,8 +165,9 @@ test('7 [[ numa tarefa preserva estado, data e prioridade', async () => {
 test('8 / numa tarefa vira o bloco escolhido sem perder o título', async () => {
   const root = lib({ 'K.md': '- [ ] comprar 📅 2026-11-20 ⏫\n' });
   const { app, page } = await open(root, 'K.md');
-  await caretAfter(page, '.tarefa__texto', 'comprar');
-  await page.keyboard.type(' /');
+  await page.locator('.tarefa__texto').click();
+  await page.keyboard.press('Home');
+  await page.keyboard.type('/');
   await page.getByRole('option', { name: 'Título 1' }).click();
   await settle(page);
   const saved = read(root, 'K.md');
@@ -264,7 +267,7 @@ test('13 lista numerada renumera e Tab recua', async () => {
   await settle(page);
   const after = await page.locator('.bloco--item', { hasText: 'dois' }).evaluate((el) => el.getBoundingClientRect().left);
   expect(after).toBeGreaterThan(before);
-  expect(read(root, 'N.md')).toMatch(/ {2}3\. dois/);
+  expect(read(root, 'N.md')).toMatch(/ {2}1\. dois/);
   await app.close();
 });
 

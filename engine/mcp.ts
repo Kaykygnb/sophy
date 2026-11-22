@@ -4,20 +4,29 @@ import { z } from 'zod';
 import { EngineError } from './errors.ts';
 import { listNotes, openLibrary, readText } from './library.ts';
 import { callTool, toolMutates, tools, type Tool } from './tools.ts';
+import { libraryCatalog } from './catalog.ts';
+
+type McpOptions = { readonly?: boolean; libraries?: string[] };
 
 /**
  * Servidor MCP do motor. Expõe o mesmo registro de tools.
  * A biblioteca e a origem `mcp` vêm do processo, não do cliente.
  */
-export function createMcpServer(libraryPath: string, options: { readonly?: boolean } = {}) {
+export function createMcpServer(libraryPath: string, options: McpOptions = {}) {
   const library = openLibrary(libraryPath).root;
+  const catalog = libraryCatalog([library, ...(options.libraries || [])]);
+  const multiple = options.libraries !== undefined;
   const readonly = options.readonly !== false;
   const server = new McpServer({ name: 'sophy', version: '0.1.0' });
+  if (multiple) server.registerTool('library.list', {
+    description: 'Lista as bibliotecas autorizadas nesta sessão. Use o id como libraryId nas outras ferramentas.',
+    inputSchema: z.object({}),
+  }, async () => ({ content: [{ type: 'text' as const, text: JSON.stringify(catalog) }] }));
   for (const tool of tools) {
     if (readonly && (toolMutates(tool.name) || tool.name.startsWith('ui.'))) {
       server.registerTool(
         tool.name,
-        { description: tool.description, inputSchema: publicSchema(tool) },
+        { description: tool.description, inputSchema: publicSchema(tool, multiple) },
         async () => ({
           isError: true,
           content: [{ type: 'text' as const, text: 'O MCP está em modo somente leitura.' }],
@@ -29,11 +38,16 @@ export function createMcpServer(libraryPath: string, options: { readonly?: boole
       tool.name,
       {
         description: tool.description,
-        inputSchema: publicSchema(tool),
+        inputSchema: publicSchema(tool, multiple),
       },
       async (args) => {
         try {
-          const value = callTool(tool.name, bindCall(tool, args, library));
+          const libraryId = (args as Record<string, unknown>)?.libraryId;
+          const selected = multiple && libraryId !== undefined
+            ? catalog.find((entry) => entry.id === libraryId && entry.available)?.root
+            : library;
+          if (!selected) throw new EngineError('invalid-path', 'Biblioteca não autorizada nesta sessão. Use library.list.');
+          const value = callTool(tool.name, bindCall(tool, args, selected));
           const failure = toolFailure(value);
           if (failure)
             return {
@@ -71,11 +85,25 @@ export function createMcpServer(libraryPath: string, options: { readonly?: boole
       return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: content }] };
     },
   );
+  if (multiple) server.registerResource('nota-biblioteca',
+    new ResourceTemplate('sophy://biblioteca/{libraryId}/nota/{+path}', {
+      list: async () => ({ resources: catalog.filter((entry) => entry.available).flatMap((entry) =>
+        listNotes(openLibrary(entry.root)).map((note) => ({
+          uri: `sophy://biblioteca/${entry.id}/nota/${note.path.split('/').map(encodeURIComponent).join('/')}`,
+          name: `${entry.name}/${note.path}`, mimeType: 'text/markdown',
+        }))),
+      }),
+    }), { mimeType: 'text/markdown' }, async (uri, variables) => {
+      const selected = catalog.find((entry) => entry.id === variables.libraryId && entry.available);
+      if (!selected) throw new EngineError('invalid-path', 'Biblioteca não autorizada ou indisponível.');
+      const relative = notePathFrom(uri, variables.path);
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: readText(openLibrary(selected.root), relative).content }] };
+    });
   return server;
 }
 
-export async function serveMcp(libraryPath: string, options: { readonly?: boolean } = {}) {
-  const server = createMcpServer(libraryPath, { readonly: options.readonly !== false });
+export async function serveMcp(libraryPath: string, options: McpOptions = {}) {
+  const server = createMcpServer(libraryPath, options);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   await new Promise<void>((resolve) => {
@@ -91,7 +119,7 @@ export async function serveMcp(libraryPath: string, options: { readonly?: boolea
   });
 }
 
-function publicSchema(tool: Tool) {
+function publicSchema(tool: Tool, multiple = false) {
   if (!(tool.input instanceof z.ZodObject)) return tool.input;
   const hidden = new Set(['origin', 'libraryPath']);
   if (tool.name === 'library.open') hidden.add('path');
@@ -99,6 +127,7 @@ function publicSchema(tool: Tool) {
   for (const [key, value] of Object.entries(tool.input.shape)) {
     if (!hidden.has(key)) shape[key] = value as z.ZodType;
   }
+  if (multiple) shape.libraryId = z.string().optional();
   return z.object(shape);
 }
 
@@ -108,6 +137,7 @@ function bindCall(tool: Tool, args: unknown, library: string) {
       ? { ...(args as Record<string, unknown>) }
       : {};
   const names = propertyNames(tool.input);
+  delete input.libraryId;
   if (names.has('origin')) input.origin = 'mcp';
   if (names.has('libraryPath')) input.libraryPath = library;
   if (tool.name === 'library.open') input.path = library;
@@ -136,7 +166,8 @@ function toolFailure(value: unknown) {
 }
 
 function errorText(error: unknown) {
-  if (error instanceof EngineError || error instanceof z.ZodError) return error.message;
+  if (error instanceof EngineError) return `${error.code}: ${error.message}`;
+  if (error instanceof z.ZodError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return 'Falha na operação.';
 }

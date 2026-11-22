@@ -14,6 +14,7 @@
     'note.write',
     'entry.move',
     'entry.trash',
+    'trash.restore',
     'history.undo',
     'canvas.create',
     'canvas.update',
@@ -32,16 +33,16 @@
     'version.restore',
     'site.export',
     'search.semantic.enable',
+    'note.child.create',
   ]);
 
   function slashQuery(text, cursor) {
     const before = text.slice(0, cursor);
-    const slash = before.lastIndexOf('/');
-    if (slash < 0) return null;
-    if (slash > 0 && !/\s/.test(before[slash - 1])) return null;
-    const query = before.slice(slash + 1);
-    if (/\s/.test(query)) return null;
-    return { start: slash, query };
+    const lineStart = Math.max(before.lastIndexOf('\n') + 1, 0);
+    const line = before.slice(lineStart);
+    if (!/^\s*\/[^\s]*$/.test(line)) return null;
+    const slash = lineStart + line.indexOf('/');
+    return { start: slash, query: before.slice(slash + 1) };
   }
 
   function wikiQuery(text, cursor) {
@@ -495,10 +496,43 @@
     },
     {
       group: 'Inserir',
-      id: 'destaque',
-      label: 'Destaque',
-      icon: 'destaque',
-      insert: '> [!note]\n> ',
+      id: 'pagina',
+      label: 'Página filha',
+      icon: 'nota',
+      hint: '/página',
+      insert: '{{pagina}}',
+    },
+    {
+      group: 'Inserir',
+      id: 'alerta',
+      label: 'Alerta',
+      icon: 'alerta',
+      hint: '[!alerta]',
+      insert: '> [!alerta]\n> ',
+    },
+    {
+      group: 'Inserir',
+      id: 'pergunta',
+      label: 'Pergunta',
+      icon: 'ajuda',
+      hint: '[!pergunta]',
+      insert: '> [!pergunta]\n> ',
+    },
+    {
+      group: 'Inserir',
+      id: 'tarefa-destaque',
+      label: 'Destaque de tarefa',
+      icon: 'tarefa',
+      hint: '[!tarefa]',
+      insert: '> [!tarefa]\n> ',
+    },
+    {
+      group: 'Inserir',
+      id: 'dica',
+      label: 'Dica',
+      icon: 'lampada',
+      hint: '[!dica]',
+      insert: '> [!dica]\n> ',
     },
     {
       group: 'Inserir',

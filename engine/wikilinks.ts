@@ -108,14 +108,44 @@ export function scan(source: string): ScannedLink[] {
   return found.sort((a, b) => a.start - b.start);
 }
 
+function cleanHeading(text: string) {
+  return text
+    .replace(/^>\s+/, '')
+    .replace(/!?\[\[([^\]]+)\]\]/g, (_, target) => labelOf(target))
+    .replace(/<\/?span\b[^>]*>/gi, '')
+    .replace(/[*_`]/g, '')
+    .trim();
+}
+
 export function headingsOf(source: string) {
   return [...mask(source).matchAll(/^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/gm)].map((match) =>
-    match[2]
-      .replace(/^>\s+/, '')
-      .replace(/!?\[\[([^\]]+)\]\]/g, (_, target) => labelOf(target))
-      .replace(/[*_`]/g, '')
-      .trim(),
+    cleanHeading(match[2]),
   );
+}
+
+/** Seção = H1–H3 até o próximo título do mesmo nível ou maior. */
+export type NoteSection = {
+  title: string;
+  level: number;
+  start: number;
+  end: number;
+};
+
+export function sectionsOf(source: string): NoteSection[] {
+  const text = mask(source);
+  const matches = [...text.matchAll(/^ {0,3}(#{1,3})\s+(.+?)\s*#*\s*$/gm)];
+  return matches.map((match, index) => {
+    const level = match[1].length;
+    const start = match.index || 0;
+    let end = text.length;
+    for (let next = index + 1; next < matches.length; next += 1) {
+      if (matches[next][1].length <= level) {
+        end = matches[next].index || text.length;
+        break;
+      }
+    }
+    return { title: cleanHeading(match[2]), level, start, end };
+  });
 }
 
 export function blockIdsOf(source: string) {
@@ -230,6 +260,9 @@ export function plainText(body: string) {
   return body
     .replace(/!\[\[([^\[\]\n]+)\]\]/g, (_, target) => labelOf(target))
     .replace(/\[\[([^\[\]\n]+)\]\]/g, (_, target) => labelOf(target))
+    .replace(/<\/?span\b[^>]*>/gi, '')
+    .replace(/<\/?[a-z][^>]*>/gi, '')
     .replace(/^ {0,3}#{1,6}\s+/gm, '')
+    .replace(/^>\s*\[![^\]]+\]\s*/gm, '')
     .replace(/[*_~`]/g, '');
 }

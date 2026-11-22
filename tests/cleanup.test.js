@@ -10,8 +10,10 @@ test('a limpeza apaga as pastas sophy-ui deixadas pelos testes', () => {
   fs.mkdirSync(path.join(dir, 'sophy-ui-data-teste'));
   fs.writeFileSync(path.join(dir, 'sophy-ui-data-teste', 'lock'), '1');
   fs.mkdirSync(path.join(dir, 'outra'));
+  fs.mkdirSync(path.join(dir, 'sophy-ui-user'));
   assert.equal(cleanupSophyUiDirs(dir), 1);
   assert.equal(fs.existsSync(path.join(dir, 'sophy-ui-data-teste')), false);
   assert.equal(fs.existsSync(path.join(dir, 'outra')), true);
+  assert.equal(fs.existsSync(path.join(dir, 'sophy-ui-user')), true);
   fs.rmSync(dir, { recursive: true, force: true });
 });

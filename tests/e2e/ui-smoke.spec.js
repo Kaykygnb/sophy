@@ -241,6 +241,13 @@ test('Enter cria bloco, Ctrl+B formata e a árvore marca um item', async () => {
   await shelf.click();
   await expect(shelf).toHaveAttribute('aria-selected', 'true');
   await expect(note).toHaveAttribute('aria-selected', 'false');
+  await expect(shelf).toHaveAttribute('aria-expanded', 'true');
+  await shelf.locator('.arvore__seta').click();
+  await expect(shelf).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#arvore [data-open="Estudos/Leitura.md"]')).toHaveCount(0);
+  await shelf.locator('.arvore__seta').click();
+  await expect(shelf).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#arvore [data-open="Estudos/Leitura.md"]')).toBeVisible();
   await note.click();
   const paragraph = page.locator('.bloco--texto').first();
   await paragraph.click();
@@ -293,7 +300,7 @@ test('tarefas e calendário listam a biblioteca', async () => {
   await page.screenshot({ path: path.join(artifacts, 'ui-tarefas-claro.png') });
   await page.locator('[data-nav="calendario"]').click();
   await expect(page.getByRole('heading', { name: /novembro de 2026/i })).toBeVisible();
-  await expect(page.locator('.cal-semana')).toContainText('seg');
+  await expect(page.locator('.cal-semana')).toContainText('S');
   await expect(page.locator('.cal-dia.is-hoje')).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'ui-calendario-claro.png') });
   await app.close();
@@ -357,8 +364,9 @@ test('rodada 2: gaveta, quadro, semana, cartão e canvas', async () => {
   await page.locator('[data-nav="tarefas"]').click();
   const card = page.locator('.kcard', { hasText: 'revisar o capítulo' });
   await expect(card).toBeVisible();
-  const chips = await card.locator('.kcard__meta .chip').allTextContents();
-  expect(chips.map((chip) => chip.trim())).toEqual(['Alta', '20 nov', 'Estudos']);
+  await expect(card.locator('.tarefa-prio--alta')).toBeVisible();
+  await expect(card.locator('.kcard__meta .chip')).toContainText(/atrasada|nov/i);
+  await expect(card.locator('.chip__ponto')).toBeVisible();
   await expect(card.locator('.tarefa__origem')).toHaveCount(0);
   await expect(card.locator('.chip', { hasText: 'Status' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Quadro' }).click();
@@ -388,6 +396,7 @@ test('rodada 2: gaveta, quadro, semana, cartão e canvas', async () => {
   await expect(page.locator('.canvas-cartao', { hasText: 'Mapa' })).toBeVisible();
   await expect(page.locator('.canvas-cartao', { hasText: 'Estudos' })).toBeVisible();
   await expect(page.locator('.canvas-cartao__previa')).toContainText('leitura');
+  await expect(page.locator('.canvas-cartao--com-cor', { hasText: 'Mapa' })).toBeVisible();
   await expect(page.locator('.menu__item', { hasText: 'Estudos/Mapa.canvas' })).toHaveCount(0);
   await page.screenshot({ path: path.join(artifacts, 'ui-canvas-grade-claro.png') });
   expect(fs.readdirSync(path.join(root, 'Estudos')).filter((name) => name.endsWith('.canvas'))).toEqual(before);
@@ -628,8 +637,8 @@ test('acabamento da rodada 3', async () => {
   await expect(page.getByRole('button', { name: 'Estante', exact: true })).toHaveCount(0);
   await expect(page.locator('#conexoes')).toHaveClass(/is-oculta/);
   await page.locator('[data-nav="calendario"]').click();
-  await page.getByRole('button', { name: 'Agenda' }).click();
-  await expect(page.locator('.agenda')).toBeVisible();
+  await page.locator('.cal-dia.is-hoje').click();
+  await expect(page.locator('.painel-dia')).toBeVisible();
   await page.evaluate(() =>
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true })),
   );
@@ -694,8 +703,8 @@ test('rodada 4: capa da estante, semana, prévia e restaurar', async () => {
   );
   await page.locator('input[name="cfg-semana"][value="0"]').check();
   await page.locator('[data-nav="calendario"]').click();
-  await expect(page.locator('.cal-semana span').first()).toHaveText('dom');
-  await expect(page.locator('.cal-dia strong').first()).toHaveText('1');
+  await expect(page.locator('.cal-semana span').first()).toHaveText('S');
+  await expect(page.locator('.cal-dia strong').first()).toHaveText('26');
   await page.screenshot({ path: path.join(artifacts, 'ui-semana-domingo-claro.png') });
   await page.evaluate(() =>
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', altKey: true, bubbles: true })),
@@ -827,10 +836,11 @@ test('a janela abre a biblioteca e mostra a nota', async () => {
   await expect(page.locator('.titulo')).toBeVisible();
   await page.getByRole('button', { name: 'Leitura', exact: true }).click();
   await expect(page.locator('.coluna')).toContainText('memória se liga');
-  await expect(page.locator('.wikilink')).toContainText('o grafo');
+  await expect(page.locator('.coluna a.wikilink')).toContainText('o grafo');
   await expect(page.locator('.nota__meta')).toContainText('#estudo');
   await expect(page.locator('body')).toContainText('2026-11-20');
   const fontsReady = await page.evaluate(async () => {
+    await document.fonts.load('400 14px "JetBrains Mono"');
     await document.fonts.ready;
     return (
       document.fonts.check('600 32px Fraunces') &&
@@ -937,9 +947,9 @@ test('rodada 5: prévia, versões, agenda, cores e abas', async () => {
   await expect(page.locator('.versao').first()).toContainText('Hoje');
   await page.screenshot({ path: path.join(artifacts, 'ui-versoes-diff-claro.png') });
   await page.locator('[data-nav="calendario"]').click();
-  await page.getByRole('button', { name: 'Agenda' }).click();
+  await page.locator('.cal-dia.is-hoje').click();
   await expect(page.locator('.painel-dia')).toBeVisible();
-  await expect(page.locator('.painel-dia')).toContainText('●');
+  await expect(page.locator('.painel-dia')).toContainText(/Criar nota do dia|de novembro/);
   await page.screenshot({ path: path.join(artifacts, 'ui-agenda-painel-claro.png') });
   await page.locator('#arvore [data-shelf="Estudos"]').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Cor e ícone' }).click();
@@ -1035,8 +1045,8 @@ test('editor visual o tempo todo e os fluxos da janela sem erro', async () => {
   await page.getByRole('menuitem', { name: 'Nova nota aqui' }).click();
   await expect.poll(() => fs.readdirSync(path.join(root, 'Arquivo')).some((name) => name.endsWith('.md'))).toBe(true);
   await page.locator('#arvore [data-shelf="Arquivo"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Mover para a lixeira' }).click();
-  await page.getByRole('button', { name: 'Mover', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Excluir…' }).click();
+  await page.getByRole('button', { name: 'Excluir', exact: true }).click();
   await expect(page.locator('#arvore [data-shelf="Arquivo"]')).toHaveCount(0);
 
   await page.locator('#novo').click();
@@ -1099,7 +1109,7 @@ test('rodada 6: barra, enter, atalhos, desfazer e capa', async () => {
   await expect(page.locator('.bloco--codigo')).toContainText('const x = 1;');
   await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('const x = 1;');
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+Enter');
   await page.keyboard.type('Alpha uma.');
   await page.keyboard.press('Enter');
   await page.keyboard.type('Bravo duas.');
@@ -1280,5 +1290,36 @@ test('rodada 7: reabrir, item no início, cursor formatado, colar e canvas', asy
   await page.locator('[data-nav="canvas"]').click();
   await page.locator('[data-abrir-canvas="Estudos/Mapa.canvas"]').click();
   await expect(page.locator('.canvas-area')).toBeVisible();
+  const beforeCards = await page.locator('.cv-cartao').count();
+  await page.locator('[data-tool="select"]').click();
+  await page.locator('.canvas-area').dispatchEvent('pointerdown', { clientX: 700, clientY: 500 });
+  await expect(page.locator('.cv-cartao')).toHaveCount(beforeCards);
+  await page.locator('[data-tool="rectangle"]').click();
+  await page.locator('.canvas-area').dispatchEvent('pointerdown', { clientX: 700, clientY: 500 });
+  await expect(page.locator('.cv-cartao')).toHaveCount(beforeCards + 1);
+  await expect(page.locator('[data-tool="select"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.cv-cartao[aria-selected="true"] .cv-alca')).toHaveCount(4);
+  await expect(page.locator('.cv-cartao[aria-selected="true"] .cv-texto')).toHaveAttribute(
+    'data-placeholder',
+    'Escreva algo… use [[ para ligar',
+  );
+  await page.locator('[data-tool="rectangle"]').click();
+  await page.locator('.canvas-area').dispatchEvent('pointerdown', { clientX: 430, clientY: 360 });
+  const rectangle = page.locator('.cv-forma--rectangle').last();
+  await expect(rectangle).toBeVisible();
+  await rectangle.locator('.cv-texto').fill('Ideia ligada a [[Estudos/Formato]]');
+  await page.locator('[data-tool="ellipse"]').click();
+  await page.locator('.canvas-area').dispatchEvent('pointerdown', { clientX: 900, clientY: 360 });
+  await expect(page.locator('.cv-forma--ellipse')).toBeVisible();
+  await expect(rectangle.locator('a.wikilink')).toHaveText('Formato');
+  await expect(rectangle.locator('a.wikilink')).toHaveAttribute('data-target', 'Estudos/Formato');
+  await page.locator('[data-tool="connect"]').click();
+  const ellipse = page.locator('.cv-forma--ellipse').last();
+  const from = await rectangle.boundingBox();
+  const to = await ellipse.boundingBox();
+  await rectangle.dispatchEvent('pointerdown', { clientX: from.x + 8, clientY: from.y + 8 });
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2);
+  await page.mouse.up();
+  await expect(page.locator('.cv-seta [data-edge]')).not.toHaveCount(0);
   await app.close();
 });

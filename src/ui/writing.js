@@ -1,11 +1,11 @@
 /* Comportamentos de escrita do editor Bloco, adaptados ao modelo Markdown atual.
  * Este módulo não define estilos, cores, dimensões ou componentes visuais. */
 (function (root, factory) {
-  const api = factory(root.marked, root.SophyDoc);
+  const api = factory(root.marked, root.SophyDoc, root.SophyRich);
   if (typeof module === 'object' && module.exports)
-    module.exports = factory(require('../editor/marked'), require('./doc'));
+    module.exports = factory(require('../editor/marked'), require('./doc'), require('./rich-text'));
   else root.SophyWriting = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (marked, Doc) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (marked, Doc, Rich) {
   const escape = (text) =>
     String(text)
       .replace(/&/g, '&amp;')
@@ -14,7 +14,7 @@
       .replace(/"/g, '&quot;');
   const textTags = { strong: 'strong', em: 'em', del: 's', codespan: 'code' };
 
-  function inlineHtml(source, broken = () => false) {
+  function inlineCore(source, broken) {
     const plain = (text) => {
       const pattern = /(!?\[\[[^\[\]\n]+\]\]|==[^=\n]+==)/g;
       let result = '',
@@ -50,6 +50,12 @@
     return render(marked.Lexer.lexInline(String(source)));
   }
 
+  function inlineHtml(source, broken = () => false) {
+    const clean = Rich ? Rich.sanitize(source) : String(source || '');
+    if (!Rich) return inlineCore(clean, broken);
+    return Rich.renderSpans(clean, (chunk) => inlineCore(chunk, broken));
+  }
+
   function markdown(node) {
     const wrap = (value, mark) => {
       if (!value.trim()) return value;
@@ -69,6 +75,13 @@
       if (/^(S|DEL|STRIKE)$/.test(el.tagName)) return wrap(inner, '~~');
       if (el.tagName === 'MARK') return wrap(inner, '==');
       if (el.tagName === 'U') return `<u>${inner}</u>`;
+      if (el.tagName === 'SPAN' && Rich) {
+        const attrs = Rich.spanFromNode(el);
+        if (attrs) {
+          const open = Rich.openSpan(attrs);
+          return open ? `${open}${inner}</span>` : inner;
+        }
+      }
       if (el.tagName === 'CODE') {
         if (!inner) return '';
         const fence = '`'.repeat(
@@ -83,7 +96,7 @@
       }
       return inner;
     };
-    return [...node.childNodes].map(walk).join('');
+    return Rich ? Rich.sanitize([...node.childNodes].map(walk).join('')) : [...node.childNodes].map(walk).join('');
   }
 
   function editable(node) {

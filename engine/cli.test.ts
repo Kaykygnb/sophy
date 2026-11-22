@@ -4,8 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { splitMarkdown } from './markdown.ts';
 
-const bin = path.resolve('engine/bin/sophy');
+const bin = path.resolve('engine/cli.ts');
+
+function noteBody(file: string) {
+  return splitMarkdown(fs.readFileSync(file, 'utf8')).body;
+}
 
 function run(
   args: string[],
@@ -13,7 +18,7 @@ function run(
 ) {
   const env = { ...process.env, ...options.env };
   if (!options.env || !('SOPHY_LIBRARY' in options.env)) delete env.SOPHY_LIBRARY;
-  return spawnSync(bin, args, {
+  return spawnSync(process.execPath, ['--experimental-strip-types', bin, ...args], {
     encoding: 'utf8',
     cwd: options.cwd ?? os.tmpdir(),
     input: options.input,
@@ -57,10 +62,7 @@ test('atalhos criam, leem, buscam, movem, listam o grafo e desfazem com origem c
     root,
   ]);
   assert.equal(created.status, 0, created.stderr);
-  assert.equal(
-    fs.readFileSync(path.join(root, 'Estudos', 'Ideia.md'), 'utf8'),
-    'Um gato [[Outra|o outro]]',
-  );
+  assert.equal(noteBody(path.join(root, 'Estudos', 'Ideia.md')), 'Um gato [[Outra|o outro]]');
   const read = run(['ler', 'Estudos/Ideia', '--biblioteca', root]);
   assert.equal(read.status, 0, read.stderr);
   assert.match(read.stdout, /Um gato/);
@@ -110,7 +112,7 @@ test('texto pela entrada padrão, biblioteca por ambiente ou .sophy, json e erro
     input: 'veio da entrada',
   });
   assert.equal(piped.status, 0, piped.stderr);
-  assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'veio da entrada');
+  assert.equal(noteBody(path.join(root, 'Nota.md')), 'veio da entrada');
   const nested = path.join(root, 'dentro');
   fs.mkdirSync(nested);
   const fromInside = run(['estantes'], { cwd: nested });
@@ -138,7 +140,7 @@ test('texto pela entrada padrão, biblioteca por ambiente ou .sophy, json e erro
   );
   assert.equal(conflict.status, 2, conflict.stdout);
   assert.match(conflict.stderr, /Nada foi gravado/);
-  assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'veio da entrada');
+  assert.equal(noteBody(path.join(root, 'Nota.md')), 'veio da entrada');
   run(['nova', 'Estudos/Nota', '--texto', 'a', '--biblioteca', root]);
   run(['nova', 'Livro/Nota', '--texto', 'b', '--biblioteca', root]);
   run(['nova', 'Meio/Ponte', '--texto', 'Veja [[Nota]]', '--biblioteca', root]);
@@ -185,7 +187,7 @@ test('nova grava markdown sem acrescentar escape', () => {
   const root = library();
   const created = run(['nova', 'Diario', '--texto', '[[', '--biblioteca', root]);
   assert.equal(created.status, 0, created.stderr);
-  assert.equal(fs.readFileSync(path.join(root, 'Diario.md'), 'utf8'), '[[');
+  assert.equal(noteBody(path.join(root, 'Diario.md')), '[[');
 });
 
 test('ler imprime o corpo da nota', () => {
@@ -222,7 +224,7 @@ test('mover e lixeira atuam no arquivo', () => {
   run(['nova', 'Estudos/Nota', '--texto', 'vai', '--biblioteca', root]);
   const moved = run(['mover', 'Estudos/Nota.md', 'Livro/Nota.md', '--biblioteca', root]);
   assert.equal(moved.status, 0, moved.stderr);
-  assert.equal(fs.readFileSync(path.join(root, 'Livro', 'Nota.md'), 'utf8'), 'vai');
+  assert.equal(noteBody(path.join(root, 'Livro', 'Nota.md')), 'vai');
   const removed = run(['lixeira', 'Livro/Nota.md', '--biblioteca', root]);
   assert.equal(removed.status, 0, removed.stderr);
   assert.equal(fs.existsSync(path.join(root, 'Livro', 'Nota.md')), false);
@@ -289,7 +291,7 @@ test('códigos 0, 1 e 2', () => {
   ]);
   assert.equal(conflict.status, 2);
   assert.match(conflict.stderr, /Nada foi gravado/);
-  assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'original');
+  assert.equal(noteBody(path.join(root, 'Nota.md')), 'original');
 });
 
 test('link ambíguo termina com código 2', () => {

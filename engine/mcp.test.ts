@@ -6,11 +6,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { splitMarkdown } from './markdown.ts';
 import { callTool, tools } from './tools.ts';
 import { subscribeUi, type UiCommand } from './ui-bridge.ts';
 
-const bin = path.resolve('engine/bin/sophy');
+const bin = path.resolve('engine/cli.ts');
 const sensitive = /api[-_ ]?key|\b(secret|password|token|senha|credential)s?\b/i;
+
+function noteBody(file: string) {
+  return splitMarkdown(fs.readFileSync(file, 'utf8')).body;
+}
 
 function environment() {
   const env: Record<string, string> = {};
@@ -22,8 +27,8 @@ function environment() {
 
 async function connect(root: string) {
   const transport = new StdioClientTransport({
-    command: bin,
-    args: ['mcp', '--biblioteca', root, '--escrita'],
+    command: process.execPath,
+    args: ['--experimental-strip-types', bin, 'mcp', '--biblioteca', root, '--escrita'],
     cwd: os.tmpdir(),
     env: environment(),
     stderr: 'pipe',
@@ -173,7 +178,7 @@ test('note.create grava o corpo e note.write atualiza', { timeout: 30000 }, asyn
       arguments: { path: 'Nota.md', body: 'dois', expectedRevision: revision },
     });
     assert.notEqual(written.isError, true, textOf(written));
-    assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'dois');
+    assert.equal(noteBody(path.join(root, 'Nota.md')), 'dois');
   } finally {
     await client.close();
   }
@@ -196,10 +201,7 @@ test('entry.move reescreve o wikilink que apontava para a nota', { timeout: 3000
       arguments: { from: 'Estudos/Nota.md', to: 'Livro/Movida.md' },
     });
     assert.notEqual(moved.isError, true, textOf(moved));
-    assert.equal(
-      fs.readFileSync(path.join(root, 'Estudos', 'Outra.md'), 'utf8'),
-      'A [[Livro/Movida|apelido]]',
-    );
+    assert.equal(noteBody(path.join(root, 'Estudos', 'Outra.md')), 'A [[Livro/Movida|apelido]]');
   } finally {
     await client.close();
   }
@@ -258,7 +260,7 @@ test('o caminho de biblioteca enviado pelo cliente é ignorado', { timeout: 3000
       arguments: { path: 'Nota.md', body: 'aqui', libraryPath: os.homedir() },
     });
     assert.notEqual(created.isError, true, textOf(created));
-    assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'aqui');
+    assert.equal(noteBody(path.join(root, 'Nota.md')), 'aqui');
     assert.equal(fs.existsSync(path.join(os.homedir(), 'Nota.md')), false);
   } finally {
     await client.close();
@@ -279,7 +281,7 @@ test('conflito de revisão vira isError com mensagem', { timeout: 30000 }, async
     });
     assert.equal(conflict.isError, true);
     assert.match(textOf(conflict), /Nada foi gravado/);
-    assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'original');
+    assert.equal(noteBody(path.join(root, 'Nota.md')), 'original');
   } finally {
     await client.close();
   }
@@ -341,7 +343,7 @@ test(
         false,
       );
       const found = await client.readResource({ uri: 'sophy://nota/Estudos/Nota.md' });
-      assert.equal(found.contents[0]?.text, 'oi [[');
+      assert.equal(splitMarkdown(found.contents[0]?.text ?? '').body, 'oi [[');
       await assert.rejects(
         () => client.readResource({ uri: 'sophy://nota/Estudos/NaoExiste.md' }),
         /não encontrad/i,

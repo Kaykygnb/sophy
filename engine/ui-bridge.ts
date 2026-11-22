@@ -12,7 +12,9 @@ export type UiCommand =
   | { type: 'openNote'; libraryPath: string; path: string }
   | { type: 'openCanvas'; libraryPath: string; path: string }
   | { type: 'showGraph'; libraryPath: string; workspace?: string }
-  | { type: 'setTheme'; theme: 'light' | 'dark' };
+  | { type: 'setTheme'; theme: 'light' | 'dark' }
+  | { type: 'window'; action: 'show' | 'hide' | 'minimize' | 'maximize' }
+  | { type: 'setLayout'; libraryPath: string; section?: string; sidebar?: boolean; connections?: boolean; agent?: boolean; focus?: boolean };
 
 type UiListener = (command: UiCommand) => void;
 

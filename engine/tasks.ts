@@ -1,6 +1,7 @@
+import { calendarSeeds } from './calendar-facts.ts';
 import { EngineError } from './errors.ts';
+import { syncLinks } from './links.ts';
 import { listNotes, readNote, readText, writeText, type Library } from './library.ts';
-import { splitMarkdown } from './markdown.ts';
 
 export type TaskStatus = 'aberta' | 'andamento' | 'feita' | 'cancelada';
 export type TaskPriority = 'alta' | 'media' | 'baixa';
@@ -16,6 +17,10 @@ export type TaskItem = {
   start: string | null;
   priority: TaskPriority | null;
   revision: string;
+  indent: number;
+  parentLine: number | null;
+  childTotal: number;
+  childDone: number;
 };
 
 export type TaskQuery = {
@@ -40,16 +45,26 @@ function statusOf(mark: string): TaskStatus {
   return 'aberta';
 }
 
+function stripVariant(text: string) {
+  return String(text).replace(/\uFE0F/g, '');
+}
+
 function priorityOf(suffix: string): TaskPriority | null {
-  if (suffix.includes('⏫')) return 'alta';
-  if (suffix.includes('🔼')) return 'media';
-  if (suffix.includes('🔽')) return 'baixa';
+  const clean = stripVariant(suffix);
+  if (clean.includes('⏫')) return 'alta';
+  if (clean.includes('🔼')) return 'media';
+  if (clean.includes('🔽')) return 'baixa';
   return null;
 }
 
 function dateOf(suffix: string, mark: string) {
-  const match = suffix.match(new RegExp(`${mark}\\s*(\\d{4}-\\d{2}-\\d{2})`));
+  const clean = stripVariant(suffix);
+  const match = clean.match(new RegExp(`${mark}\\s*(\\d{4}-\\d{2}-\\d{2})`));
   return match ? match[1] : null;
+}
+
+function indentOf(line: string) {
+  return (line.match(/^(\s*)/) || [''])[0].length;
 }
 
 export function todayIso(now = new Date()) {
@@ -89,6 +104,10 @@ function parseLine(
     start: dateOf(suffix, '🛫'),
     priority: priorityOf(suffix),
     revision,
+    indent: indentOf(line),
+    parentLine: null,
+    childTotal: 0,
+    childDone: 0,
   };
 }
 
@@ -104,6 +123,16 @@ function scan(content: string, path: string, workspace: string | null, revision:
     const task = parseLine(line, index + 1, path, workspace, revision);
     if (task) tasks.push(task);
   });
+  const stack: TaskItem[] = [];
+  for (const task of tasks) {
+    while (stack.length && stack[stack.length - 1].indent >= task.indent) stack.pop();
+    task.parentLine = stack.length ? stack[stack.length - 1].line : null;
+    if (stack.length) {
+      stack[stack.length - 1].childTotal += 1;
+      if (task.status === 'feita') stack[stack.length - 1].childDone += 1;
+    }
+    stack.push(task);
+  }
   return tasks;
 }
 
@@ -135,17 +164,44 @@ export function listTasks(library: Library, query: TaskQuery = {}) {
   return tasks.filter((task) => matches(task, query, today, weekEnd));
 }
 
-export function rewriteTaskLine(line: string, patch: { status?: TaskStatus; due?: string | null }) {
+const PRIORITY_MARK: Record<TaskPriority, string> = {
+  alta: '⏫',
+  media: '🔼',
+  baixa: '🔽',
+};
+
+export type TaskPatch = {
+  status?: TaskStatus;
+  due?: string | null;
+  scheduled?: string | null;
+  priority?: TaskPriority | null;
+  title?: string;
+};
+
+function replaceMark(rest: string, mark: string, value: string | null | undefined) {
+  if (value === undefined) return rest;
+  const pattern = new RegExp(`\\s*${mark}\\uFE0F?\\s*\\d{4}-\\d{2}-\\d{2}`);
+  if (pattern.test(rest)) {
+    return value == null ? rest.replace(pattern, '') : rest.replace(pattern, ` ${mark} ${value}`);
+  }
+  return value == null ? rest : `${rest} ${mark} ${value}`;
+}
+
+export function rewriteTaskLine(line: string, patch: TaskPatch) {
   const match = line.match(/^(\s*(?:[-*+]|\d+\.) )\[([ xX/\-])\](.*)$/);
   if (!match) throw new EngineError('invalid-note', 'A linha não é uma tarefa.');
   const status = patch.status ? STATUS_CHAR[patch.status] : match[2];
   let rest = match[3];
-  if (patch.due !== undefined) {
-    if (/📅\s*\d{4}-\d{2}-\d{2}/.test(rest)) {
-      rest = patch.due
-        ? rest.replace(/📅\s*\d{4}-\d{2}-\d{2}/, `📅 ${patch.due}`)
-        : rest.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/, '');
-    } else if (patch.due) rest = `${rest} 📅 ${patch.due}`;
+  if (patch.title !== undefined) {
+    const emoji = rest.search(/📅|🛫|⏳|✅|⏫|🔼|🔽/);
+    const suffix = emoji < 0 ? '' : rest.slice(emoji);
+    rest = `${patch.title.replace(/\s+$/, '')}${suffix ? ` ${suffix.trimStart()}` : ''}`;
+  }
+  rest = replaceMark(rest, '📅', patch.due);
+  rest = replaceMark(rest, '⏳', patch.scheduled);
+  if (patch.priority !== undefined) {
+    rest = rest.replace(/\s*(?:⏫|🔼|🔽)\uFE0F?/g, '');
+    if (patch.priority) rest = `${rest} ${PRIORITY_MARK[patch.priority]}`;
   }
   return `${match[1]}[${status}]${rest}`;
 }
@@ -154,18 +210,31 @@ export function updateTask(
   library: Library,
   relative: string,
   line: number,
-  patch: { status?: TaskStatus; due?: string | null },
+  patch: TaskPatch,
   expectedRevision: string,
+  options: { titleHint?: string } = {},
 ) {
   const current = readText(library, relative);
+  let targetLine = line;
   if (current.revision !== expectedRevision) {
-    return { conflict: true as const, current: readNote(library, relative) };
+    if (!options.titleHint) return { conflict: true as const, current: readNote(library, relative) };
+    const matches = scan(current.content, relative, relative.includes('/') ? relative.split('/')[0] : null, current.revision).filter(
+      (task) => task.title === options.titleHint,
+    );
+    if (matches.length !== 1) {
+      return {
+        conflict: true as const,
+        current: readNote(library, relative),
+        reason: 'task-moved' as const,
+      };
+    }
+    targetLine = matches[0].line;
   }
   const parts = current.content.split(/(\r?\n)/);
   let number = 1;
   let found = false;
   for (let index = 0; index < parts.length; index += 2) {
-    if (number === line) {
+    if (number === targetLine) {
       parts[index] = rewriteTaskLine(parts[index], patch);
       found = true;
       break;
@@ -174,10 +243,10 @@ export function updateTask(
   }
   if (!found) throw new EngineError('not-found', 'A tarefa não está nessa linha.');
   const next = parts.join('');
-  const written = writeText(library, relative, next, expectedRevision);
+  const written = writeText(library, relative, next, current.revision);
   if (written.conflict) return { conflict: true as const, current: readNote(library, relative) };
   const workspace = relative.includes('/') ? relative.split('/')[0] : null;
-  const task = scan(next, relative, workspace, written.revision).find((item) => item.line === line);
+  const task = scan(next, relative, workspace, written.revision).find((item) => item.line === targetLine);
   return { conflict: false as const, task, revision: written.revision };
 }
 
@@ -193,58 +262,102 @@ export type CalendarItem = {
   revision?: string;
 };
 
+export type CalendarDay = {
+  date: string;
+  total: number;
+  byShelf: Record<string, number>;
+  openTasks: number;
+};
+
+const calendarCache = new Map<
+  string,
+  Map<string, { mtime: number; size: number; revision: string; seeds: ReturnType<typeof calendarSeeds> }>
+>();
+const calendarReads = new Map<string, number>();
+
+/** Leituras de conteúdo feitas pelo calendário. Trocar de mês não aumenta se nada mudou. */
+export function calendarFileReads(root: string) {
+  return calendarReads.get(root) ?? 0;
+}
+
 export function queryCalendar(library: Library, from: string, to: string) {
-  const items: CalendarItem[] = [];
-  for (const note of listNotes(library)) {
-    let file;
-    try {
-      file = readText(library, note.path);
-    } catch {
-      continue;
-    }
-    const document = splitMarkdown(file.content);
-    for (const task of scan(file.content, note.path, note.workspace, file.revision)) {
-      for (const date of [task.due, task.scheduled]) {
-        if (!date || date < from || date > to) continue;
-        items.push({
-          date,
-          kind: 'tarefa',
-          path: note.path,
-          workspace: note.workspace,
-          title: task.title,
-          status: task.status,
-          line: task.line,
-          revision: task.revision,
-        });
+  const index = syncLinks(library);
+  const bucket = calendarCache.get(library.root) ?? new Map();
+  calendarCache.set(library.root, bucket);
+  const seen = new Set<string>();
+  const raw: CalendarItem[] = [];
+  for (const note of index.values()) {
+    if (!note.path.toLowerCase().endsWith('.md')) continue;
+    seen.add(note.path);
+    let cached = bucket.get(note.path);
+    if (!cached || cached.mtime !== note.mtime || cached.size !== note.size) {
+      let file;
+      try {
+        file = readText(library, note.path);
+      } catch {
+        bucket.delete(note.path);
+        continue;
       }
+      calendarReads.set(library.root, (calendarReads.get(library.root) ?? 0) + 1);
+      cached = {
+        mtime: note.mtime,
+        size: note.size,
+        revision: file.revision,
+        seeds: calendarSeeds(note.path, file.content, note.title),
+      };
+      bucket.set(note.path, cached);
     }
-    const named = note.path.match(/(\d{4}-\d{2}-\d{2})\.md$/i);
-    const heading = file.content.match(/^#{1,6}[ \t]+(.+)$/m);
-    const title = heading ? heading[1].trim() : note.name.replace(/\.md$/i, '');
-    if (named && named[1] >= from && named[1] <= to) {
-      items.push({
-        date: named[1],
-        kind: 'nota',
+    for (const seed of cached.seeds) {
+      if (seed.date < from || seed.date > to) continue;
+      raw.push({
+        date: seed.date,
+        kind: seed.kind,
         path: note.path,
         workspace: note.workspace,
-        title,
-      });
-    }
-    const matter = document.frontmatter || {};
-    for (const field of ['data', 'prazo', 'inicio', 'fim'] as const) {
-      const value = matter[field];
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(value)) continue;
-      const date = value.slice(0, 10);
-      if (date < from || date > to) continue;
-      items.push({
-        date,
-        kind: 'frontmatter',
-        field,
-        path: note.path,
-        workspace: note.workspace,
-        title: note.name.replace(/\.md$/i, ''),
+        title: seed.title,
+        field: seed.field,
+        status: seed.status,
+        line: seed.line,
+        revision: cached.revision,
       });
     }
   }
-  return items.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'pt-BR'));
+  for (const path of bucket.keys()) if (!seen.has(path)) bucket.delete(path);
+  const groups = new Map<string, CalendarItem[]>();
+  for (const item of raw) {
+    const key = `${item.path}\0${item.date}`;
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+  const items: CalendarItem[] = [];
+  for (const list of groups.values()) {
+    const task = list.find((item) => item.kind === 'tarefa');
+    const note = list.find((item) => item.kind === 'nota');
+    items.push(task || note || list[0]);
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'pt-BR'));
+  const byDate = new Map<string, CalendarItem[]>();
+  for (const item of items) {
+    const list = byDate.get(item.date) ?? [];
+    list.push(item);
+    byDate.set(item.date, list);
+  }
+  const days: CalendarDay[] = [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, list]) => {
+      const byShelf: Record<string, number> = {};
+      for (const item of list) {
+        const shelf = item.workspace || 'Biblioteca';
+        byShelf[shelf] = (byShelf[shelf] || 0) + 1;
+      }
+      const open = new Set<string>();
+      for (const item of raw) {
+        if (item.date !== date || item.kind !== 'tarefa') continue;
+        if (item.status === 'feita' || item.status === 'cancelada') continue;
+        open.add(`${item.path}:${item.line}`);
+      }
+      return { date, total: list.length, byShelf, openTasks: open.size };
+    });
+  return { items, days };
 }

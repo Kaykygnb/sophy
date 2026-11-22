@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
 import { parseCanvas, serializeCanvas } from './canvas.ts';
-import { listEntries, listFiles, listNotes, moveEntry, readText, type Library } from './library.ts';
+import { listEntries, listFiles, listNotes, assertEntryMove, moveEntry, readText, type Library } from './library.ts';
 import { splitMarkdown } from './markdown.ts';
+import { isMother, listChildren, moveMotherTree, registerMother } from './children.ts';
+import { findNoteByRememberedName } from './note-id.ts';
 import { resolveInside } from './paths.ts';
 import { buildRewriteIndexes, rewriteLinks } from './rewrite.ts';
 import { fold, rankByFuzzy } from './fuzzy.ts';
@@ -17,7 +19,9 @@ import {
   indexPaths,
   resolvePath,
   scan,
+  sectionsOf,
   type LinkFormat,
+  type NoteSection,
   type ScannedLink,
 } from './wikilinks.ts';
 
@@ -50,6 +54,7 @@ export type CatalogNote = {
   title: string;
   aliases: string[];
   headings: string[];
+  sections: NoteSection[];
   blockIds: string[];
   modifiedAt: number;
   plain: string;
@@ -62,6 +67,7 @@ type CachedNote = {
   aliases: string[];
   tags: string[];
   headings: string[];
+  sections: NoteSection[];
   blockIds: string[];
   plain: string;
   frontmatterText: string;
@@ -162,6 +168,7 @@ export function catalogNotes(library: Library): CatalogNote[] {
       title: note.title || basename(note.path),
       aliases: note.aliases,
       headings: note.headings,
+      sections: note.sections,
       blockIds: note.blockIds,
       modifiedAt: note.mtime,
       plain: note.plain.slice(0, 400),
@@ -219,6 +226,7 @@ export function indexedNotes(library: Library) {
 }
 
 export function relocate(library: Library, source: string, target: string) {
+  assertEntryMove(library, source, target);
   const notes = listNotes(library);
   const files = listFiles(library).map((file) => file.path);
   const notePaths = notes.map((note) => note.path);
@@ -230,8 +238,36 @@ export function relocate(library: Library, source: string, target: string) {
   const skipped: Array<{ path: string; reason: string }> = [];
   const indexes = buildRewriteIndexes(notePaths, files, mapPath);
   const needles = rewriteNeedles(source);
+  // Atalho só para rename de nota (.md). Em estante/pasta o basename pode
+  // colidir com uma nota homônima e engolir o rewrite de [[Estante/Nota]].
   const uniqueBase =
+    /\.md$/i.test(source) &&
     notePaths.filter((file) => basename(file) === basename(source)).length === 1;
+  // #region agent log
+  try {
+    fs.appendFileSync(
+      path.resolve('c:/Users/kayky/Downloads/teste/.cursor/debug-1de8c6.log'),
+      `${JSON.stringify({
+        sessionId: '1de8c6',
+        hypothesisId: 'A',
+        location: 'links.ts:relocate',
+        message: 'relocate uniqueBase decision',
+        data: {
+          source,
+          target,
+          uniqueBase,
+          sourceIsNote: /\.md$/i.test(source),
+          basenameSource: basename(source),
+          sameBaseCount: notePaths.filter((file) => basename(file) === basename(source)).length,
+        },
+        timestamp: Date.now(),
+        runId: 'post-fix',
+      })}\n`,
+    );
+  } catch {
+    /* ignore */
+  }
+  // #endregion
   for (const note of notes) {
     try {
       if (
@@ -239,6 +275,28 @@ export function relocate(library: Library, source: string, target: string) {
           if (!mayNeedRewrite(content, needles)) return content;
           if (uniqueBase) {
             const quick = rewriteUniqueWiki(content, source, target);
+            // #region agent log
+            try {
+              fs.appendFileSync(
+                path.resolve('c:/Users/kayky/Downloads/teste/.cursor/debug-1de8c6.log'),
+                `${JSON.stringify({
+                  sessionId: '1de8c6',
+                  hypothesisId: 'A',
+                  location: 'links.ts:relocate:quick',
+                  message: 'uniqueBase shortcut used',
+                  data: {
+                    note: note.path,
+                    changed: quick !== null && quick !== content,
+                    hadPathLink: content.includes(`${basename(source)}/`),
+                  },
+                  timestamp: Date.now(),
+                  runId: 'post-fix',
+                })}\n`,
+              );
+            } catch {
+              /* ignore */
+            }
+            // #endregion
             if (quick !== null) return quick;
           }
           return rewriteLinks(content, note.path, notePaths, files, mapPath, indexes);
@@ -270,7 +328,9 @@ export function relocate(library: Library, source: string, target: string) {
       });
     }
   }
-  const moved = moveEntry(library, source, target);
+  const moved = isMother(library, source)
+    ? moveMotherTree(library, source, target)
+    : moveEntry(library, source, target);
   const cache = caches.get(library.root);
   if (cache) {
     for (const filePath of [...cache.keys()]) {
@@ -316,6 +376,7 @@ function loadNote(
   const content = readText(library, relative).content;
   const parts = splitMarkdown(content);
   const headings = headingsOf(parts.body);
+  const sections = sectionsOf(parts.body);
   const scanned = scan(content);
   return {
     path: relative,
@@ -324,6 +385,7 @@ function loadNote(
     aliases: aliasesOf(parts.frontmatter),
     tags: tagsOf(parts.frontmatter),
     headings,
+    sections,
     blockIds: blockIdsOf(parts.body),
     plain: plainText(parts.body),
     frontmatterText: frontmatterText(parts.frontmatter),
@@ -383,9 +445,13 @@ function decorate(
   const resolvedLinks = note.scanned.map((link) => {
     const fileLike =
       link.format === 'embed' && /\.[^/]+$/.test(link.note) && !/\.md$/i.test(link.note);
-    const resolved = fileLike
+    let resolved = fileLike
       ? resolveFile(link.note, note.path, files)
       : resolvePath(link.note, note.path, paths, index);
+    if (!fileLike && !resolved.path && resolved.candidates.length === 0) {
+      const healed = findNoteByRememberedName(library, link.note);
+      if (healed) resolved = { path: healed, candidates: [healed], invalid: false };
+    }
     let status: LinkStatus = 'broken';
     if (resolved.invalid || (!resolved.path && resolved.candidates.length === 0)) status = 'broken';
     else if (!resolved.path) status = 'ambiguous';
@@ -491,6 +557,7 @@ function loadCanvas(
     aliases: [],
     tags: [],
     headings: [],
+    sections: [],
     blockIds: [],
     plain: plainText(texts.join('\n')),
     frontmatterText: '',

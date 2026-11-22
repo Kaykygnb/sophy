@@ -1,3 +1,4 @@
+import { isMother, listChildren } from './children.ts';
 import { readOutgoing, syncLinks } from './links.ts';
 import type { Library } from './library.ts';
 
@@ -21,6 +22,12 @@ export function queryGraph(library: Library, filter: { workspace?: string; tag?:
       )
         continue;
       edges.push({ from: note.path, to: link.path, format: link.format });
+    }
+    if (isMother(library, note.path)) {
+      for (const child of listChildren(library, note.path)) {
+        if (!visible.has(child)) continue;
+        edges.push({ from: note.path, to: child, format: 'child' as const });
+      }
     }
   }
   return {

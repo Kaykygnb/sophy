@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { dailyDate } from './daily.ts';
 import { EngineError } from './errors.ts';
-import { MAX_NOTE_BYTES, MAX_TREE_DEPTH, MAX_TREE_ENTRIES } from './limits.ts';
+import { MAX_ATTACHMENT_BYTES, MAX_NOTE_BYTES, MAX_TREE_DEPTH, MAX_TREE_ENTRIES } from './limits.ts';
 import { assertBody, composeMarkdown, prefixFromFrontmatter, splitMarkdown } from './markdown.ts';
+import { ensureNoteIdentity, newNoteId, updateNoteIdPath } from './note-id.ts';
 import { openLibraryRoot, resolveInside, validateSegment, type OpenOptions } from './paths.ts';
-import { moveToTrash, type TrashOptions } from './trash.ts';
+import { moveToTrash, restoreFromTrash, type TrashOptions } from './trash.ts';
 
 /**
  * Motor da biblioteca.
@@ -100,6 +102,99 @@ export function listFiles(library: Library, workspace?: string): FileInfo[] {
   return walkFiles(library, workspace).filter((file): file is FileInfo => file.kind !== 'note');
 }
 
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+};
+
+export function isImageName(name: string) {
+  return Boolean(IMAGE_MIME[path.extname(name).toLowerCase()]);
+}
+
+function uniqueAttachmentPath(library: Library, folder: string, filename: string) {
+  const safe = filename
+    .replace(/[\x00-\x1f<>:"|?*\\/]/g, '_')
+    .replace(/^[. ]+|[. ]+$/g, '')
+    .slice(0, 180) || 'imagem';
+  const ext = path.extname(safe).slice(0, 32);
+  const stem = safe.slice(0, safe.length - ext.length) || 'imagem';
+  let index = 1;
+  let candidate = `${stem}${ext}`;
+  let relative = folder ? `${folder}/${candidate}` : candidate;
+  while (fs.existsSync(resolveInside(library.root, relative, { allowMissing: true }))) {
+    index += 1;
+    candidate = `${stem} (${index})${ext}`;
+    relative = folder ? `${folder}/${candidate}` : candidate;
+  }
+  return relative;
+}
+
+/** Copia um arquivo local para a biblioteca como anexo. */
+export function importAttachmentFromPath(library: Library, sourcePath: string, folder = '') {
+  if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath))
+    throw new EngineError('invalid-path', 'O anexo precisa de um caminho absoluto.');
+  const listed = fs.lstatSync(sourcePath);
+  if (listed.isSymbolicLink() || !listed.isFile())
+    throw new EngineError('invalid-path', 'Anexos precisam ser arquivos locais comuns.');
+  if (listed.size > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo ultrapassa o limite de 25 MB.');
+  const real = fs.realpathSync(sourcePath);
+  if (real !== path.resolve(sourcePath))
+    throw new EngineError('symlink', 'O caminho do anexo contém um link simbólico.');
+  if (folder) createDirectory(library, folder);
+  const relative = uniqueAttachmentPath(library, folder, path.basename(sourcePath));
+  const target = resolveInside(library.root, relative, { allowMissing: true });
+  fs.copyFileSync(real, target, fs.constants.COPYFILE_EXCL);
+  const stat = fs.statSync(target);
+  return { path: relative, name: relative.split('/').pop()!, size: stat.size, kind: 'attachment' as const };
+}
+
+/** Grava bytes (ex.: colar imagem) como anexo na biblioteca. */
+export function importAttachmentBytes(
+  library: Library,
+  name: string,
+  data: Buffer,
+  folder = '',
+) {
+  if (!Buffer.isBuffer(data) || !data.length)
+    throw new EngineError('invalid-path', 'Conteúdo do anexo inválido.');
+  if (data.length > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo ultrapassa o limite de 25 MB.');
+  if (folder) createDirectory(library, folder);
+  const relative = uniqueAttachmentPath(library, folder, name);
+  const target = resolveInside(library.root, relative, { allowMissing: true });
+  fs.writeFileSync(target, data, { flag: 'wx' });
+  const stat = fs.statSync(target);
+  return { path: relative, name: relative.split('/').pop()!, size: stat.size, kind: 'attachment' as const };
+}
+
+/** Lê um anexo de imagem como data URL para a interface. */
+export function readAttachmentDataUrl(library: Library, relative: string) {
+  const full = resolveInside(library.root, relative);
+  const listed = fs.lstatSync(full);
+  if (listed.isSymbolicLink() || !listed.isFile())
+    throw new EngineError('invalid-path', 'O anexo não é um arquivo.');
+  if (listed.size > MAX_ATTACHMENT_BYTES)
+    throw new EngineError('too-large', 'O anexo ultrapassa o limite de 25 MB.');
+  const mime = IMAGE_MIME[path.extname(relative).toLowerCase()];
+  if (!mime) throw new EngineError('invalid-path', 'Somente imagens podem ser lidas assim.');
+  const data = fs.readFileSync(full);
+  return {
+    path: relative,
+    mime,
+    dataUrl: `data:${mime};base64,${data.toString('base64')}`,
+    size: listed.size,
+  };
+}
+
+export function listEntries(library: Library) {
+  return walkFiles(library);
+}
+
 export function listDirectories(library: Library): string[] {
   const directories: string[] = [];
   let count = 0;
@@ -143,7 +238,11 @@ export function writeText(
   return { conflict: false as const, revision: revisionOf(content) };
 }
 
-export function readNote(library: Library, relative: string): NoteDocument {
+export function readNote(
+  library: Library,
+  relative: string,
+  options: { ensureId?: boolean } = {},
+): NoteDocument {
   assertMarkdown(relative);
   const full = resolveInside(library.root, relative);
   const stat = fs.lstatSync(full);
@@ -151,8 +250,10 @@ export function readNote(library: Library, relative: string): NoteDocument {
     throw new EngineError('invalid-note', 'Somente arquivos Markdown podem ser lidos.');
   if (stat.size > MAX_NOTE_BYTES)
     throw new EngineError('too-large', 'A nota deve ser um arquivo de até 8 MB.');
-  const content = fs.readFileSync(full, 'utf8');
-  return noteFrom(library, relative, content, stat);
+  let content = fs.readFileSync(full, 'utf8');
+  if (options.ensureId !== false)
+    content = ensureNoteIdentity(library, relative, content).content;
+  return noteFrom(library, relative, content, fs.lstatSync(full));
 }
 
 export function createNote(
@@ -166,9 +267,14 @@ export function createNote(
   const parts = relative.split('/');
   if (parts.length > 1) createDirectory(library, parts.slice(0, -1).join('/'));
   const full = resolveInside(library.root, relative, { allowMissing: true });
+  if (fs.existsSync(full) && dailyDate(relative))
+    throw new EngineError('daily-exists', 'Esse dia já tem nota');
   if (fs.existsSync(full)) throw new EngineError('exists', 'A nota já existe.');
-  const prefix =
-    frontmatter === undefined || frontmatter === null ? null : prefixFromFrontmatter(frontmatter);
+  const meta =
+    frontmatter === undefined || frontmatter === null
+      ? { id: newNoteId() }
+      : { ...frontmatter, id: typeof frontmatter.id === 'string' && frontmatter.id ? frontmatter.id : newNoteId() };
+  const prefix = prefixFromFrontmatter(meta);
   const content = composeMarkdown({ bom: '', prefix, body });
   assertSize(content);
   fs.writeFileSync(full, content, { flag: 'wx' });
@@ -192,11 +298,16 @@ export function writeNote(
   },
 ): WriteResult {
   assertBody(input.body);
-  const current = readNote(library, relative);
+  const current = readNote(library, relative, { ensureId: false });
   if (current.revision !== input.expectedRevision) return { conflict: true, current };
   const parts = splitMarkdown(fs.readFileSync(resolveInside(library.root, relative), 'utf8'));
+  let nextFrontmatter = input.frontmatter;
+  if (nextFrontmatter && typeof nextFrontmatter === 'object') {
+    const kept = typeof parts.frontmatter?.id === 'string' ? parts.frontmatter.id : null;
+    if (!nextFrontmatter.id && kept) nextFrontmatter = { ...nextFrontmatter, id: kept };
+  }
   const prefix =
-    input.frontmatter === undefined ? parts.prefix : prefixFromFrontmatter(input.frontmatter);
+    nextFrontmatter === undefined ? parts.prefix : prefixFromFrontmatter(nextFrontmatter);
   const content = composeMarkdown({ bom: parts.bom, prefix, body: input.body });
   assertSize(content);
   const written = writeText(library, relative, content, input.expectedRevision);
@@ -204,7 +315,20 @@ export function writeNote(
   return { conflict: false, note: readNote(library, relative) };
 }
 
+/** Recusa mover a nota do dia e recusa ocupar um dia que já tem nota. */
+export function assertEntryMove(library: Library, source: string, target: string) {
+  const from = source.split('\\').join('/');
+  const to = target.split('\\').join('/');
+  if (from === to) return;
+  if (dailyDate(from))
+    throw new EngineError('daily-locked', 'Notas do dia têm o nome fixo pela data');
+  if (!dailyDate(to)) return;
+  const dest = resolveInside(library.root, to, { allowMissing: true });
+  if (fs.existsSync(dest)) throw new EngineError('daily-exists', 'Esse dia já tem nota');
+}
+
 export function moveEntry(library: Library, source: string, target: string) {
+  assertEntryMove(library, source, target);
   const from = resolveInside(library.root, source);
   const parts = assertRelativeParts(target);
   const preview = path.join(library.root, ...parts);
@@ -219,7 +343,17 @@ export function moveEntry(library: Library, source: string, target: string) {
   if (fs.existsSync(to))
     throw new EngineError('exists', 'Já existe um item com esse nome no destino.');
   fs.renameSync(from, to);
+  if (source.toLowerCase().endsWith('.md') || target.toLowerCase().endsWith('.md'))
+    updateNoteIdPath(library, source, target);
   return { from: source, path: target };
+}
+
+export function restoreEntry(
+  library: Library,
+  id: string,
+  options?: TrashOptions & { mode?: 'merge' | 'asNote' },
+) {
+  return restoreFromTrash(library.root, id, options);
 }
 
 export function trashEntry(library: Library, relative: string, options?: TrashOptions) {
@@ -231,7 +365,7 @@ export function trashEntry(library: Library, relative: string, options?: TrashOp
   if (again.dev !== before.dev || again.ino !== before.ino)
     throw new EngineError('conflict', 'O item mudou durante a operação.');
   const trashed = moveToTrash(full, options);
-  return { path: relative, trashed: true, trashPath: trashed.trashPath };
+  return { path: relative, trashed: true, trashPath: trashed.trashPath, infoPath: trashed.infoPath };
 }
 
 function atomicWrite(

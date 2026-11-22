@@ -5,16 +5,17 @@ const os = require('node:os');
 const path = require('node:path');
 const commands = require('../src/ui/commands');
 
-test('o menu / abre no meio da linha e de novo depois do Esc', () => {
-  assert.deepEqual(commands.slashQuery('olá /lis', 'olá /lis'.length), { start: 4, query: 'lis' });
+test('o menu / abre no começo da linha e de novo depois do Esc', () => {
+  assert.equal(commands.slashQuery('olá /lis', 'olá /lis'.length), null);
   assert.equal(commands.slashQuery('palavra/lis', 'palavra/lis'.length), null);
   assert.deepEqual(commands.slashQuery('/titulo', 7), { start: 0, query: 'titulo' });
+  assert.deepEqual(commands.slashQuery('  /lis', '  /lis'.length), { start: 2, query: 'lis' });
   const session = commands.createSlashSession();
-  const text = 'nota /cod';
+  const text = '/cod';
   assert.ok(session.offer(text, text.length));
   session.dismiss(text, text.length);
   assert.equal(session.offer(text, text.length), null);
-  const again = 'nota /nova';
+  const again = '/nova';
   assert.ok(session.offer(again, again.length));
 });
 

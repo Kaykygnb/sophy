@@ -11,6 +11,7 @@ import {
   type CanvasFile,
   type CanvasNode,
 } from './canvas.ts';
+import { createChildNote, isMother, listChildren } from './children.ts';
 import { EngineError } from './errors.ts';
 import { queryGraph } from './graph.ts';
 import { importVault, linkMentions, listViews, saveView, unlinkedMentions } from './extras.ts';
@@ -49,6 +50,7 @@ import {
   openLibrary,
   readAttachmentDataUrl,
   readNote,
+  restoreEntry,
   trashEntry,
   writeNote,
   type Library,
@@ -256,12 +258,50 @@ export const tools = [
       ),
   ),
   define(
+    'note.child.create',
+    'Cria uma nota filha em PastaDaMae/Filha.md e registra a mãe.',
+    z.object({
+      libraryPath,
+      parent: relativePath,
+      title: z.string().min(1),
+      origin,
+    }),
+    ({ libraryPath: folder, parent, title, origin: source }) =>
+      tracked(folder, source, 'note.child.create', `Filha de ${parent}`, (library) =>
+        createChildNote(library, parent, title),
+      ),
+  ),
+  define(
+    'note.children',
+    'Lista as notas filhas registradas de uma mãe.',
+    z.object({ libraryPath, path: relativePath }),
+    ({ libraryPath: folder, path }) => {
+      const library = openLibrary(folder);
+      return { mother: isMother(library, path), children: listChildren(library, path) };
+    },
+  ),
+  define(
     'entry.trash',
     'Move um arquivo ou pasta para a lixeira. Não apaga de forma permanente.',
     z.object({ libraryPath, path: relativePath, origin }),
     ({ libraryPath: folder, path, origin: source }) =>
       tracked(folder, source, 'entry.trash', `Lixeira ${path}`, (library) =>
         trashEntry(library, path),
+      ),
+  ),
+  define(
+    'trash.restore',
+    'Restaura um item da lixeira. Se o dia já tem nota, devolve o conflito em vez de gravar.',
+    z.object({
+      libraryPath,
+      id: z.string().min(1),
+      mode: z.enum(['merge', 'asNote']).optional(),
+      trashRoot: z.string().min(1).optional(),
+      origin,
+    }),
+    ({ libraryPath: folder, id, mode, trashRoot: root, origin: source }) =>
+      tracked(folder, source, 'trash.restore', `Restaurar ${id}`, (library) =>
+        restoreEntry(library, id, { mode, trashRoot: root }),
       ),
   ),
   define(
@@ -474,24 +514,50 @@ export const tools = [
   ),
   define(
     'task.update',
-    'Muda o status ou o prazo de uma tarefa na linha do Markdown. Exige a revisão da nota.',
+    'Muda status, prazo, agendamento ou prioridade de uma tarefa na linha do Markdown.',
     z.object({
       libraryPath,
       path: relativePath,
       line: z.number().int().positive(),
       status: z.enum(['aberta', 'andamento', 'feita', 'cancelada']).optional(),
       due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      scheduled: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      priority: z.enum(['alta', 'media', 'baixa']).nullable().optional(),
+      titleHint: z.string().optional(),
       expectedRevision: z.string().length(64),
       origin,
     }),
-    ({ libraryPath: folder, path, line, status, due, expectedRevision, origin: source }) =>
+    ({
+      libraryPath: folder,
+      path,
+      line,
+      status,
+      due,
+      scheduled,
+      priority,
+      titleHint,
+      expectedRevision,
+      origin: source,
+    }) =>
       tracked(folder, source, 'task.update', `Tarefa ${path}:${line}`, (library) =>
-        updateTask(library, path, line, { status: status as TaskStatus | undefined, due }, expectedRevision),
+        updateTask(
+          library,
+          path,
+          line,
+          {
+            status: status as TaskStatus | undefined,
+            due,
+            scheduled,
+            priority: priority as 'alta' | 'media' | 'baixa' | null | undefined,
+          },
+          expectedRevision,
+          { titleHint },
+        ),
       ),
   ),
   define(
     'calendar.query',
-    'Lista notas datadas, prazos e datas do frontmatter entre dois dias.',
+    'Lista itens do calendário entre dois dias, sem repetir nota e dia, e resume cada dia.',
     z.object({
       libraryPath,
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -649,9 +715,11 @@ const MUTATIONS = new Set([
   'workspace.create',
   'directory.create',
   'note.create',
+  'note.child.create',
   'note.write',
   'entry.move',
   'entry.trash',
+  'trash.restore',
   'history.undo',
   'shelf.style.set',
   'mention.link',

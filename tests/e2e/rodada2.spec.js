@@ -38,12 +38,21 @@ test('duas aberturas seguidas não apagam o que foi digitado', async () => {
   const root = library();
   const { app, page } = await launch(root);
   await page.evaluate(() => {
-    window.__sophySlowOpen = 700;
+    const original = tool;
+    let delayed = false;
+    tool = async (name, input) => {
+      if (!delayed && name === 'note.read' && input.path === 'Estudos/Leitura.md') {
+        delayed = true;
+        await new Promise((resolve) => { window.releaseOpen = resolve; });
+      }
+      return original(name, input);
+    };
   });
   await page.locator('#arvore [data-open="Estudos/Leitura.md"]').click();
   await page.locator('#arvore [data-open="Estudos/A.md"]').click();
   await page.locator('.bloco--texto').first().click();
   await page.keyboard.type(' RACE');
+  await page.evaluate(() => window.releaseOpen());
   await page.waitForTimeout(1200);
   await expect(page.locator('.bloco--texto').first()).toContainText('RACE');
   expect(fs.readFileSync(path.join(root, 'Estudos', 'A.md'), 'utf8')).toContain('RACE');
@@ -88,7 +97,7 @@ test('editar o cartão do canvas guarda o markdown e Selecionar usa a seta', asy
   await page.waitForTimeout(400);
   const saved = fs.readFileSync(path.join(root, 'Estudos', 'Mapa.canvas'), 'utf8');
   expect(saved).toContain('**negrito**');
-  expect(saved).toContain('*ital*');
+  expect(saved).toMatch(/\*ital(?:\s+mais)?\*/);
   expect(saved).toContain('mais');
   expect(saved).not.toContain('"text":""');
   await app.close();

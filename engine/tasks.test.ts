@@ -46,10 +46,17 @@ test('atualizar status e prazo reescreve a linha e entra no calendário', () => 
   assert.equal(updated.task?.due, '2026-11-20');
   const text = fs.readFileSync(path.join(opened.root, 'Estudos', 'Leitura.md'), 'utf8');
   assert.match(text, /- \[x\] abrir 📅 2026-11-20 ⏫/);
-  const days = queryCalendar(opened, '2026-11-01', '2026-11-30');
+  const calendar = queryCalendar(opened, '2026-11-01', '2026-11-30');
+  const days = calendar.items;
   assert.equal(days.some((item) => item.kind === 'nota' && item.date === '2026-11-17'), true);
-  assert.equal(days.some((item) => item.kind === 'frontmatter' && item.field === 'data'), true);
+  assert.equal(
+    days.some((item) => item.kind === 'frontmatter' && item.field === 'data' && item.path.startsWith('Diário/')),
+    false,
+  );
   assert.equal(days.some((item) => item.kind === 'tarefa' && item.date === '2026-11-20'), true);
+  const day = calendar.days.find((item) => item.date === '2026-11-17');
+  assert.ok(day);
+  assert.equal(day.total, 2);
 });
 
 test('a tool task.query força a biblioteca da sessão', () => {

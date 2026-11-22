@@ -33,6 +33,7 @@ export function openLibraryRoot(folder: string, options: OpenOptions = {}) {
   if (typeof folder !== 'string' || !path.isAbsolute(folder))
     throw new EngineError('invalid-path', 'A biblioteca precisa de um caminho absoluto.');
   const resolved = path.resolve(folder);
+  assertNotProtected(resolved, options);
   let listed: fs.Stats;
   try {
     listed = fs.lstatSync(resolved);
@@ -46,7 +47,8 @@ export function openLibraryRoot(folder: string, options: OpenOptions = {}) {
   if (!listed.isDirectory())
     throw new EngineError('invalid-path', 'A biblioteca precisa ser uma pasta.');
   const root = fs.realpathSync(resolved);
-  if (root !== resolved)
+  const macSystemAlias = process.platform === 'darwin' && root === resolved.replace(/^\/(var|tmp)\//, '/private/$1/');
+  if (root !== resolved && !macSystemAlias)
     throw new EngineError('symlink', 'O caminho da biblioteca contém um link simbólico.');
   assertNotProtected(root, options);
   fs.accessSync(root, fs.constants.R_OK | fs.constants.W_OK | fs.constants.X_OK);

@@ -17,6 +17,7 @@
 }
 .sophy :where(button, input) { font: inherit; color: inherit; }   /* :where = especificidade zero */
 .icon { width: 20px; height: 20px; flex: none; color: var(--ink-2); }
+.icon--14 { width: 14px; height: 14px; }
 .icon--16 { width: 16px; height: 16px; }
 .icon--24 { width: 24px; height: 24px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -98,8 +99,11 @@
   border-radius: var(--radius-md); color: var(--ink); cursor: pointer; user-select: none;
 }
 .arvore__linha .icon { width: 16px; height: 16px; }
-.arvore__seta { transition: transform var(--dur-medium) var(--ease); }
+.arvore__seta { transition: transform var(--dur-medium) var(--ease); flex: none; cursor: pointer; border-radius: 4px; }
+.arvore__seta:hover { background: var(--hover); }
 .arvore__linha[aria-expanded="true"] .arvore__seta { transform: rotate(90deg); }
+.arvore__linha[aria-expanded="false"] .arvore__seta { transform: rotate(0deg); }
+ul.arvore.is-destino { box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: var(--radius-md); }
 .arvore__ponto { width: 8px; height: 8px; border-radius: 3px; flex: none; }
 .arvore__nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arvore__conta { font: var(--text-caption); color: var(--ink-3); }

@@ -92,7 +92,8 @@ test('corpo que entra é o corpo que sai, inclusive [[ incompleto', () => {
   const body = 'Texto com [[ e também \\[\\[ e *negrito* sem escape.\n';
   const created = createNote(library, 'Estudos/Ideia.md', body);
   assert.equal(created.body, body);
-  assert.equal(fs.readFileSync(path.join(root, 'Estudos', 'Ideia.md'), 'utf8'), body);
+  assert.equal(typeof created.frontmatter?.id, 'string');
+  assert.equal(splitMarkdown(fs.readFileSync(path.join(root, 'Estudos', 'Ideia.md'), 'utf8')).body, body);
   const saved = writeNote(library, 'Estudos/Ideia.md', {
     body: '[[',
     expectedRevision: created.revision,
@@ -100,7 +101,7 @@ test('corpo que entra é o corpo que sai, inclusive [[ incompleto', () => {
   assert.equal(saved.conflict, false);
   if (saved.conflict) return;
   assert.equal(saved.note.body, '[[');
-  assert.equal(fs.readFileSync(path.join(root, 'Estudos', 'Ideia.md'), 'utf8'), '[[');
+  assert.equal(splitMarkdown(fs.readFileSync(path.join(root, 'Estudos', 'Ideia.md'), 'utf8')).body, '[[');
   assert.equal(saved.note.body.includes('\\'), false);
 });
 
@@ -229,7 +230,7 @@ test('criar, mover e lixeira não apagam o original se a lixeira não recebe o i
   assert.equal(fs.existsSync(path.join(root, 'Caixa')), false);
   assert.equal(fs.readFileSync(outside, 'utf8'), 'permanece');
   const info = fs.readFileSync(
-    trashed.trashPath.replace('/files/', '/info/') + '.trashinfo',
+    trashed.infoPath,
     'utf8',
   );
   assert.match(info, /^\[Trash Info\]/);
@@ -247,7 +248,7 @@ test('criar não sobrescreve e a tool rejeita entrada inválida', () => {
       return true;
     },
   );
-  assert.equal(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8'), 'um');
+  assert.equal(splitMarkdown(fs.readFileSync(path.join(root, 'Nota.md'), 'utf8')).body, 'um');
   const names = listTools().map((tool) => tool.name);
   assert.equal(names.includes('library.open'), true);
   assert.equal(names.includes('note.write'), true);

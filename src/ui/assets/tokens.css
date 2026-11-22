@@ -64,6 +64,22 @@
   --warning: #8A5A12;  --warning-bg: #F6F1E7;
   --danger:  #B3402F;  --danger-bg:  #F7ECEA;
 
+  /* ---- Cor e fundo do texto (paleta fechada) ---- */
+  --cor-cinza: #625F75;     --fundo-cinza: #EAE8E3;
+  --cor-marrom: #8A5A3C;    --fundo-marrom: #F3E8DF;
+  --cor-laranja: #C45C1A;   --fundo-laranja: #F8E8D8;
+  --cor-amarelo: #8A5A12;   --fundo-amarelo: #F6F1E7;
+  --cor-verde: #2F7A50;     --fundo-verde: #EEF3EF;
+  --cor-azul: #3E5A9E;      --fundo-azul: #E9EEF8;
+  --cor-roxo: #6B4E9A;      --fundo-roxo: #F0EAF8;
+  --cor-rosa: #A14B74;      --fundo-rosa: #F7EAF1;
+  --cor-vermelho: #B3402F;  --fundo-vermelho: #F7ECEA;
+
+  --callout-alerta: var(--danger);   --callout-alerta-bg: var(--danger-bg);
+  --callout-pergunta: var(--cor-azul); --callout-pergunta-bg: var(--fundo-azul);
+  --callout-tarefa: var(--warning);  --callout-tarefa-bg: var(--warning-bg);
+  --callout-dica: var(--success);    --callout-dica-bg: var(--success-bg);
+
   /* ---- Pontos das estantes (só marcadores, nunca fundos grandes) ---- */
   /* --shelf-1 Índigo, --shelf-2 Azul, --shelf-3 Verde-água, --shelf-4 Oliva, --shelf-5 Ocre, --shelf-6 Terracota, --shelf-7 Lavanda, --shelf-8 Grafite */
   --shelf-1: #6E72B0; --shelf-2: #5B82A6; --shelf-3: #5A8C83; --shelf-4: #78895A;
@@ -161,6 +177,21 @@
   --success: #8CC9A3;  --success-bg: #1C2622;
   --warning: #E0B872;  --warning-bg: #2A251D;
   --danger:  #EE9A8C;  --danger-bg:  #2D1F1F;
+
+  --cor-cinza: #A3A0B4;     --fundo-cinza: #2A2934;
+  --cor-marrom: #D2A586;    --fundo-marrom: #2C241E;
+  --cor-laranja: #E09A6A;   --fundo-laranja: #2E2318;
+  --cor-amarelo: #E0B872;   --fundo-amarelo: #2A251D;
+  --cor-verde: #8CC9A3;     --fundo-verde: #1C2622;
+  --cor-azul: #8FB0CF;      --fundo-azul: #1C2430;
+  --cor-roxo: #BFB0D3;      --fundo-roxo: #262033;
+  --cor-rosa: #D9A0B8;      --fundo-rosa: #2C1F28;
+  --cor-vermelho: #EE9A8C;  --fundo-vermelho: #2D1F1F;
+
+  --callout-alerta: var(--danger);   --callout-alerta-bg: var(--danger-bg);
+  --callout-pergunta: var(--cor-azul); --callout-pergunta-bg: var(--fundo-azul);
+  --callout-tarefa: var(--warning);  --callout-tarefa-bg: var(--warning-bg);
+  --callout-dica: var(--success);    --callout-dica-bg: var(--success-bg);
 
   --shelf-1: #A9ACDD; --shelf-2: #8FB0CF; --shelf-3: #8FBDB4; --shelf-4: #AEBE8F;
   --shelf-5: #D2B07F; --shelf-6: #D99A8D; --shelf-7: #BFB0D3; --shelf-8: #A3A8B4;

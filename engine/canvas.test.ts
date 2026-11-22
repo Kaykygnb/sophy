@@ -11,7 +11,7 @@ import { backlinks } from './links.ts';
 import { queryGraph } from './graph.ts';
 import { callTool } from './tools.ts';
 
-const bin = path.resolve('engine/bin/sophy');
+const bin = path.resolve('engine/cli.ts');
 const sample = {
   nodes: [
     {
@@ -131,14 +131,14 @@ test('a CLI grava e lê o canvas com origem cli', () => {
   const env = { ...process.env };
   delete env.SOPHY_LIBRARY;
   const created = spawnSync(
-    bin,
-    ['canvas.create', '--biblioteca', root, '--path', 'Mapa.canvas', '--json'],
+    process.execPath,
+    ['--experimental-strip-types', bin, 'canvas.create', '--biblioteca', root, '--path', 'Mapa.canvas', '--json'],
     { encoding: 'utf8', cwd: os.tmpdir(), env },
   );
   assert.equal(created.status, 0, created.stderr);
   const read = spawnSync(
-    bin,
-    ['canvas.read', '--biblioteca', root, '--path', 'Mapa.canvas', '--json'],
+    process.execPath,
+    ['--experimental-strip-types', bin, 'canvas.read', '--biblioteca', root, '--path', 'Mapa.canvas', '--json'],
     { encoding: 'utf8', cwd: os.tmpdir(), env },
   );
   assert.equal(read.status, 0, read.stderr);
@@ -155,8 +155,8 @@ test('o MCP cria o canvas pela tool do registro', { timeout: 30000 }, async () =
     if (typeof value === 'string' && key !== 'SOPHY_LIBRARY') env[key] = value;
   }
   const transport = new StdioClientTransport({
-    command: bin,
-    args: ['mcp', '--biblioteca', root, '--escrita'],
+    command: process.execPath,
+    args: ['--experimental-strip-types', bin, 'mcp', '--biblioteca', root, '--escrita'],
     cwd: os.tmpdir(),
     env,
     stderr: 'pipe',

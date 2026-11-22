@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { EngineError } from './errors.ts';
 import { serveMcp } from './mcp.ts';
 import { callTool, tools } from './tools.ts';
+import { readCatalog, libraryCatalog } from './catalog.ts';
 
 type Io = {
   cwd: string;
@@ -67,7 +68,15 @@ export async function execute(argv: string[], io: Io): Promise<number> {
     if (parsed.command === 'mcp') {
       if (parsed.positionals.length)
         throw new CliError('Uso: sophy mcp [--biblioteca <pasta>] [--escrita]', 1);
-      await serveMcp(findLibrary(io, parsed.biblioteca), { readonly: !parsed.escrita || parsed.somenteLeitura });
+      const libraries = parsed.flags['todas-bibliotecas'] === true
+        ? readCatalog(typeof parsed.flags.catalogo === 'string' ? path.resolve(io.cwd, parsed.flags.catalogo) : undefined)
+        : undefined;
+      if (libraries && !libraries.length) throw new CliError('Nenhuma biblioteca cadastrada.', 1);
+      const defaultLibrary = libraries ? libraryCatalog(libraries).find((entry) => entry.available)?.root : findLibrary(io, parsed.biblioteca);
+      if (!defaultLibrary) throw new CliError('Nenhuma biblioteca cadastrada está disponível.', 2);
+      await serveMcp(defaultLibrary, {
+        readonly: !parsed.escrita || parsed.somenteLeitura, libraries,
+      });
       return 0;
     }
     if (parsed.command === 'init') return initLibrary(parsed, io);
@@ -85,7 +94,7 @@ export async function execute(argv: string[], io: Io): Promise<number> {
       return 1;
     }
     if (error instanceof EngineError) {
-      io.stderr(`${error.message}\n`);
+      io.stderr(`${error.code}: ${error.message}\n`);
       return 2;
     }
     const message = error instanceof Error ? error.message : 'Falha inesperada.';
@@ -429,7 +438,7 @@ Uso:
   sophy desfazer
   sophy tools
   sophy help <tool>
-  sophy mcp [--escrita]
+  sophy mcp [--biblioteca <pasta> | --todas-bibliotecas [--catalogo <ui.json>]] [--escrita]
   sophy <tool> [--campo valor] [--json '{...}']
 
 A biblioteca vem de --biblioteca, de SOPHY_LIBRARY, ou da pasta atual

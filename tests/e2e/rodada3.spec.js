@@ -9,9 +9,9 @@ function library() {
   fs.mkdirSync(path.join(root, '.sophy'), { recursive: true });
   fs.writeFileSync(path.join(root, 'Estudos', 'A.md'), '# A\n\nTexto.\n');
   fs.writeFileSync(path.join(root, 'Estudos', 'B.md'), '# B\n\nOutra.\n');
-  fs.writeFileSync(path.join(root, 'Estudos', 'nome?.md'), '# Pergunta\n\nInvalida.\n');
-  fs.mkdirSync(path.join(root, `Ab'c"d`));
-  fs.writeFileSync(path.join(root, 'con.md'), '# con\n');
+  if (process.platform !== 'win32') fs.writeFileSync(path.join(root, 'Estudos', 'nome?.md'), '# Pergunta\n\nInvalida.\n');
+  if (process.platform !== 'win32') fs.mkdirSync(path.join(root, `Ab'c"d`));
+  if (process.platform !== 'win32') fs.writeFileSync(path.join(root, 'con.md'), '# con\n');
   return root;
 }
 
@@ -29,6 +29,7 @@ async function launch(root) {
 }
 
 test('um nome inválido não impede gravar as outras notas e só avisa uma vez', async () => {
+  test.skip(process.platform === 'win32', 'Nomes incompatíveis não podem ser criados no Windows.');
   const root = library();
   const { app, page } = await launch(root);
   await expect(page.locator('.toast--erro')).toHaveCount(1);
@@ -54,9 +55,9 @@ test('depois do conflito dá para trocar de nota e manter a edição', async () 
   await expect.poll(() => fs.readFileSync(path.join(root, 'Estudos', 'A.md'), 'utf8')).toContain('MINHA');
   fs.writeFileSync(path.join(root, 'Estudos', 'A.md'), '# A\n\nTexto. EXTERNO\n');
   await page.keyboard.type(' MAIS');
-  await expect(page.locator('.aviso')).toContainText('mudou desde a leitura');
+  await expect(page.locator('.aviso').filter({ hasText: 'mudou desde a leitura' })).toBeVisible();
   await page.locator('#arvore [data-open="Estudos/B.md"]').click();
-  await page.getByRole('button', { name: 'Manter a minha' }).click();
+  await page.getByRole('button', { name: 'Manter', exact: true }).click();
   await expect(page.locator('.bloco--texto').first()).toContainText('Outra');
   const saved = fs.readFileSync(path.join(root, 'Estudos', 'A.md'), 'utf8');
   expect(saved).toContain('MINHA');

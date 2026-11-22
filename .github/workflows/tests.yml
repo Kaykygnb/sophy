@@ -1,0 +1,28 @@
+name: Testes do Sophy
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:engine
+      - if: runner.os != 'Linux'
+        run: npx playwright test
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: falhas-${{ matrix.os }}
+          path: test-results/

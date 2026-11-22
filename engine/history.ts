@@ -167,9 +167,7 @@ function existsFile(library: Library, relative: string) {
 function readBlob(library: Library, relative: string): Blob {
   const full = resolveInside(library.root, relative);
   const buffer = fs.readFileSync(full);
-  if (buffer.subarray(0, 8192).includes(0))
-    return { encoding: 'base64', data: buffer.toString('base64') };
-  return { encoding: 'utf8', text: buffer.toString('utf8') };
+  return { encoding: 'base64', data: buffer.toString('base64') };
 }
 
 function bufferOf(blob: Blob) {
@@ -178,10 +176,8 @@ function bufferOf(blob: Blob) {
 
 function sameBlob(left: Blob | null, right: Blob | null) {
   if (left === null || right === null) return left === right;
-  if (left.encoding !== right.encoding) return false;
-  return left.encoding === 'utf8'
-    ? left.text === (right as typeof left).text
-    : left.data === (right as typeof left).data;
+  // Históricos antigos em UTF-8 continuam compatíveis com os novos blobs.
+  return bufferOf(left).equals(bufferOf(right));
 }
 
 function readActions(library: Library): Action[] {
