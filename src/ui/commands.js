@@ -31,6 +31,8 @@
     'mention.link',
     'vault.import',
     'view.save',
+    'tag.rename',
+    'note.tags',
     'card.review',
     'card.undo',
     'version.point',
@@ -55,7 +57,20 @@
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
     if (/[\]\n]/.test(query)) return null;
+    // Um [[ esquecido no meio do parágrafo não pode sequestrar o Enter: só abre enquanto parece um nome de nota.
+    if (query.length > 60 || /[.!?]\s|\*\*|`/.test(query)) return null;
     return { start: marker, query };
+  }
+
+  function tagQuery(text, cursor) {
+    const before = text.slice(0, cursor);
+    const match = before.match(/(^|[\s(])#([\p{L}\p{N}_\-\/]*)$/u);
+    if (!match) return null;
+    const start = before.length - match[2].length - 1;
+    // "#" sozinho no começo da linha é título, não tag
+    if (!match[2] && !match[1]) return null;
+    if (match[2] && !/\D/.test(match[2])) return null;
+    return { start, query: match[2] };
   }
 
   function foldText(value) {
@@ -289,6 +304,7 @@
   }
 
   function previewInline(text) {
+    text = String(text || '').replace(/<\/?span\b[^>]*>/gi, '');
     const pattern = /!?\[\[([^\]\n]*)\]\]/g;
     let html = '';
     let last = 0;
@@ -379,6 +395,8 @@
     { id: 'importar', rotulo: 'Importar do Obsidian', grupo: 'Criar', icone: 'pasta-aberta', atalho: '', quando: 'biblioteca' },
     { id: 'foco', rotulo: 'Modo foco', grupo: 'Editar', icone: 'olho', atalho: '', quando: 'sempre' },
     { id: 'cartas', rotulo: 'Flashcards', grupo: 'Navegar', icone: 'leitura', atalho: '', quando: 'biblioteca' },
+    { id: 'lixeira', rotulo: 'Lixeira', grupo: 'Navegar', icone: 'lixeira', atalho: '', quando: 'biblioteca' },
+    { id: 'atividade', rotulo: 'Atividade (quem mudou o quê)', grupo: 'Navegar', icone: 'linha-do-tempo', atalho: '', quando: 'biblioteca' },
     { id: 'versoes', rotulo: 'Histórico de versões', grupo: 'Navegar', icone: 'historico', atalho: '', quando: 'biblioteca' },
     { id: 'negrito', rotulo: 'Negrito', grupo: 'Editar', icone: 'negrito', atalho: 'Ctrl+B', quando: 'editor' },
     { id: 'italico', rotulo: 'Itálico', grupo: 'Editar', icone: 'italico', atalho: 'Ctrl+I', quando: 'editor' },
@@ -433,14 +451,14 @@
   }
 
   function filterSlash(items, query) {
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = foldText(query).trim();
     if (!needle) return items;
-    return items.filter(
-      (item) =>
-        item.label.toLocaleLowerCase().includes(needle) ||
-        item.id.includes(needle) ||
-        (item.hint && item.hint.toLocaleLowerCase().includes(needle)),
-    );
+    return items.filter((item) => {
+      const hay = [item.label, item.id, item.hint, ...(item.keywords || [])]
+        .filter(Boolean)
+        .join(' ');
+      return foldText(hay).includes(needle);
+    });
   }
 
   const SLASH_ITEMS = [
@@ -483,6 +501,42 @@
       icon: 'divisor',
       hint: '---',
       insert: '---',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid',
+      label: 'Diagrama (Mermaid)',
+      icon: 'diagrama',
+      hint: '```mermaid',
+      keywords: ['mermaid', 'diagrama', 'fluxo', 'fluxograma', 'grafico', 'gráfico'],
+      insert: '```mermaid\ngraph TD\n  A[Início] --> B[Próximo passo]\n```',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid-sequencia',
+      label: 'Sequência',
+      icon: 'conector',
+      hint: 'sequence',
+      keywords: ['mermaid', 'diagrama', 'sequencia', 'sequência', 'sequence'],
+      insert: '```mermaid\nsequenceDiagram\n  Ana->>Bruno: Olá\n  Bruno-->>Ana: Oi\n```',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid-mapa',
+      label: 'Mapa mental',
+      icon: 'grafo',
+      hint: 'mindmap',
+      keywords: ['mermaid', 'diagrama', 'mapa', 'mental', 'mindmap'],
+      insert: '```mermaid\nmindmap\n  root((Ideia))\n    Ramo A\n    Ramo B\n```',
+    },
+    {
+      group: 'Diagramas',
+      id: 'mermaid-gantt',
+      label: 'Gantt',
+      icon: 'linha-do-tempo',
+      hint: 'gantt',
+      keywords: ['mermaid', 'diagrama', 'gantt', 'cronograma', 'prazo'],
+      insert: '```mermaid\ngantt\n  title Plano\n  dateFormat YYYY-MM-DD\n  section Etapa\n  Tarefa :a1, 2026-11-22, 7d\n```',
     },
     {
       group: 'Inserir',
@@ -606,6 +660,7 @@
     SLASH_ITEMS,
     slashQuery,
     wikiQuery,
+    tagQuery,
     foldText,
     fuzzyScore,
     parseWikiDraft,
