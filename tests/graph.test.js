@@ -126,6 +126,20 @@ test('modo Tags cria pontos de tag com a hierarquia', () => {
   assert.equal(scene.links.filter((link) => link.kind === 'member').length, 4);
 });
 
+test('modo Tags reforça a proximidade com tags.related, sem laço na mesma tag', () => {
+  const scene = buildScene(library, {
+    view: 'tags',
+    relatedTags: {
+      Estudo: [{ tag: 'estudo/memoria', juntas: 2 }],
+    },
+  });
+  const together = scene.links.filter((link) => link.kind === 'together');
+  assert.equal(together.length, 1);
+  const ends = [together[0].source, together[0].target].sort();
+  assert.deepEqual(ends, ['t:estudo', 't:estudo/memoria']);
+  assert.equal(together[0].weight, 2);
+});
+
 test('linha do tempo: só notas criadas até a data, ligações só com as duas pontas', () => {
   const scene = buildScene(library, { view: 'notas', until: Date.parse('2026-02-15T00:00:00') });
   assert.deepEqual(plain(scene.nodes.map((node) => node.path)), ['Estudos/A.md', 'Estudos/B.md']);

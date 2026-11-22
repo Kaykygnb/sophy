@@ -50,6 +50,11 @@
     const parts = String(tag).split('/');
     return parts.map((_, index) => parts.slice(0, index + 1).join('/'));
   };
+  const tagNorm = (tag) =>
+    String(tag || '')
+      .replace(/^#/, '')
+      .normalize('NFC')
+      .toLocaleLowerCase('pt-BR');
 
   /* Cena pura (testável): converte o grafo de notas na lista de nós e ligações da visão escolhida. */
   function buildScene(graph, opts = {}) {
@@ -75,7 +80,7 @@
     const addLink = (source, target, kind, weight = 1, extra = {}) => {
       if (source === target) return;
       const key =
-        kind === 'shelf' || kind === 'tag'
+        kind === 'shelf' || kind === 'tag' || kind === 'together'
           ? [source, target].sort().join('\u0000') + kind
           : `${source}\u0000${target}\u0000${kind}`;
       const found = pairKey.get(key);
@@ -162,6 +167,21 @@
         for (const note of notes)
           for (const tag of new Set(note.tags || []))
             addLink(`n:${note.path}`, `t:${tag}`, 'member', 1, { tag });
+        const tagIds = new Map();
+        for (const node of nodes) {
+          if (node.kind === 'tag') tagIds.set(tagNorm(node.tag), node.id);
+        }
+        const related = opts.relatedTags || {};
+        for (const [from, others] of Object.entries(related)) {
+          const source = tagIds.get(tagNorm(from));
+          if (!source) continue;
+          for (const item of others || []) {
+            const target = tagIds.get(tagNorm(item.tag || item));
+            if (!target || target === source) continue;
+            const juntas = Math.max(1, Number(item.juntas) || 1);
+            addLink(source, target, 'together', Math.min(juntas, 6), { tag: item.tag || from });
+          }
+        }
       }
     }
     const degree = new Map();
@@ -235,6 +255,7 @@
     let filtered = base;
     let view = ['notas', 'estantes', 'tags'].includes(saved.view) ? saved.view : 'notas';
     if (config.view) view = config.view;
+    let relatedTags = config.relatedTags || {};
     let scope = 'global';
     let depth = 1;
     let selected = config.activePath ? `n:${config.activePath}` : null;
@@ -457,6 +478,7 @@
         center: selected?.startsWith('n:') ? selected.slice(2) : config.activePath,
         depth,
         expanded,
+        relatedTags,
       };
       const next = buildScene(filtered, opts);
       const previous = sceneById;
@@ -512,19 +534,23 @@
         link.distance =
           link.kind === 'member'
             ? 34
-            : link.kind === 'shelf'
-              ? 120
-              : link.kind === 'tag'
-                ? 70
-                : undefined;
+            : link.kind === 'together'
+              ? 72
+              : link.kind === 'shelf'
+                ? 120
+                : link.kind === 'tag'
+                  ? 70
+                  : undefined;
         link.strength =
           link.kind === 'tag'
             ? 0.35
-            : link.kind === 'member'
-              ? 0.7
-              : link.kind === 'shelf'
-                ? 0.25
-                : 1;
+            : link.kind === 'together'
+              ? 0.18 + Math.min((link.weight || 1) * 0.03, 0.12)
+              : link.kind === 'member'
+                ? 0.7
+                : link.kind === 'shelf'
+                  ? 0.25
+                  : 1;
       }
       scene = next;
       sceneById = new Map(next.nodes.map((node) => [node.id, node]));
@@ -746,6 +772,8 @@
           return { dash: null, color: config.tagColor?.(link.tag) || theme.muted, width: 1.2 };
         case 'tagtree':
           return { dash: [4, 3], color: config.tagColor?.(link.tag) || theme.muted, width: 1.6 };
+        case 'together':
+          return { dash: [3, 6], color: config.tagColor?.(link.tag) || theme.muted, width: 1.15 };
         case 'shelf':
           return {
             dash: null,
@@ -829,7 +857,9 @@
               ? 0.55
               : link.kind === 'member'
                 ? 0.45
-                : 0.7;
+                : link.kind === 'together'
+                  ? 0.32
+                  : 0.7;
         ctx.lineWidth =
           (touching ? style.width + 1 : style.width) *
           (link.kind === 'shelf' ? clamp(camera.k, 0.5, 1.4) : clamp(camera.k, 0.8, 1.3));
@@ -1330,7 +1360,7 @@
           .slice(0, 5)
           .map(
             (tag) =>
-              `<button type="button" class="grafo__tag" data-grafo-tag="${esc(tag)}" style="--tag-h:${config.tagHue?.(tag) ?? 250}">#${esc(tag)}</button>`,
+              `<button type="button" class="grafo__tag" data-grafo-tag="${esc(tag)}" style="${config.tagStyle?.(tag) || `--tag-h:${config.tagHue?.(tag) ?? 250}`}">#${esc(tag)}</button>`,
           )
           .join('');
         body = `<small><i class="grafo__ponto" style="--grafo-cor:${esc(config.shelfColor?.(node.shelf) || '')}"></i><span>${esc(node.shelf)}</span></small><strong>${esc(node.label)}</strong>${tags ? `<div class="grafo__tags">${tags}</div>` : ''}<div class="grafo__stats"><span>${glyph('link')}<b>${ins}</b> ${ins === 1 ? 'entrada' : 'entradas'}</span><span>${glyph('externo')}<b>${outs}</b> ${outs === 1 ? 'saída' : 'saídas'}</span></div><span class="grafo__quando">${glyph('calendario')}<em>Criada em ${esc(dateLabel(node.created))}</em></span><button type="button" class="btn btn--secundario" data-grafo-acao="abrir">${glyph('nota')} Abrir nota</button>`;
@@ -1573,6 +1603,10 @@
       setBaseGraph(next) {
         base = next || { nodes: [], edges: [] };
         computeTimes();
+      },
+      setRelatedTags(next) {
+        relatedTags = next && typeof next === 'object' ? next : {};
+        if (view === 'tags') rebuild({ reheat: 0.25, animate: false });
       },
       setView(next) {
         if (!['notas', 'estantes', 'tags'].includes(next) || next === view) return;
