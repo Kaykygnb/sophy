@@ -21,7 +21,7 @@ async function launch(root) {
   return { app, page: await app.firstWindow() };
 }
 
-test('tags: painel em árvore com contagem, notas da tag, chips nas Propriedades e renomear', async () => {
+test('tags: painel em árvore com contagem, notas da tag, chips abaixo do título e renomear', async () => {
   const root = library();
   const { app, page } = await launch(root);
   try {
@@ -40,9 +40,10 @@ test('tags: painel em árvore com contagem, notas da tag, chips nas Propriedades
     await expect(page.locator('.etiqueta-nota')).toHaveCount(2);
     await expect(page.locator('.tag-selo')).toHaveText('#estudo');
 
-    // chips nas Propriedades: adicionar e tirar
+    // chips da nota: adicionar e tirar
     await page.locator('#arvore').getByText('Leitura', { exact: true }).first().click();
-    await expect(page.locator('.nota-propriedades')).toHaveAttribute('open', '');
+    // as tags ficam na faixa logo abaixo do título, fora das Propriedades
+    await expect(page.locator('#nota-tags')).toBeVisible();
     await expect(page.locator('.tag-chip[data-tag-chip="estudo"]')).toBeVisible();
     await page.locator('#tag-adicionar').click();
     await page.locator('#tag-novo-campo').fill('memoria');

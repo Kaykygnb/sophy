@@ -22,8 +22,12 @@ test('mermaid: só carrega a biblioteca quando há bloco, desenha, alterna e seg
   });
   const page = await app.firstWindow();
   try {
+    // a lateral precisa estar pronta (as tags carregam junto) para o clique não cair na nota vizinha
+    await expect(page.locator('#tags-painel .tags-painel__topo')).toBeVisible();
     await page.locator('#arvore').getByText('Sem', { exact: true }).first().click();
+    await expect(page.locator('#st-caminho')).toContainText('Sem.md');
     await expect(page.locator('.bloco').first()).toBeVisible();
+    await expect(page.locator('.codigo--mermaid')).toHaveCount(0);
     expect(await page.evaluate(() => Boolean(window.mermaid))).toBe(false);
     expect(await page.evaluate(() => [...document.scripts].some((s) => /mermaid/.test(s.src)))).toBe(false);
 
