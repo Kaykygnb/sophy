@@ -99,6 +99,18 @@ function escapeHtml(value) {
     (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
   );
 }
+function taskTitlePlain(title) {
+  const raw = String(title || '');
+  const stripped =
+    Rich && typeof Rich.stripMarkup === 'function' ? Rich.stripMarkup(raw) : raw.replace(/<\/?[a-z][^>]*>/gi, '');
+  return stripped.replace(/\s+/g, ' ').trim();
+}
+function taskHasText(task) {
+  return Boolean(taskTitlePlain(task && task.title));
+}
+function visibleTaskRows(rows) {
+  return (rows || []).filter(taskHasText);
+}
 function baseName(file) {
   return file
     .split('/')
@@ -6261,7 +6273,8 @@ function taskCard(task) {
       ? `<span class="chip">${task.childDone}/${task.childTotal}</span>`
       : '';
   const indent = task.parentLine ? ' is-sub' : '';
-  return `<article class="kcard${indent}" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}" data-title="${escapeHtml(task.title)}" title="${escapeHtml(task.title)} · ${escapeHtml(task.path)}"><span class="check" data-status="${kit}"></span><span class="chip__ponto" aria-hidden="true"${tint}></span><button type="button" class="kcard__titulo" data-open-task="${escapeHtml(task.path)}">${escapeHtml(task.title)}</button><span class="kcard__meta">${priority}${kids}${dateLabel ? `<span class="chip${late ? ' chip--atrasada' : ''}">${escapeHtml(dateLabel)}</span>` : ''}</span></article>`;
+  const title = taskTitlePlain(task.title);
+  return `<article class="kcard${indent}" draggable="true" data-task="${escapeHtml(task.path)}" data-line="${task.line}" data-rev="${task.revision}" data-title="${escapeHtml(task.title)}" title="${escapeHtml(title)} · ${escapeHtml(task.path)}"><span class="check" data-status="${kit}"></span><span class="chip__ponto" aria-hidden="true"${tint}></span><button type="button" class="kcard__titulo" data-open-task="${escapeHtml(task.path)}">${escapeHtml(title)}</button><span class="kcard__meta">${priority}${kids}${dateLabel ? `<span class="chip${late ? ' chip--atrasada' : ''}">${escapeHtml(dateLabel)}</span>` : ''}</span></article>`;
 }
 
 function focusTasks(rows) {
@@ -6316,7 +6329,7 @@ function parseQuickTask(text) {
 }
 
 function paintTasks(center) {
-  const rows = state.taskRows || [];
+  const rows = visibleTaskRows(state.taskRows);
   const filter = state.taskFilter || {};
   state.taskMode = state.taskMode || 'lista';
   state.taskView = state.taskView || 'todas';
@@ -6526,7 +6539,9 @@ function paintCalendar(center) {
   const panelItems = state.dayPanelItems;
   const dailyPath = `Diário/${focus}.md`;
   const hasDaily = Array.isArray(panelItems) && panelItems.some((item) => item.path === dailyPath);
-  const tasks = Array.isArray(panelItems) ? panelItems.filter((item) => item.kind === 'tarefa') : [];
+  const tasks = Array.isArray(panelItems)
+    ? panelItems.filter((item) => item.kind === 'tarefa' && taskHasText(item))
+    : [];
   const notes = Array.isArray(panelItems)
     ? panelItems.filter((item) => item.kind !== 'tarefa' && item.path !== dailyPath)
     : [];
@@ -6540,7 +6555,7 @@ function paintCalendar(center) {
   const taskList = tasks
     .map(
       (item) =>
-        `<li><article class="kcard kcard--cal" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line || 1}" data-rev="${escapeHtml(item.revision || '')}" data-title="${escapeHtml(item.title)}"><button type="button" data-open-note="${escapeHtml(item.path)}">${escapeHtml(item.title)}</button></article></li>`,
+        `<li><article class="kcard kcard--cal" draggable="true" data-task="${escapeHtml(item.path)}" data-line="${item.line || 1}" data-rev="${escapeHtml(item.revision || '')}" data-title="${escapeHtml(item.title)}"><button type="button" data-open-note="${escapeHtml(item.path)}">${escapeHtml(taskTitlePlain(item.title))}</button></article></li>`,
     )
     .join('');
   const noteList = notes
@@ -7360,8 +7375,8 @@ async function showReview() {
 }
 
 function paintReview(center) {
-  const rows = state.taskRows || [];
-  const items = rows.map((task) => `<li>${escapeHtml(task.title)}<small>${escapeHtml(task.workspace || '')}</small></li>`).join('') || '<li>Nada para revisar.</li>';
+  const rows = visibleTaskRows(state.taskRows);
+  const items = rows.map((task) => `<li>${escapeHtml(taskTitlePlain(task.title))}<small>${escapeHtml(task.workspace || '')}</small></li>`).join('') || '<li>Nada para revisar.</li>';
   center.innerHTML = `<div class="inicio"><h2>Revisão da semana</h2><div class="revisao"><article class="revisao-cartao"><div class="revisao-cartao__topo"><strong class="revisao-cartao__titulo">Nesta semana</strong><span class="revisao-cartao__num">${rows.length}</span></div><ul>${items}</ul></article></div></div>`;
 }
 
