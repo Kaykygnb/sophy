@@ -101,6 +101,28 @@ Sem chave válida a conexão e a chamada são recusadas (`chave_invalida`). Clie
 
 As ferramentas `mcp.clients.list|create|revoke|toggle|snippet` e `mcp.legacy.get|set` são só do processo principal, no IPC `sophy:mcp-admin`. Não entram no registro do MCP nem nas ferramentas da Sofi. `mcp.clients.snippet` recebe `{nome, chave}` — a chave é a que a pessoa acabou de ver — e devolve os trechos de `config.toml` (Codex) e `mcpServers` (Claude) para stdio e HTTP. A função pura é `mcpConfigSnippet(cliente, chave, transporte)` em `engine/mcp-snippet.ts`.
 
+O processo que o Codex e o Claude sobem tem de ser o motor, não a janela. Em desenvolvimento o app gera o snippet com `process.execPath`, que é o binário do Electron. Os argumentos são `--experimental-strip-types`, o caminho absoluto de `engine/cli.ts`, `mcp` e `--biblioteca`. O env leva `ELECTRON_RUN_AS_NODE=1` e `SOPHY_MCP_KEY`. Sem a primeira variável o Electron abre o aplicativo e o stdio do MCP não existe. Se o comando for `node` (como `engine/bin/sophy` e `npm run mcp`), o env leva só `SOPHY_MCP_KEY`.
+
+No aplicativo empacotado, `engine/cli.ts` fica dentro de `app.asar`. O Electron com `ELECTRON_RUN_AS_NODE` não monta o asar, então esse caminho não executa. O snippet avisa (`aviso`) quando o argumento contém `.asar`. Nesse caso use o Node do sistema apontando para o código do repositório:
+
+```json
+{
+  "mcpServers": {
+    "sophy-claude": {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "/caminho/do/repositorio/engine/cli.ts",
+        "mcp",
+        "--biblioteca",
+        "/caminho/da/biblioteca"
+      ],
+      "env": { "SOPHY_MCP_KEY": "sph_..." }
+    }
+  }
+}
+```
+
 No modo legado ligado, sem chave, o autor da atividade é `mcp:legado` e a permissão segue `--escrita` (senão leitura). Mesmo assim as ferramentas destrutivas não são anunciadas.
 
 O modo Pergunta da Sofi ainda não está nesta base (PR 8, `fernando/pr8-sofi-provedores`). O gancho é `sofiTools('pergunta')`, a lista somente leitura, com `activity.list` e `activity.diff`. `activity.undo` só entra em `sofiTools('agente')` e pede confirmação. `runAgentTurn` continua no modo agente.

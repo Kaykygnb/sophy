@@ -252,6 +252,7 @@ function setupIpc() {
     return engine.mcpAdmin(tool, input && typeof input === 'object' ? input : {}, app.getPath('userData'), {
       biblioteca: sessionPath || undefined,
       comando: process.execPath,
+      electron: true,
       args,
       url: 'http://127.0.0.1:8734/mcp',
     });

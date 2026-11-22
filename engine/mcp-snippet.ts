@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { EngineError } from './errors.ts';
 
 export type TransporteMcp = 'stdio' | 'http';
@@ -9,6 +10,14 @@ export type SnippetCliente = {
   comando?: string;
   args?: string[];
   url?: string;
+  /** `true` quando `comando` é o binário do Electron (dev ou app empacotado). */
+  electron?: boolean;
+};
+
+export type ConfigSnippet = {
+  codex: string;
+  claude: string;
+  aviso?: string;
 };
 
 /**
@@ -27,17 +36,11 @@ export function mcpConfigSnippet(cliente: SnippetCliente, chave: string, transpo
   return httpSnippet(cliente, chave, nome, id);
 }
 
-function stdioSnippet(cliente: SnippetCliente, chave: string, nome: string, id: string) {
+function stdioSnippet(cliente: SnippetCliente, chave: string, nome: string, id: string): ConfigSnippet {
   const comando = cliente.comando || 'node';
-  const args = cliente.args?.length
-    ? cliente.args
-    : [
-        '--experimental-strip-types',
-        'engine/cli.ts',
-        'mcp',
-        '--biblioteca',
-        cliente.biblioteca || '<biblioteca>',
-      ];
+  const args = completeStdioArgs(cliente);
+  const env = stdioEnv(comando, chave, cliente.electron);
+  const envLines = Object.entries(env).map(([key, value]) => `${key} = ${toml(value)}`);
   const codex = [
     `# Cliente ${nome}. A chave aparece só neste trecho; o Sophy guarda o hash.`,
     `[mcp_servers.${id}]`,
@@ -45,15 +48,58 @@ function stdioSnippet(cliente: SnippetCliente, chave: string, nome: string, id: 
     `args = [${args.map(toml).join(', ')}]`,
     '',
     `[mcp_servers.${id}.env]`,
-    `SOPHY_MCP_KEY = ${toml(chave)}`,
+    ...envLines,
     '',
   ].join('\n');
-  const claude = JSON.stringify(
-    { mcpServers: { [id]: { command: comando, args, env: { SOPHY_MCP_KEY: chave } } } },
-    null,
-    2,
-  );
-  return { codex, claude };
+  const claude = JSON.stringify({ mcpServers: { [id]: { command: comando, args, env } } }, null, 2);
+  const insideAsar = args.some((arg) => arg.includes('.asar'));
+  return insideAsar
+    ? {
+        codex,
+        claude,
+        aviso:
+          'O caminho de engine/cli.ts está dentro de app.asar. ELECTRON_RUN_AS_NODE não lê o asar. No app empacotado use node com o cli.ts do repositório. Veja o README, seção MCP local.',
+      }
+    : { codex, claude };
+}
+
+/** `sophy mcp` é `node --experimental-strip-types engine/cli.ts mcp`. O binário do Electron só faz isso com ELECTRON_RUN_AS_NODE=1. */
+function runsAsElectron(comando: string, electron: boolean | undefined) {
+  if (electron === true) return true;
+  if (electron === false) return false;
+  const base = path.basename(comando).replace(/\.exe$/i, '').toLowerCase();
+  if (base === 'node' || base === 'nodejs') return false;
+  if (base === 'electron' || base === 'sophy') return true;
+  return /[\\/]electron([\\/]|$)/i.test(comando);
+}
+
+function stdioEnv(comando: string, chave: string, electron: boolean | undefined) {
+  const env: Record<string, string> = {};
+  if (runsAsElectron(comando, electron)) env.ELECTRON_RUN_AS_NODE = '1';
+  env.SOPHY_MCP_KEY = chave;
+  return env;
+}
+
+function completeStdioArgs(cliente: SnippetCliente) {
+  const given = cliente.args?.length ? [...cliente.args] : [];
+  const cli =
+    given.find((arg) => /(^|[\\/])cli\.(ts|js)$/.test(arg)) ??
+    (given.some((arg) => arg === 'mcp') ? undefined : 'engine/cli.ts');
+  const hasCli = given.some((arg) => /(^|[\\/])cli\.(ts|js)$/.test(arg));
+  const hasMcp = given.includes('mcp');
+  let args: string[];
+  if (hasCli && hasMcp) args = [...given];
+  else args = ['--experimental-strip-types', cli || 'engine/cli.ts', 'mcp'];
+  if (!args.includes('--experimental-strip-types') && args.some((arg) => arg.endsWith('.ts')))
+    args.unshift('--experimental-strip-types');
+  const biblioteca = cliente.biblioteca;
+  if (
+    biblioteca &&
+    !args.includes('--biblioteca') &&
+    !args.some((arg) => arg.startsWith('--biblioteca='))
+  )
+    args.push('--biblioteca', biblioteca);
+  return args;
 }
 
 function httpSnippet(cliente: SnippetCliente, chave: string, nome: string, id: string) {
