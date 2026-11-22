@@ -33,6 +33,8 @@ import {
   backlinks,
   brokenLinks,
   catalogNotes,
+  forgetCachedNote,
+  indexedNotes,
   outgoingLinks,
   relocate,
   suggestNotes,
@@ -56,6 +58,16 @@ import {
   type Library,
 } from './library.ts';
 import { searchLibrary } from './search.ts';
+import {
+  editStoredTags,
+  listNotesForTag,
+  listTagTree,
+  portablePath,
+  readStoredTags,
+  renameTags,
+  suggestTags,
+  type TagNoteRecord,
+} from './tags.ts';
 import { requestUi } from './ui-bridge.ts';
 
 const libraryPath = z.string().min(1);
@@ -342,21 +354,90 @@ export const tools = [
   ),
   define(
     'search.query',
-    'Busca em título, corpo em texto limpo, tags e frontmatter. O trecho vem em segmentos, sem Markdown cru.',
-    z.object({ libraryPath, query: z.string().min(1), workspace: z.string().min(1).optional() }),
-    ({ libraryPath: folder, query, workspace }) =>
-      searchLibrary(openLibrary(folder), query, workspace),
+    'Busca em título, corpo em texto limpo, tags e frontmatter. O trecho vem em segmentos, sem Markdown cru. tag e tags filtram a nota, sempre com as descendentes.',
+    z.object({
+      libraryPath,
+      query: z.string().min(1),
+      workspace: z.string().min(1).optional(),
+      tag: z.string().min(1).optional(),
+      tags: z.array(z.string().min(1)).optional(),
+      tagsMode: z.enum(['any', 'all']).optional(),
+    }),
+    ({ libraryPath: folder, query, workspace, tag, tags, tagsMode }) =>
+      searchLibrary(openLibrary(folder), query, workspace, { tag, tags, tagsMode }),
   ),
   define(
     'graph.query',
-    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante e tag.',
+    'Grafo em dados: nós e arestas. A UI desenha. Filtra por estante e tag, sempre com as descendentes. Com filtro, só entram os nós que casam e as arestas entre eles.',
     z.object({
       libraryPath,
       workspace: z.string().min(1).optional(),
       tag: z.string().min(1).optional(),
+      tags: z.array(z.string().min(1)).optional(),
+      tagsMode: z.enum(['any', 'all']).optional(),
     }),
-    ({ libraryPath: folder, workspace, tag }) =>
-      queryGraph(openLibrary(folder), { workspace, tag }),
+    ({ libraryPath: folder, workspace, tag, tags, tagsMode }) =>
+      queryGraph(openLibrary(folder), { workspace, tag, tags, tagsMode }),
+  ),
+  define(
+    'tags.list',
+    'Lista as tags em árvore. count é o número de notas com a tag exata; total inclui as descendentes.',
+    z.object({ libraryPath }),
+    ({ libraryPath: folder }) => listTagTree(tagRecordsOf(openLibrary(folder))),
+  ),
+  define(
+    'tags.notes',
+    'Lista as notas de uma tag. nested inclui as descendentes. source diz se a tag veio do texto, do frontmatter ou dos dois.',
+    z.object({
+      libraryPath,
+      tag: z.string().min(1),
+      nested: z.boolean().optional(),
+    }),
+    ({ libraryPath: folder, tag, nested }) =>
+      listNotesForTag(tagRecordsOf(openLibrary(folder)), tag, nested !== false),
+  ),
+  define(
+    'tag.rename',
+    'Renomeia uma tag no texto e no frontmatter de todas as notas, inclusive as descendentes. Se o destino já existe, une. Um desfazer volta todas.',
+    z.object({ libraryPath, from: z.string().min(1), to: z.string().min(1), origin }),
+    ({ libraryPath: folder, from, to, origin: source }) =>
+      tracked(folder, source, 'tag.rename', `Renomear tag ${from}`, (library) => {
+        const result = renameTags(library, from, to, tagRecordsOf(library));
+        for (const path of result.paths) forgetCachedNote(library, path);
+        return { changedNotes: result.changedNotes, replaced: result.replaced };
+      }),
+  ),
+  define(
+    'tag.suggest',
+    'Sugere tags para o autocompletar de #, da mais usada para a menos usada.',
+    z.object({
+      libraryPath,
+      prefix: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    }),
+    ({ libraryPath: folder, prefix, limit }) =>
+      suggestTags(tagRecordsOf(openLibrary(folder)), prefix ?? '', limit ?? 10),
+  ),
+  define(
+    'note.tags',
+    'Edita só as tags do frontmatter de uma nota. Cria a lista se faltar e remove a chave se esvaziar.',
+    z.object({
+      libraryPath,
+      path: relativePath,
+      add: z.array(z.string().min(1)).optional(),
+      remove: z.array(z.string().min(1)).optional(),
+      origin,
+    }),
+    ({ libraryPath: folder, path, add, remove, origin: source }) => {
+      const adds = add ?? [];
+      const removes = remove ?? [];
+      if (!adds.length && !removes.length) return { tags: readStoredTags(openLibrary(folder), path) };
+      return tracked(folder, source, 'note.tags', `Tags de ${path}`, (library) => {
+        const result = editStoredTags(library, path, adds, removes);
+        forgetCachedNote(library, path);
+        return result;
+      });
+    },
   ),
   define(
     'history.list',
@@ -731,6 +812,8 @@ const MUTATIONS = new Set([
   'site.export',
   'search.semantic.enable',
   'task.update',
+  'tag.rename',
+  'note.tags',
   'canvas.create',
   'canvas.update',
   'canvas.node.put',
@@ -763,6 +846,17 @@ function tracked<T>(
   const result = run(library);
   pushHistory(library, { origin: source, tool, summary, changes: diff(before, capture(library)) });
   return result;
+}
+
+function tagRecordsOf(library: Library): TagNoteRecord[] {
+  return indexedNotes(library)
+    .filter((note) => note.path.toLowerCase().endsWith('.md'))
+    .map((note) => ({
+      path: portablePath(note.path),
+      title: note.title,
+      mtime: note.mtime,
+      tagRecords: note.tagRecords,
+    }));
 }
 
 function define<T>(

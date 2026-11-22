@@ -1,13 +1,13 @@
 import { isMother, listChildren } from './children.ts';
 import { readOutgoing, syncLinks } from './links.ts';
 import type { Library } from './library.ts';
+import { matchesTagFilter, type TagFilter } from './tags.ts';
 
-export function queryGraph(library: Library, filter: { workspace?: string; tag?: string } = {}) {
-  const tag = filter.tag?.trim().toLocaleLowerCase();
+export function queryGraph(library: Library, filter: { workspace?: string } & TagFilter = {}) {
   const cache = syncLinks(library);
   const notes = [...cache.values()].filter((note) => {
     if (filter.workspace && note.workspace !== filter.workspace) return false;
-    if (tag && !note.tags.some((item) => item.toLocaleLowerCase() === tag)) return false;
+    if (!matchesTagFilter(note.tagRecords, filter)) return false;
     return true;
   });
   const visible = new Set(notes.map((note) => note.path));
