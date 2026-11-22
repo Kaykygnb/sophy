@@ -3111,3 +3111,10 @@ button.chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .fc-acoes { margin: 0; }
 .fc-tela .kbd,
 .fc-tela kbd { margin-left: 6px; font-size: 11px; }
+
+/* Callout com uma cor só: cabeçalho e corpo no mesmo fundo, filete à esquerda no bloco todo */
+.bloco--callout .bloco--citacao { background: transparent; border-left: 0; }
+.bloco--callout-alerta { box-shadow: inset 3px 0 0 var(--callout-alerta); }
+.bloco--callout-pergunta { box-shadow: inset 3px 0 0 var(--callout-pergunta); }
+.bloco--callout-tarefa { box-shadow: inset 3px 0 0 var(--callout-tarefa); }
+.bloco--callout-dica { box-shadow: inset 3px 0 0 var(--callout-dica); }
