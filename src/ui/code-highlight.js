@@ -55,8 +55,25 @@
     return CATALOG.find((item) => item.id === id) || null;
   }
 
+  /* A cerca guarda o nome do bloco como title="nome" depois da linguagem: ```js title="parser.js". */
+  const TITLE = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)')/;
+
+  function parseInfo(info) {
+    const text = String(info || '');
+    const match = text.match(TITLE);
+    const title = match ? (match[1] ?? match[2] ?? '') : '';
+    const rest = text.replace(TITLE, ' ').replace(/\s+/g, ' ').trim();
+    return { rest, title };
+  }
+
+  function composeInfo(rest, title) {
+    const clean = String(title || '').replace(/["\r\n]/g, '').trim();
+    const base = String(rest || '').trim();
+    return clean ? `${base}${base ? ' ' : ''}title="${clean}"` : base;
+  }
+
   function resolveLanguage(info) {
-    const token = String(info || '').trim().split(/\s+/)[0] || '';
+    const token = parseInfo(info).rest.split(/\s+/)[0] || '';
     if (!token) return { token: '', known: null };
     const folded = fold(token);
     const known = CATALOG.find((item) => item.aliases.some((alias) => fold(alias) === folded) || fold(item.fence) === folded) || null;
@@ -150,6 +167,8 @@
     CATALOG,
     POPULAR,
     resolveLanguage,
+    parseInfo,
+    composeInfo,
     labelFor,
     commentKind,
     highlight,
