@@ -429,12 +429,17 @@ export const tools = [
       para: z.string().min(1),
       origin,
     }),
-    ({ libraryPath: folder, notePath, de, para, origin: source }) =>
-      tracked(folder, source, 'block.rename', `Renomear bloco ${de} para ${para}`, (library) => {
-        const result = renameNamedBlock(library, notePath, de, para);
-        forgetLinks(library, result.updated);
-        return result;
-      }),
+    ({ libraryPath: folder, notePath, de, para, origin: source }) => {
+      const result = tracked(folder, source, 'block.rename', `Renomear bloco ${de} para ${para}`, (library) => {
+        const renamed = renameNamedBlock(library, notePath, de, para);
+        forgetLinks(library, renamed.updated);
+        return renamed;
+      });
+      // O id mora num WeakMap. Sem este campo, o IPC entrega o objeto sem versionId.
+      const versionId = trackedVersionId(result);
+      if (versionId && result && typeof result === 'object') Object.assign(result, { versionId });
+      return result;
+    },
   ),
   define(
     'links.broken',

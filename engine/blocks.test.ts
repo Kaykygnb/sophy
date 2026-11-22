@@ -256,6 +256,83 @@ test('block.rename reescreve a cerca e os links, num único desfazer', () => {
   assert.match(fs.readFileSync(path.join(root, 'Estudos', 'Quadro.canvas'), 'utf8'), /\[\[Nota#api\]\]/);
 });
 
+test('block.rename devolve versionId e agent.undo desfaz todos os arquivos', () => {
+  const { root } = fixture();
+  create(
+    root,
+    'Estudos/Nota.md',
+    ['# Outro', '', '```js title="api"', 'const a = 1;', '```', '', '[[#api|local]]', ''].join('\n'),
+  );
+  create(root, 'Estudos/Fonte.md', 'Veja [[Nota#api|apelido]] e [[Estudos/Nota#API]].\n');
+  fs.writeFileSync(
+    path.join(root, 'Estudos', 'Quadro.canvas'),
+    JSON.stringify({
+      nodes: [{ id: '1', type: 'text', text: 'Canvas [[Nota#api]]', x: 0, y: 0, width: 100, height: 40 }],
+      edges: [],
+    }),
+  );
+  const notePath = path.join(root, 'Estudos', 'Nota.md');
+  const fontePath = path.join(root, 'Estudos', 'Fonte.md');
+  const canvasPath = path.join(root, 'Estudos', 'Quadro.canvas');
+  const before = {
+    note: fs.readFileSync(notePath, 'utf8'),
+    fonte: fs.readFileSync(fontePath, 'utf8'),
+    canvas: fs.readFileSync(canvasPath, 'utf8'),
+  };
+  assert.throws(
+    () =>
+      callTool('block.rename', {
+        libraryPath: root,
+        notePath: 'Estudos/Nota.md',
+        de: 'api',
+        para: 'Outro',
+        origin: 'ui',
+      }),
+    (error: unknown) => error instanceof EngineError && error.code === 'nome_em_uso',
+  );
+  assert.equal(fs.readFileSync(notePath, 'utf8'), before.note);
+  assert.equal(fs.readFileSync(fontePath, 'utf8'), before.fonte);
+  const result = callTool('block.rename', {
+    libraryPath: root,
+    notePath: 'Estudos/Nota.md',
+    de: 'api',
+    para: 'codigo',
+    origin: 'ui',
+  }) as {
+    path: string;
+    title: string;
+    from: string;
+    updated: string[];
+    shadowed: boolean;
+    versionId: string;
+  };
+  assert.equal(result.path, 'Estudos/Nota.md');
+  assert.equal(result.title, 'codigo');
+  assert.equal(result.from, 'api');
+  assert.equal(result.shadowed, false);
+  assert.ok(result.updated.includes('Estudos/Nota.md'));
+  assert.ok(result.updated.includes('Estudos/Fonte.md'));
+  assert.ok(result.updated.includes('Estudos/Quadro.canvas'));
+  assert.equal(typeof result.versionId, 'string');
+  assert.ok(result.versionId);
+  assert.match(fs.readFileSync(notePath, 'utf8'), /title="codigo"/);
+  assert.match(fs.readFileSync(fontePath, 'utf8'), /\[\[Nota#codigo\|apelido\]\]/);
+  assert.match(fs.readFileSync(canvasPath, 'utf8'), /\[\[Nota#codigo\]\]/);
+  create(root, 'Estudos/Depois.md', 'fica\n');
+  const history = callTool('history.list', { libraryPath: root }) as Array<{ id: string; tool: string }>;
+  assert.equal(history.find((item) => item.tool === 'block.rename')?.id, result.versionId);
+  const undone = callTool('agent.undo', { libraryPath: root, versionId: result.versionId }) as {
+    undone: string;
+    tool: string;
+  };
+  assert.equal(undone.undone, result.versionId);
+  assert.equal(undone.tool, 'block.rename');
+  assert.equal(fs.readFileSync(notePath, 'utf8'), before.note);
+  assert.equal(fs.readFileSync(fontePath, 'utf8'), before.fonte);
+  assert.equal(fs.readFileSync(canvasPath, 'utf8'), before.canvas);
+  assert.match(fs.readFileSync(path.join(root, 'Estudos', 'Depois.md'), 'utf8'), /fica/);
+});
+
 test('nome_em_uso não altera a nota nem os links', () => {
   const { root } = fixture();
   create(
