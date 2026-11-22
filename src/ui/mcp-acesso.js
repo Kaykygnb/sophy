@@ -480,8 +480,11 @@
         data.transporte === 'http'
           ? 'Antes, deixe o servidor rodando com <code>sophy mcp --http</code>. Ele escuta só neste computador, em 127.0.0.1:8734.'
           : 'O agente abre o servidor sozinho, por stdio. Não precisa deixar nada rodando.';
+      // O motor avisa no stdio quando o trecho não roda (ex.: cli.ts dentro do app.asar).
+      const stdioAviso = (data.snippets && data.snippets.stdio && data.snippets.stdio.aviso) || '';
+      const showAviso = data.transporte === 'stdio' && stdioAviso;
       const tab = (kind, value, label) =>
-        `<button type="button" role="tab" class="mcp-aba${data[kind] === value ? ' is-atual' : ''}" aria-selected="${data[kind] === value}" data-mcp-aba="${kind}:${value}">${label}</button>`;
+        `<button type="button" role="tab" class="mcp-aba${data[kind] === value ? ' is-atual' : ''}" aria-selected="${data[kind] === value}" data-mcp-aba="${kind}:${value}">${label}${kind === 'transporte' && value === 'stdio' && stdioAviso ? ic('alerta', 'mcp-aba__alerta') : ''}</button>`;
       return `<h3 class="mcp-modal__titulo">Configure ${esc(data.nome)}</h3>
         <p class="mcp-modal__texto">Escolha o agente e como ele fala com o Sophy. O trecho já leva a chave.</p>
         <div class="mcp-abas" role="tablist" aria-label="Agente">${tab('agente', 'codex', 'Codex')}${tab('agente', 'claude', 'Claude')}</div>
@@ -489,7 +492,7 @@
         ${
           data.snippetErro
             ? `<div class="mcp-erro" role="alert">${ic('alerta')}<span>${esc(data.snippetErro)}</span><button type="button" class="btn btn--secundario btn--pequeno" data-mcp-snippet-de-novo>Tentar de novo</button></div>`
-            : `<div class="mcp-codigo"><pre tabindex="0" aria-label="Trecho de configuração"><code data-mcp-snippet>${esc(text || 'Montando o trecho…')}</code></pre><button type="button" class="btn btn--secundario btn--pequeno mcp-codigo__copiar" data-mcp-copiar-snippet>${ic('duplicar')} <span>Copiar</span></button></div>
+            : `${showAviso ? `<div class="mcp-aviso mcp-aviso--ligado mcp-aviso--stdio" role="alert" data-mcp-aviso-stdio>${ic('alerta')}<p><b>Este trecho não vai rodar como está.</b> ${esc(stdioAviso)}</p></div>` : ''}<div class="mcp-codigo"><pre tabindex="0" aria-label="Trecho de configuração"><code data-mcp-snippet>${esc(text || 'Montando o trecho…')}</code></pre><button type="button" class="btn btn--secundario btn--pequeno mcp-codigo__copiar" data-mcp-copiar-snippet>${ic('duplicar')} <span>Copiar</span></button></div>
         <p class="mcp-modal__ajuda">${where}</p><p class="mcp-modal__ajuda">${how}</p>`
         }
         <div class="mcp-modal__acoes"><button type="button" class="btn btn--fantasma" data-mcp-voltar>Ver a chave de novo</button><button type="button" class="btn btn--primario" data-mcp-concluir>Concluir</button></div>

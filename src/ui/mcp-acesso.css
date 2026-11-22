@@ -1112,3 +1112,18 @@
     transition: none;
   }
 }
+
+.mcp-aba__alerta {
+  width: 13px;
+  height: 13px;
+  margin-left: 6px;
+  vertical-align: -2px;
+  color: var(--danger);
+}
+.mcp-aviso--stdio {
+  margin: 0;
+  border-width: 1.5px;
+}
+.mcp-aviso--stdio p {
+  overflow-wrap: anywhere;
+}

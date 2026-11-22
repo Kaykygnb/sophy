@@ -80,23 +80,34 @@ async function installMocks(app, options = {}) {
           clients.splice(index, 1);
           value = { id: input.id, removido: true };
         } else if (tool === 'mcp.clients.snippet') {
-          const id = `sophy-${input.nome}`;
+          // Contrato do #45 (42c35b3): o main acrescenta `electron:true` por conta própria,
+          // então a entrada continua só {nome, chave}. Com Electron o env leva ELECTRON_RUN_AS_NODE.
+          const id = `sophy-${input.nome.toLowerCase()}`;
+          const asar = globalThis.__asar === true;
+          const cli = asar
+            ? '/Applications/Sophy.app/Contents/Resources/app.asar/engine/cli.ts'
+            : '/home/dev/sophy/engine/cli.ts';
+          const command = asar
+            ? '/Applications/Sophy.app/Contents/MacOS/Sophy'
+            : '/home/dev/sophy/node_modules/electron/dist/electron';
+          const args = [
+            '--experimental-strip-types',
+            cli,
+            'mcp',
+            '--biblioteca',
+            '/home/dev/Notas',
+          ];
+          const env = { ELECTRON_RUN_AS_NODE: '1', SOPHY_MCP_KEY: input.chave };
           value = {
             stdio: {
-              codex: `[mcp_servers.${id}]\ncommand = "node"\nargs = ["--experimental-strip-types", "engine/cli.ts", "mcp"]\n\n[mcp_servers.${id}.env]\nSOPHY_MCP_KEY = "${input.chave}"\n`,
-              claude: JSON.stringify(
-                {
-                  mcpServers: {
-                    [id]: {
-                      command: 'node',
-                      args: ['engine/cli.ts', 'mcp'],
-                      env: { SOPHY_MCP_KEY: input.chave },
-                    },
-                  },
-                },
-                null,
-                2,
-              ),
+              codex: `# Cliente ${input.nome}.\n[mcp_servers.${id}]\ncommand = "${command}"\nargs = [${args.map((a) => `"${a}"`).join(', ')}]\n\n[mcp_servers.${id}.env]\nELECTRON_RUN_AS_NODE = "1"\nSOPHY_MCP_KEY = "${input.chave}"\n`,
+              claude: JSON.stringify({ mcpServers: { [id]: { command, args, env } } }, null, 2),
+              ...(asar
+                ? {
+                    aviso:
+                      'O caminho de engine/cli.ts está dentro de app.asar. ELECTRON_RUN_AS_NODE não lê o asar. No app empacotado use node com o cli.ts do repositório. Veja o README, seção MCP local.',
+                  }
+                : {}),
             },
             http: {
               codex: `[mcp_servers.${id}]\nurl = "http://127.0.0.1:8734/mcp"\nhttp_headers = { Authorization = "Bearer ${input.chave}" }\n`,
@@ -341,19 +352,27 @@ test('MCP: estado vazio útil e passo a passo (nome, permissão, chave uma vez, 
 
     // snippets em abas
     const code = dialog.locator('[data-mcp-snippet]');
-    await expect(code).toContainText('[mcp_servers.sophy-Codex]');
+    await expect(code).toContainText('[mcp_servers.sophy-codex]');
     await expect(code).toContainText('SOPHY_MCP_KEY');
+    // o motor sobe pelo Electron em modo Node: o env leva ELECTRON_RUN_AS_NODE junto da chave
+    await expect(code).toContainText('ELECTRON_RUN_AS_NODE = "1"');
+    await expect(dialog.locator('[data-mcp-aviso-stdio]')).toHaveCount(0); // sem .asar, sem aviso
     await dialog.getByRole('tab', { name: 'Claude' }).click();
     await expect(code).toContainText('"mcpServers"');
+    await expect(code).toContainText('"ELECTRON_RUN_AS_NODE": "1"');
     await dialog.getByRole('tab', { name: 'HTTP' }).click();
     await expect(code).toContainText('Bearer');
+    await expect(code).not.toContainText('ELECTRON_RUN_AS_NODE');
     await expect(dialog).toContainText('sophy mcp --http');
     await dialog.getByRole('tab', { name: 'Codex' }).click();
     await dialog.getByRole('tab', { name: 'stdio (padrão)' }).click();
     await dialog.getByRole('button', { name: 'Copiar' }).click();
     await expect(dialog.locator('.mcp-codigo__copiar')).toContainText('Copiado');
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain(
-      '[mcp_servers.sophy-Codex]',
+      '[mcp_servers.sophy-codex]',
+    );
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+      'ELECTRON_RUN_AS_NODE = "1"',
     );
     await shot(page, '03-passo-snippet', 'claro', dialog);
 
@@ -368,6 +387,67 @@ test('MCP: estado vazio útil e passo a passo (nome, permissão, chave uma vez, 
     await expect(row).toContainText('Escrita');
     await expect(row).toContainText('…cd34');
     await expect(row).toContainText('Ainda não foi usado');
+  } finally {
+    await app.close();
+  }
+});
+
+test('MCP: no app empacotado o aviso do .asar aparece ao lado do trecho stdio, e Copiar continua valendo', async () => {
+  const { app, page } = await launch();
+  try {
+    await page.locator('#arvore').getByText('Leitura', { exact: true }).first().waitFor();
+    await installMocks(app, {});
+    await app.evaluate(() => {
+      globalThis.__asar = true;
+    });
+    await openMcpSettings(page);
+    await page
+      .locator('#cfg-mcp')
+      .getByRole('button', { name: 'Conectar um agente' })
+      .first()
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Conectar um agente' });
+    await dialog.locator('#mcp-nome').fill('Claude');
+    await dialog.getByRole('button', { name: 'Continuar' }).click();
+    await dialog.getByRole('button', { name: 'Criar chave' }).click();
+    await dialog.getByRole('button', { name: 'Já guardei, continuar' }).click();
+
+    // a tela não manda `electron`: o main já informa ao motor. A entrada segue {nome, chave}.
+    const chave = await app.evaluate(() => globalThis.__lastKey);
+    expect((await calls(app, 'mcp.clients.snippet'))[0].input).toEqual({ nome: 'Claude', chave });
+
+    const aviso = dialog.locator('[data-mcp-aviso-stdio]');
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toContainText('Este trecho não vai rodar como está.');
+    await expect(aviso).toContainText('ELECTRON_RUN_AS_NODE não lê o asar');
+    await expect(aviso).toContainText('use node com o cli.ts do repositório');
+    await expect(
+      dialog.getByRole('tab', { name: 'stdio (padrão)' }).locator('.mcp-aba__alerta'),
+    ).toBeAttached();
+    await expect(dialog.locator('[data-mcp-snippet]')).toContainText('app.asar/engine/cli.ts');
+    await expect(dialog.locator('[data-mcp-snippet]')).toContainText('ELECTRON_RUN_AS_NODE = "1"');
+    await shot(page, '03c-aviso-asar', 'claro', dialog);
+
+    // Copiar continua disponível, nos dois agentes
+    await dialog.getByRole('button', { name: 'Copiar' }).click();
+    await expect(dialog.locator('.mcp-codigo__copiar')).toContainText('Copiado');
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+      'app.asar/engine/cli.ts',
+    );
+    await dialog.getByRole('tab', { name: 'Claude' }).click();
+    await expect(aviso).toBeVisible();
+    await expect(dialog.locator('[data-mcp-snippet]')).toContainText('"ELECTRON_RUN_AS_NODE": "1"');
+    await dialog.getByRole('button', { name: 'Copiar' }).click();
+    await expect(dialog.locator('.mcp-codigo__copiar')).toContainText('Copiado');
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+      '"ELECTRON_RUN_AS_NODE": "1"',
+    );
+
+    // o aviso é do stdio: no HTTP some
+    await dialog.getByRole('tab', { name: 'HTTP' }).click();
+    await expect(aviso).toHaveCount(0);
+    await dialog.getByRole('tab', { name: 'stdio (padrão)' }).click();
+    await expect(aviso).toBeVisible();
   } finally {
     await app.close();
   }
@@ -715,6 +795,11 @@ test('motor de verdade: cria o agente, vê a chave uma vez, o legado vem desliga
     await expect(dialog.locator('[data-mcp-chave]')).toHaveText(/^sph_[0-9A-Za-z_-]{20,}$/);
     await dialog.getByRole('button', { name: 'Já guardei, continuar' }).click();
     await expect(dialog.locator('[data-mcp-snippet]')).toContainText(/mcp_servers\.sophy-codex/i);
+    // o motor de verdade (42c35b3) sobe o cli.ts pelo Electron em modo Node, com a chave no env
+    await expect(dialog.locator('[data-mcp-snippet]')).toContainText('ELECTRON_RUN_AS_NODE = "1"');
+    await expect(dialog.locator('[data-mcp-snippet]')).toContainText('SOPHY_MCP_KEY');
+    await expect(dialog.locator('[data-mcp-snippet]')).toContainText('engine/cli.ts');
+    await expect(dialog.locator('[data-mcp-aviso-stdio]')).toHaveCount(0); // fora do asar, sem aviso
     await dialog.getByRole('tab', { name: 'Claude' }).click();
     await expect(dialog.locator('[data-mcp-snippet]')).toContainText('mcpServers');
     await dialog.getByRole('button', { name: 'Concluir' }).click();
@@ -798,6 +883,23 @@ for (const theme of ['claro', 'escuro']) {
       await dialog.getByRole('tab', { name: 'HTTP' }).click();
       await shot(page, '03b-passo-snippet-claude-http', theme);
       await dialog.getByRole('button', { name: 'Concluir' }).click();
+      // app empacotado: o aviso do .asar ao lado do trecho stdio
+      await app.evaluate(() => {
+        globalThis.__asar = true;
+      });
+      await page
+        .locator('#cfg-mcp')
+        .getByRole('button', { name: 'Conectar um agente' })
+        .first()
+        .click();
+      const asarDialog = page.getByRole('dialog', { name: 'Conectar um agente' });
+      await asarDialog.locator('#mcp-nome').fill('Cursor Web');
+      await asarDialog.getByRole('button', { name: 'Continuar' }).click();
+      await asarDialog.getByRole('button', { name: 'Criar chave' }).click();
+      await asarDialog.getByRole('button', { name: 'Já guardei, continuar' }).click();
+      await asarDialog.locator('[data-mcp-aviso-stdio]').waitFor();
+      await shot(page, '03c-aviso-asar', theme);
+      await asarDialog.getByRole('button', { name: 'Concluir' }).click();
       await page.locator('[data-nav="atividade"]').click();
       await expect(page.locator('.atividade__item')).toHaveCount(5);
       await page.waitForTimeout(250);
