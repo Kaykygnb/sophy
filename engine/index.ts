@@ -19,6 +19,8 @@ export {
   importAttachmentFromPath,
   importAttachmentBytes,
   readAttachmentDataUrl,
+  listAttachments,
+  resolveAttachmentPath,
   readNote,
   createNote,
   writeNote,
@@ -32,7 +34,8 @@ export {
   emptyTrash,
   deletePermanent,
 } from './lixeira.ts';
-export { scan, resolvePath, parseTarget } from './wikilinks.ts';
+export { scan, resolvePath, parseTarget, anchorKey } from './wikilinks.ts';
+export { namedBlocksOf, renameNamedBlock } from './blocks.ts';
 export {
   outgoingLinks,
   backlinks,
@@ -41,6 +44,9 @@ export {
   suggestNotes,
   relocate,
   watchLibrary,
+  resolveLink,
+  previewLink,
+  scanBlocks,
 } from './links.ts';
 export { fold, fuzzyScore, rankByFuzzy } from './fuzzy.ts';
 export { capture, diff, pushHistory } from './history.ts';
@@ -50,6 +56,13 @@ export { parseCanvas, serializeCanvas, readCanvas, createCanvas, updateCanvas } 
 export { listTasks, updateTask, queryCalendar } from './tasks.ts';
 export { fillTemplate, unlinkedMentions, linkMentions, importVault, listViews, saveView } from './extras.ts';
 export { listCards, reviewCard, undoCard, saveVersionPoint, listVersions, weeklyReview, semanticSearch, enableSemantic, exportSite } from './study.ts';
+export {
+  exportNote,
+  suggestMarkdownName,
+  planMarkdownExport,
+  decodeExportBytes,
+  exportFileRelative,
+} from './export.ts';
 export { runAgentTurn, agentTools, agentConfirmation, sofiSystemPrompt, normalizeContext } from './agent.ts';
 export { agentProviders, provedor } from './agent-providers.ts';
 export { abrirAgentConfig } from './agent-config.ts';
