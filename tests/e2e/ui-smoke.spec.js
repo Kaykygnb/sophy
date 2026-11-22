@@ -839,7 +839,7 @@ test('a janela abre a biblioteca e mostra a nota', async () => {
   await page.getByRole('button', { name: 'Leitura', exact: true }).click();
   await expect(page.locator('.coluna')).toContainText('memória se liga');
   await expect(page.locator('.coluna a.wikilink')).toContainText('o grafo');
-  await expect(page.locator('.nota__meta')).toContainText('#estudo');
+  await expect(page.locator('#nota-tags')).toContainText('estudo');
   await expect(page.locator('body')).toContainText('2026-11-20');
   const fontsReady = await page.evaluate(async () => {
     await document.fonts.load('400 14px "JetBrains Mono"');

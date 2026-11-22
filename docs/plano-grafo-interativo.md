@@ -33,7 +33,7 @@ Um grafo de tela cheia, legível em tema claro e escuro, cujas notas continuam s
 ### Arquivos novos
 
 - `src/ui/graph-view.js` — controlador da tela: câmera, zoom, hit testing, arraste, seleção, minimapa, hover, controles acessíveis, ciclo de vida e ligação com `app.js`.
-- `src/ui/graph-worker.js` — simulação e cálculo de layout em Web Worker, incluindo repulsão aproximada escalável (Barnes-Hut/quadtree) e restrições das forças configuradas. Se o Worker falhar, o grafo mantém o posicionamento determinístico inicial, desativa os controles de forças e preserva busca, pan, zoom e arraste.
+- `src/ui/graph-sim.js` — simulação de forças no fio da interface: repulsão Barnes-Hut (quadtree), molas, ímã de estante (grupos que não se cobrem), colisão pelo raio e pelo rótulo e um passo final que garante nós sem sobreposição. O `graph-view.js` monta a cena (Notas, Estantes ou Tags), desenha no canvas e anima a linha do tempo.
 - `tests/graph.test.js` — testes unitários das funções puras exportadas pelo módulo de grafo: normalização de dados, vizinhança local, filtros, hit testing, coordenadas de câmera, layout determinístico e cancelamento/limites da simulação.
 - `tests/e2e/graph.spec.js` — fluxos reais do grafo em biblioteca temporária, incluindo arrastar nó e fundo, zoom, busca, filtros, abertura de nota e restauração de layout.
 
