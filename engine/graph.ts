@@ -2,18 +2,18 @@ import { isMother, listChildren } from './children.ts';
 import { EngineError } from './errors.ts';
 import { readOutgoing, syncLinks } from './links.ts';
 import type { Library } from './library.ts';
+import { matchesTagFilter, type TagFilter } from './tags.ts';
 
 export function queryGraph(
   library: Library,
-  filter: { workspace?: string; tag?: string; from?: string; to?: string } = {},
+  filter: { workspace?: string; from?: string; to?: string } & TagFilter = {},
 ) {
-  const tag = filter.tag?.trim().toLocaleLowerCase();
   const fromMs = filter.from ? parseBound(filter.from, false) : null;
   const toMs = filter.to ? parseBound(filter.to, true) : null;
   const cache = syncLinks(library);
   const notes = [...cache.values()].filter((note) => {
     if (filter.workspace && note.workspace !== filter.workspace) return false;
-    if (tag && !note.tags.some((item) => item.toLocaleLowerCase() === tag)) return false;
+    if (!matchesTagFilter(note.tagRecords, filter)) return false;
     if (fromMs !== null || toMs !== null) {
       const created = parseBound(note.createdAt, false);
       if (fromMs !== null && created < fromMs) return false;

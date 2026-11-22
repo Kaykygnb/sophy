@@ -9,6 +9,7 @@ import { findNoteByRememberedName } from './note-id.ts';
 import { resolveInside } from './paths.ts';
 import { buildRewriteIndexes, rewriteLinks } from './rewrite.ts';
 import { fold, rankByFuzzy } from './fuzzy.ts';
+import { collectNoteTags, type NoteTag } from './tags.ts';
 import {
   anchorExists,
   blockIdsOf,
@@ -66,6 +67,7 @@ type CachedNote = {
   title: string;
   aliases: string[];
   tags: string[];
+  tagRecords: NoteTag[];
   headings: string[];
   sections: NoteSection[];
   blockIds: string[];
@@ -83,6 +85,10 @@ const watchers = new Map<string, fs.FSWatcher>();
 const generations = new Map<string, number>();
 const bundleByCache = new WeakMap<Map<string, CachedNote>, ReturnType<typeof buildBundle>>();
 const fileInventories = new Map<string, string[]>();
+
+export function forgetCachedNote(library: Library, relative: string) {
+  caches.get(library.root)?.delete(relative.split('\\').join('/'));
+}
 
 export function syncLinks(library: Library) {
   const cache = caches.get(library.root) ?? new Map<string, CachedNote>();
@@ -341,12 +347,14 @@ function loadNote(
   const headings = headingsOf(parts.body);
   const sections = sectionsOf(parts.body);
   const scanned = scan(content);
+  const tagRecords = collectNoteTags(parts.frontmatter, parts.body);
   return {
     path: relative,
     workspace,
     title: headings[0] || basename(relative),
     aliases: aliasesOf(parts.frontmatter),
-    tags: tagsOf(parts.frontmatter),
+    tags: tagRecords.map((tag) => tag.name),
+    tagRecords,
     headings,
     sections,
     blockIds: blockIdsOf(parts.body),
@@ -443,13 +451,6 @@ function decorate(
   return resolvedLinks;
 }
 
-function tagsOf(frontmatter: Record<string, unknown> | null) {
-  const tags = frontmatter?.tags;
-  if (typeof tags === 'string') return [tags];
-  if (Array.isArray(tags)) return tags.filter((tag): tag is string => typeof tag === 'string');
-  return [];
-}
-
 function aliasesOf(frontmatter: Record<string, unknown> | null) {
   if (!frontmatter) return [];
   const raw = frontmatter.aliases ?? frontmatter.alias;
@@ -520,6 +521,7 @@ function loadCanvas(
     title: basename(relative),
     aliases: [],
     tags: [],
+    tagRecords: [],
     headings: [],
     sections: [],
     blockIds: [],
