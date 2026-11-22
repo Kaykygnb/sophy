@@ -110,6 +110,7 @@
     let mode = config.mode || 'global';
     let depth = config.depth || 1;
     let showOrphans = saved.showOrphans !== false;
+    let until = 0;
     let showLabels = saved.showLabels !== false;
     let paused = !!config.reducedMotion;
     let disposed = false;
@@ -185,7 +186,9 @@
         subsetDegree.set(edge.to, (subsetDegree.get(edge.to) || 0) + 1);
       }
       let nodes = subset.nodes.filter(
-        (node) => showOrphans || (subsetDegree.get(node.path) || 0) > 0,
+        (node) =>
+          (showOrphans || (subsetDegree.get(node.path) || 0) > 0) &&
+          (!until || !node.modifiedAt || node.modifiedAt <= until),
       );
       if (mode === 'local' && selected)
         nodes = localGraph(
@@ -982,6 +985,11 @@
       setSelected(path) {
         selected = path;
         if (mode === 'local') rebuildVisible();
+        scheduleDraw();
+      },
+      setUntil(value) {
+        until = Number(value) || 0;
+        rebuildVisible();
         scheduleDraw();
       },
       setShowOrphans(value) {

@@ -51,6 +51,8 @@
     if (marker < 0) return null;
     const query = before.slice(marker + 2);
     if (/[\]\n]/.test(query)) return null;
+    // Um [[ esquecido no meio do parágrafo não pode sequestrar o Enter: só abre enquanto parece um nome de nota.
+    if (query.length > 60 || /[.!?]\s|\*\*|`/.test(query)) return null;
     return { start: marker, query };
   }
 
@@ -285,6 +287,7 @@
   }
 
   function previewInline(text) {
+    text = String(text || '').replace(/<\/?span\b[^>]*>/gi, '');
     const pattern = /!?\[\[([^\]\n]*)\]\]/g;
     let html = '';
     let last = 0;
