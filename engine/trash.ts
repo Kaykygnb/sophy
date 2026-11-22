@@ -1,14 +1,21 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { dailyDate } from './daily.ts';
 import { EngineError } from './errors.ts';
+
+/**
+ * Lixeira do sistema, no layout Freedesktop (`files/` e `info/` em
+ * `$XDG_DATA_HOME/Trash` ou `~/.local/share/Trash`).
+ *
+ * O excluir da biblioteca não passa mais por aqui: `entry.trash` move o item
+ * para `.sophy/lixeira/` dentro da biblioteca. `moveToTrash` continua para
+ * quem chama direto. Itens que já estão na lixeira do sistema permanecem lá.
+ * Se o movimento falha, o original fica no lugar.
+ */
 
 export type TrashOptions = {
   /** Pasta da lixeira (pai de `files/` e `info/`). Testes usam um diretório temporário. */
   trashRoot?: string;
-  /** Como resolver uma nota do dia cujo dia já está ocupado. */
-  mode?: 'merge' | 'asNote';
 };
 
 /** Move o item para a lixeira. Se a lixeira falhar, o original permanece. */
@@ -64,8 +71,8 @@ function placeInTrash(source: string, destination: string) {
 }
 
 /**
- * Devolve o item da lixeira para a biblioteca.
- * Se a nota do dia já existe e não há modo, não restaura.
+ * Devolve o item da lixeira do sistema para a biblioteca.
+ * Se o caminho original já existe, o nome ganha ` (restaurado)`.
  */
 export function restoreFromTrash(libraryRoot: string, id: string, options: TrashOptions = {}) {
   if (!id || id.includes('/') || id.includes('\\') || id.includes('..'))
@@ -85,30 +92,12 @@ export function restoreFromTrash(libraryRoot: string, id: string, options: Trash
   const destRel = path.relative(libraryRoot, dest);
   if (destRel.startsWith('..') || path.isAbsolute(destRel))
     throw new EngineError('invalid-path', 'O item da lixeira está fora da biblioteca.');
-  const date = dailyDate(relative);
-  if (date && fs.existsSync(dest)) {
-    if (!options.mode) return { conflict: 'daily-exists' as const, id, date };
-    if (options.mode === 'merge') {
-      const incoming = fs.readFileSync(file, 'utf8');
-      const current = fs.readFileSync(dest, 'utf8');
-      const separator = current.endsWith('\n') ? '\n' : '\n\n';
-      fs.writeFileSync(dest, current + separator + incoming);
-      fs.rmSync(file, { force: true });
-      fs.rmSync(info, { force: true });
-      return { restored: true as const, path: relative, mode: 'merge' as const };
-    }
-    const restoredName = uniqueRestored(libraryRoot, relative);
-    const restoredDest = path.resolve(libraryRoot, ...restoredName.split('/'));
-    fs.mkdirSync(path.dirname(restoredDest), { recursive: true });
-    fs.renameSync(file, restoredDest);
-    fs.rmSync(info, { force: true });
-    return { restored: true as const, path: restoredName, mode: 'asNote' as const };
-  }
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  if (fs.existsSync(dest)) throw new EngineError('exists', 'Já existe um item com esse nome.');
-  fs.renameSync(file, dest);
+  const target = fs.existsSync(dest) ? uniqueRestored(libraryRoot, relative) : relative;
+  const targetDest = path.resolve(libraryRoot, ...target.split('/'));
+  fs.mkdirSync(path.dirname(targetDest), { recursive: true });
+  fs.renameSync(file, targetDest);
   fs.rmSync(info, { force: true });
-  return { restored: true as const, path: relative };
+  return { restored: true as const, path: target };
 }
 
 function uniqueRestored(root: string, relative: string) {

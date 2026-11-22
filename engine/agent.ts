@@ -93,7 +93,15 @@ export type AgentTurnOptions = {
 };
 
 const blocked = /key|chave|secret|token|senha/i;
-const unsafe = new Set(['site.export', 'vault.import', 'entry.trash', 'version.restore']);
+const unsafe = new Set([
+  'site.export',
+  'vault.import',
+  'entry.trash',
+  'note.deletePermanent',
+  'trash.purge',
+  'trash.empty',
+  'version.restore',
+]);
 const secretKeys = new Set(['key', 'apiKey', 'token', 'secret', 'senha', 'authorization']);
 const DEFAULT_STEPS = 8;
 
@@ -124,6 +132,11 @@ export function agentConfirmation(name: string, args: Record<string, unknown>) {
   if (name === 'version.restore') return 'Restaurar um ponto antigo por cima da biblioteca?';
   if (name === 'history.undo') return 'Desfazer a última ação da biblioteca?';
   if (name === 'agent.undo') return 'Desfazer essa ação da biblioteca?';
+  if (name === 'trash.restore') return 'Restaurar este item da lixeira?';
+  if (name === 'trash.purge') return 'Apagar de vez este item da lixeira?';
+  if (name === 'trash.empty') return 'Esvaziar a lixeira da biblioteca?';
+  if (name === 'note.deletePermanent')
+    return `Apagar de vez ${String(args.path || 'o item')}?`;
   if (name === 'note.write') return `Sobrescrever a nota ${String(args.path || '')}?`;
   if (name === 'entry.move') {
     const from = String(args.from || '');
@@ -177,6 +190,12 @@ export function agentActionPhrase(tool: string, input: Record<string, unknown>):
       'Recusou restaurar',
       'um item da lixeira',
     );
+  if (tool === 'trash.purge')
+    return said('Apagando', 'Apagou', 'Não apagou', 'Recusou apagar', 'um item da lixeira');
+  if (tool === 'trash.empty')
+    return said('Esvaziando', 'Esvaziou', 'Não esvaziou', 'Recusou esvaziar', 'a lixeira');
+  if (tool === 'note.deletePermanent')
+    return said('Apagando', 'Apagou', 'Não apagou', 'Recusou apagar', title);
   if (tool === 'history.undo')
     return said('Desfazendo', 'Desfez', 'Não desfez', 'Recusou desfazer', 'a última ação');
   if (tool === 'agent.undo')

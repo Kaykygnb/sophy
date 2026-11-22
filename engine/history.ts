@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EngineError } from './errors.ts';
+import { removeTrashOriginals } from './lixeira.ts';
+import { syncLinks } from './links.ts';
 import { createDirectory, listDirectories, listFiles, listNotes, type Library } from './library.ts';
 import { resolveInside } from './paths.ts';
 
@@ -104,9 +106,32 @@ export function undoLast(library: Library) {
   const last = actions.at(-1);
   if (!last) throw new EngineError('not-found', 'Não há ação para desfazer.');
   apply(library, last.changes);
+  // Desfazer `entry.trash` regrava o snapshot e apaga só a cópia mais recente
+  // da lixeira com aquele caminho. Restaurar, purgar e esvaziar não geram histórico.
+  if (last.tool === 'entry.trash') removeTrashOriginals(library, trashRoots(last.changes));
   actions.pop();
   writeActions(library, actions);
+  if (last.tool === 'entry.trash') syncLinks(library);
   return { undone: last.id, tool: last.tool, summary: last.summary, origin: last.origin };
+}
+
+function trashRoots(changes: Change[]) {
+  const removedDirs = changes
+    .filter(
+      (change): change is Extract<Change, { type: 'directory' }> =>
+        change.type === 'directory' && change.before === true && change.after === false,
+    )
+    .map((change) => change.path);
+  if (removedDirs.length)
+    return removedDirs.filter(
+      (dir) => !removedDirs.some((other) => other !== dir && dir.startsWith(other + '/')),
+    );
+  return changes
+    .filter(
+      (change): change is Extract<Change, { type: 'file' }> =>
+        change.type === 'file' && change.before !== null && change.after === null,
+    )
+    .map((change) => change.path);
 }
 
 function apply(library: Library, changes: Change[]) {

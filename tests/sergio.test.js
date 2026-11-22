@@ -45,6 +45,14 @@ test('wikilink não engole um [[ seguinte', () => {
 test('a Sofi não recebe tools que saem da biblioteca', async () => {
   const { agentTools } = await import('../engine/agent.ts');
   const names = agentTools().map((tool) => tool.function.name);
-  for (const blocked of ['site.export', 'vault.import', 'entry.trash', 'version.restore'])
+  for (const blocked of [
+    'site.export',
+    'vault.import',
+    'entry.trash',
+    'note.deletePermanent',
+    'trash.purge',
+    'trash.empty',
+    'version.restore',
+  ])
     assert.equal(names.includes(blocked), false);
 });

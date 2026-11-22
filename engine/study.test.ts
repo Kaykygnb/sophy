@@ -35,8 +35,10 @@ test('cartão ignora código, a revisão espaça e o índice só existe ligado',
   assert.equal(cards[1].reversible, true);
   assert.equal(cards[1].back, '100 °C');
   const reviewed = reviewCard(library, cards[0].id, true, '2026-11-17');
-  assert.equal(reviewed.box, 1);
-  assert.notEqual(reviewed.due, '2026-11-17');
+  assert.equal(reviewed.interval, 1);
+  assert.equal(reviewed.ease, 2.5);
+  assert.equal(reviewed.due, '2026-11-18');
+  assert.equal(cards[0].id.startsWith('c_'), true);
   assert.equal(semanticSearch(library, 'capital').enabled, false);
   assert.equal(fs.existsSync(path.join(root, '.sophy', 'busca.json')), false);
   enableSemantic(library);
