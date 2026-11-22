@@ -762,7 +762,7 @@ test('acabamento: Sofi, biblioteca, revisão e o dia', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true })),
   );
   await page.locator('#abrir-revisao').click();
-  await expect(page.locator('.revisao-cartao')).toBeVisible();
+  await expect(page.locator('.revisao-cartao[data-revisao="proxima"]')).toBeVisible();
   await app.close();
 });
 
