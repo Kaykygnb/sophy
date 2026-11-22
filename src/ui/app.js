@@ -118,14 +118,6 @@ function baseName(file) {
     .replace(/\.md$/i, '')
     .replace(/\.canvas$/i, '');
 }
-function tagChips(matter) {
-  if (!matter || typeof matter !== 'object') return '';
-  const raw = matter.tags;
-  const tags = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  return tags
-    .map((tag) => `<span class="chip">#${escapeHtml(String(tag).replace(/^#/, ''))}</span>`)
-    .join('');
-}
 function noteCrumb(file) {
   const parts = String(file || '').split('/');
   if (parts.length < 2) return 'Biblioteca';
@@ -693,9 +685,9 @@ function paintShell() {
                 .join('')}`,
           ).join('')}
         </nav>
+        <section class="tags-painel tags-painel--nav" id="tags-painel" aria-label="Tags"></section>
         <div class="lateral__busca" hidden><input id="filtro-arvore" type="search" placeholder="Filtrar a árvore" aria-label="Filtrar a árvore" /></div>
         <div id="arvore"></div>
-        <section class="tags-painel" id="tags-painel" aria-label="Tags" hidden></section>
         <div class="lateral__rodape"><button type="button" class="nav__item" data-nav="lixeira" title="Lixeira">${icon('lixeira')} Lixeira</button><button type="button" class="nav__item" data-nav="config" title="Configurações (Ctrl+,)">${icon('configuracoes')} Configurações</button></div>
       </aside>
       <main class="centro" id="centro"></main>
@@ -732,6 +724,7 @@ function paintShell() {
   });
   syncNav();
   $('#filtro-arvore').oninput = () => paintTree();
+  paintTags();
   paintTree();
   paintCenter();
   paintLinks();
@@ -766,7 +759,8 @@ async function refreshLibrary() {
   } catch {
     state.linkCatalog = [];
   }
-  refreshTags();
+  /* as tags ficam acima da árvore: carregam junto com a biblioteca para a lateral não pular depois */
+  await refreshTags();
 }
 
 function treeUiStorageKey() {
@@ -1724,12 +1718,12 @@ function notePropertiesHtml() {
   const locked = daily
     ? `<div class="propriedade propriedade--travada"><span class="propriedade__nome">${propertyTypeIcon('date')}<span>data</span></span><input class="propriedade__valor" value="${escapeHtml(daily)}" readonly aria-readonly="true" tabindex="-1" aria-label="data">${icon('cadeado', 'icon--14')}</div>`
     : '';
-  const rows = locked + noteTagsRowHtml() + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}" title="${escapeHtml(PROPERTY_TYPES[property.type] || 'Texto')}: renomear">${propertyTypeIcon(property.type)}<span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
+  const rows = locked + properties.map((property) => `<div class="propriedade" data-property="${escapeHtml(property.id)}"><button type="button" class="propriedade__nome" data-property-edit="${escapeHtml(property.id)}" title="${escapeHtml(PROPERTY_TYPES[property.type] || 'Texto')}: renomear">${propertyTypeIcon(property.type)}<span>${escapeHtml(property.name || 'Propriedade')}</span></button><div class="propriedade__valor">${propertyValueHtml(property)}</div><button type="button" class="btn btn--icone propriedade__remover" data-property-remove="${escapeHtml(property.id)}" aria-label="Remover ${escapeHtml(property.name || 'propriedade')}">×</button></div>`).join('');
   const noteId = typeof state.frontmatter?.id === 'string' ? state.frontmatter.id : '';
   const advanced = noteId
     ? `<details class="nota-avancado"><summary>Avançado</summary><div class="propriedade propriedade--id"><span class="propriedade__nome"><span class="propriedade__tipo" aria-hidden="true">${icon('chave')}</span><span>id</span></span><input class="propriedade__valor" value="${escapeHtml(noteId)}" readonly aria-readonly="true" tabindex="-1" aria-label="id da nota">${icon('cadeado', 'icon--14')}<small class="propriedade__dica">Somente leitura. É o que mantém os links da nota ao renomear.</small></div></details>`
     : '';
-  return `<details class="nota-propriedades" ${properties.length || noteTagList().length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo, tags ou outros detalhes desta nota.</p>'}<button type="button" class="propriedade-adicionar" id="adicionar-propriedade">${icon('mais')}<span>Adicionar propriedade</span></button>${advanced}</div></details>`;
+  return `<details class="nota-propriedades" ${properties.length ? 'open' : ''}><summary>Propriedades${properties.length ? ` <span>${properties.length}</span>` : ''}</summary><div class="nota-propriedades__lista">${rows || '<p class="nota-privacidade">Adicione status, prazo ou outros detalhes desta nota. As tags ficam logo abaixo do título.</p>'}<button type="button" class="propriedade-adicionar" id="adicionar-propriedade">${icon('mais')}<span>Adicionar propriedade</span></button>${advanced}</div></details>`;
 }
 
 function openPropertyValuePicker(propertyId, anchor) {
@@ -2646,14 +2640,14 @@ function paintTags() {
   const host = $('#tags-painel');
   if (!host) return;
   const tree = state.tagTree || [];
-  host.hidden = !tree.length;
-  if (!tree.length) {
-    host.innerHTML = '';
-    return;
-  }
+  host.hidden = false;
   const open = tagsOpen();
-  const row = (node, depth) => `<li><div class="tag-linha${state.view === 'tag' && state.tagFilter === node.path ? ' is-atual' : ''}" style="--nivel:${depth}"><button type="button" class="tag-linha__abrir" data-tag="${escapeHtml(node.path)}" title="Ver as notas com #${escapeHtml(node.path)}">${icon('hash')}<span class="tag-linha__nome">${escapeHtml(node.name)}</span><span class="tag-linha__conta">${node.total}</span></button><button type="button" class="tag-linha__mais" data-tag-menu="${escapeHtml(node.path)}" aria-label="Opções da tag ${escapeHtml(node.name)}">${icon('mais-opcoes')}</button></div>${node.children?.length ? `<ul>${node.children.map((child) => row(child, depth + 1)).join('')}</ul>` : ''}</li>`;
-  host.innerHTML = `<button type="button" class="tags-painel__topo" id="tags-alternar" aria-expanded="${open}">${icon(open ? 'chevron-baixo' : 'chevron-direita')}<span>Tags</span></button>${open ? `<ul class="tags-painel__lista">${tree.map((node) => row(node, 0)).join('')}</ul>` : ''}`;
+  const total = flatTags(tree).length;
+  const row = (node, depth) => `<li><div class="tag-linha${state.view === 'tag' && state.tagFilter === node.path ? ' is-atual' : ''}" style="--nivel:${depth};--tag-h:${tagHue(node.path)}"><button type="button" class="tag-linha__abrir" data-tag="${escapeHtml(node.path)}" title="Ver as notas com #${escapeHtml(node.path)}"><span class="tag-ponto" aria-hidden="true"></span><span class="tag-linha__nome">${escapeHtml(node.name)}</span><span class="tag-linha__conta">${node.total}</span></button><button type="button" class="tag-linha__mais" data-tag-menu="${escapeHtml(node.path)}" aria-label="Opções da tag ${escapeHtml(node.name)}">${icon('mais-opcoes')}</button></div>${node.children?.length ? `<ul>${node.children.map((child) => row(child, depth + 1)).join('')}</ul>` : ''}</li>`;
+  const body = tree.length
+    ? `<ul class="tags-painel__lista">${tree.map((node) => row(node, 0)).join('')}</ul>`
+    : '<p class="tags-painel__vazio">Nenhuma tag ainda. Escreva <b>#nome</b> numa nota ou use <b>+ Tag</b> embaixo do título.</p>';
+  host.innerHTML = `<button type="button" class="tags-painel__topo" id="tags-alternar" aria-expanded="${open}">${icon(open ? 'chevron-baixo' : 'chevron-direita')}<span>Tags</span>${total ? `<span class="tags-painel__conta" aria-label="${total} tags">${total}</span>` : ''}</button>${open ? body : ''}`;
   $('#tags-alternar').onclick = () => {
     localStorage.setItem('sophy-tags-aberto', open ? '0' : '1');
     paintTags();
@@ -2680,7 +2674,7 @@ function openTagMenu(anchor, tag) {
   const menu = document.createElement('div');
   menu.className = 'menu menu-flutuante';
   menu.setAttribute('role', 'menu');
-  menu.innerHTML = `<button type="button" class="menu__item" role="menuitem" data-acao="ver">${icon('hash')} Ver as notas</button><button type="button" class="menu__item" role="menuitem" data-acao="renomear">${icon('renomear')} Renomear tag…</button>`;
+  menu.innerHTML = `<button type="button" class="menu__item" role="menuitem" data-acao="ver">${icon('hash')} Ver as notas</button><button type="button" class="menu__item" role="menuitem" data-acao="renomear">${icon('renomear')} Renomear tag…</button><button type="button" class="menu__item" role="menuitem" data-acao="cor">${icon('cor')} Mudar cor…</button><button type="button" class="menu__item" role="menuitem" data-acao="grafo">${icon('grafo')} Ver no grafo</button>`;
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
   menu.style.position = 'fixed';
@@ -2695,6 +2689,26 @@ function openTagMenu(anchor, tag) {
     closeMenus();
     renameTag(tag);
   };
+  menu.querySelector('[data-acao="cor"]').onclick = () => {
+    closeMenus();
+    state.tagColorOpen = true;
+    showTag(tag);
+  };
+  menu.querySelector('[data-acao="grafo"]').onclick = () => {
+    closeMenus();
+    showTagInGraph(tag);
+  };
+}
+
+function showTagInGraph(tag) {
+  state.graphTagFilter = tag;
+  showGraph('');
+}
+
+/* depois de trocar a cor, tudo que mostra a tag se redesenha com o novo matiz */
+function repaintTagColors() {
+  paintTags();
+  paintCenter();
 }
 
 async function renameTag(from) {
@@ -2734,28 +2748,112 @@ async function showTag(tag) {
 async function loadTagNotes(repaint) {
   const tag = state.tagFilter;
   try {
-    const result = await tool('tags.notes', { tag, nested: true });
+    const [result, graph] = await Promise.all([
+      tool('tags.notes', { tag, nested: true }),
+      tool('graph.query', {}).catch(() => null),
+    ]);
     state.tagNotes = result?.notes || [];
+    state.tagGraph = graph;
   } catch (error) {
     state.tagNotes = [];
+    state.tagGraph = null;
     toast(error.message, 'erro');
   }
   if (repaint !== false || state.view === 'tag') paintCenter();
 }
 
+/* Dados da tela da tag: filhas (da árvore), tags que andam junto e notas ligadas às notas da tag. */
+function tagInsights(tag, notes) {
+  const lower = tag.toLocaleLowerCase();
+  const node = flatTags(state.tagTree || []).find((item) => item.path.toLocaleLowerCase() === lower);
+  const children = node?.children || [];
+  const graph = state.tagGraph || { nodes: [], edges: [] };
+  const tagged = new Set(notes.map((note) => note.path));
+  const byPath = new Map(graph.nodes.map((item) => [item.path, item]));
+  const together = new Map();
+  for (const path of tagged)
+    for (const other of byPath.get(path)?.tags || []) {
+      const otherLower = other.toLocaleLowerCase();
+      if (otherLower === lower || otherLower.startsWith(`${lower}/`) || lower.startsWith(`${otherLower}/`)) continue;
+      together.set(other, (together.get(other) || 0) + 1);
+    }
+  const related = new Map();
+  for (const edge of graph.edges) {
+    const inside = tagged.has(edge.from) ? edge.to : tagged.has(edge.to) ? edge.from : null;
+    if (!inside || tagged.has(inside)) continue;
+    related.set(inside, (related.get(inside) || 0) + 1);
+  }
+  return {
+    children,
+    together: [...together.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).slice(0, 12),
+    related: [...related.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([path, count]) => ({ path, count, title: byPath.get(path)?.title || baseName(path), tags: byPath.get(path)?.tags || [] })),
+    tagsOf: (path) => byPath.get(path)?.tags || [],
+  };
+}
+
+function tagChipHtml(tag, extra = '') {
+  return `<button type="button" class="tag-inline" data-tag-ir="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}" title="Ver as notas com #${escapeHtml(tag)}"${extra}>#${escapeHtml(tag)}</button>`;
+}
+
 function paintTagView(center) {
   const tag = state.tagFilter;
   const notes = state.tagNotes;
+  const hue = tagHue(tag);
   if (!notes) {
-    center.innerHTML = `<div class="etiqueta-tela"><header class="etiqueta-tela__topo"><h2>#${escapeHtml(tag)}</h2></header><p class="lixeira__nota" role="status">Carregando…</p></div>`;
+    center.innerHTML = `<div class="etiqueta-tela" style="--tag-h:${hue}"><header class="etiqueta-capa"><h2 class="etiqueta-capa__nome"><span class="etiqueta-capa__hash" aria-hidden="true">#</span><span class="tag-selo">#${escapeHtml(tag)}</span></h2><p class="lixeira__nota" role="status">Carregando…</p></header></div>`;
     return;
   }
-  center.innerHTML = `<div class="etiqueta-tela"><header class="etiqueta-tela__topo"><div><h2><span class="tag-selo">#${escapeHtml(tag)}</span></h2><p class="lixeira__nota">${notes.length} ${notes.length === 1 ? 'nota' : 'notas'}, com as tags filhas.</p></div><button type="button" class="btn btn--secundario" id="tag-renomear">${icon('renomear')} Renomear tag</button></header>${
-    notes.length
-      ? `<ul class="etiqueta-tela__lista">${notes.map((note) => `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('nota')}<span><b>${escapeHtml(note.title || baseName(note.path))}</b><small>${escapeHtml(trashFolder(note.path))}${note.source === 'text' ? ' · no texto' : note.source === 'frontmatter' ? ' · nas propriedades' : ''}</small></span></button></li>`).join('')}</ul>`
-      : '<p class="lixeira__nota">Nenhuma nota usa esta tag agora.</p>'
-  }</div>`;
+  const info = tagInsights(tag, notes);
+  const parts = tag.split('/');
+  const trail = parts.length > 1 ? `<p class="etiqueta-capa__trilha">${parts.slice(0, -1).map((_, index) => `<button type="button" data-tag-ir="${escapeHtml(parts.slice(0, index + 1).join('/'))}">#${escapeHtml(parts.slice(0, index + 1).join('/'))}</button>${icon('chevron-direita')}`).join('')}</p>` : '';
+  const inText = notes.filter((note) => note.source !== 'frontmatter').length;
+  const inProps = notes.filter((note) => note.source !== 'text').length;
+  const current = tagColorStore()[tag.toLocaleLowerCase()];
+  const swatches = TAG_HUES.map(([name, value]) => `<button type="button" class="etiqueta-cor" data-tag-cor="${value}" style="--tag-h:${value}" aria-label="${name}" title="${name}" aria-pressed="${Number(current) === value}"></button>`).join('');
+  const noteRow = (note) => {
+    const others = info.tagsOf(note.path).filter((item) => item.toLocaleLowerCase() !== tag.toLocaleLowerCase()).slice(0, 3);
+    return `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('nota')}<span><b>${escapeHtml(note.title || baseName(note.path))}</b><small>${escapeHtml(trashFolder(note.path))}${note.source === 'text' ? ' · no texto' : note.source === 'frontmatter' ? ' · nas propriedades' : ''}</small></span>${others.length ? `<span class="etiqueta-nota__tags">${others.map((item) => `<span class="tag-inline" style="--tag-h:${tagHue(item)}">#${escapeHtml(item)}</span>`).join('')}</span>` : ''}</button></li>`;
+  };
+  center.innerHTML = `<div class="etiqueta-tela" style="--tag-h:${hue}">
+    <header class="etiqueta-capa">
+      <div class="etiqueta-capa__topo">
+        <div>${trail}<h2 class="etiqueta-capa__nome"><span class="etiqueta-capa__hash" aria-hidden="true">#</span><span class="tag-selo">#${escapeHtml(tag)}</span></h2></div>
+        <div class="etiqueta-capa__acoes">
+          <button type="button" class="btn btn--secundario" id="tag-cor" aria-expanded="${!!state.tagColorOpen}">${icon('cor')} Mudar cor</button>
+          <button type="button" class="btn btn--secundario" id="tag-renomear">${icon('renomear')} Renomear tag</button>
+          <button type="button" class="btn btn--secundario" id="tag-grafo">${icon('grafo')} Ver no grafo</button>
+        </div>
+      </div>
+      <div class="etiqueta-capa__numeros"><span><b>${notes.length}</b>${notes.length === 1 ? 'nota' : 'notas'}</span><span><b>${info.children.length}</b>${info.children.length === 1 ? 'tag filha' : 'tags filhas'}</span><span><b>${inText}</b>no texto</span><span><b>${inProps}</b>nas propriedades</span></div>
+      <div class="etiqueta-cores" id="tag-cores" ${state.tagColorOpen ? '' : 'hidden'} role="group" aria-label="Cor da tag">${swatches}<button type="button" class="etiqueta-cores__padrao" data-tag-cor="">Cor automática</button></div>
+    </header>
+    ${info.children.length ? `<section class="etiqueta-secao"><h3>Tags filhas</h3><div class="tag-chips">${info.children.map((child) => tagChipHtml(child.path)).join('')}</div></section>` : ''}
+    ${info.together.length ? `<section class="etiqueta-secao"><h3>Aparece junto com</h3><div class="tag-chips">${info.together.map(([other, count]) => tagChipHtml(other, ` aria-label="#${escapeHtml(other)}, ${count} em comum"`)).join('')}</div></section>` : ''}
+    <section class="etiqueta-secao"><h3>Notas com #${escapeHtml(tag)}</h3>${
+      notes.length ? `<ul class="etiqueta-tela__lista">${notes.map(noteRow).join('')}</ul>` : '<p class="lixeira__nota">Nenhuma nota usa esta tag agora.</p>'
+    }<p class="lixeira__nota">Inclui as tags filhas.</p></section>
+    ${info.related.length ? `<section class="etiqueta-secao"><h3>Notas relacionadas</h3><p class="lixeira__nota">Não usam a tag, mas têm link com as notas dela.</p><ul class="etiqueta-tela__lista">${info.related.map((note) => `<li><button type="button" class="etiqueta-nota" data-abrir-nota="${escapeHtml(note.path)}">${icon('link')}<span><b>${escapeHtml(note.title)}</b><small>${escapeHtml(trashFolder(note.path))} · ${note.count} ${note.count === 1 ? 'link' : 'links'}</small></span></button></li>`).join('')}</ul></section>` : ''}
+  </div>`;
+  state.tagColorOpen = false;
   $('#tag-renomear').onclick = () => renameTag(tag);
+  $('#tag-grafo').onclick = () => showTagInGraph(tag);
+  $('#tag-cor').onclick = () => {
+    const panel = $('#tag-cores');
+    panel.hidden = !panel.hidden;
+    $('#tag-cor').setAttribute('aria-expanded', String(!panel.hidden));
+    if (!panel.hidden) panel.querySelector('[aria-pressed="true"], .etiqueta-cor')?.focus();
+  };
+  center.querySelectorAll('[data-tag-cor]').forEach((button) => {
+    button.onclick = () => {
+      setTagHue(tag, button.dataset.tagCor === '' ? null : Number(button.dataset.tagCor));
+      state.tagColorOpen = true;
+      repaintTagColors();
+      toast(button.dataset.tagCor === '' ? `#${tag} voltou para a cor automática.` : `#${tag} agora tem cor nova.`, 'ok');
+    };
+  });
+  center.querySelectorAll('[data-tag-ir]').forEach((button) => {
+    button.onclick = () => showTag(button.dataset.tagIr);
+  });
   center.querySelectorAll('[data-abrir-nota]').forEach((button) => {
     button.onclick = () => openNote(button.dataset.abrirNota);
   });
@@ -2767,11 +2865,32 @@ function noteTagList() {
   return (Array.isArray(raw) ? raw : raw ? [raw] : []).map((tag) => String(tag).replace(/^#/, '')).filter(Boolean);
 }
 
-function noteTagsRowHtml() {
-  const chips = noteTagList()
-    .map((tag) => `<span class="tag-chip" data-tag-chip="${escapeHtml(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Ver as notas com #${escapeHtml(tag)}">#${escapeHtml(tag)}</button><button type="button" class="tag-chip__tirar" data-tag-tirar="${escapeHtml(tag)}" aria-label="Tirar a tag ${escapeHtml(tag)}">${icon('fechar')}</button></span>`)
+/* Tags escritas no texto da nota (#tag), fora de blocos de código. */
+function noteTextTags() {
+  const found = new Map();
+  for (const block of state.doc?.blocks || []) {
+    if (block.type === 'code' || /^\s*(```|~~~)/.test(block.raw || '')) continue;
+    const text = String(block.raw || '').replace(/`[^`]*`/g, ' ');
+    for (const match of text.matchAll(INLINE_TAG)) {
+      const clean = match[2].replace(/[\/\-]+$/, '');
+      if (!/\D/.test(clean)) continue;
+      if (!found.has(clean.toLocaleLowerCase())) found.set(clean.toLocaleLowerCase(), clean);
+    }
+  }
+  return [...found.values()];
+}
+
+/* Faixa de tags logo abaixo do título: as do frontmatter (com ×) e as do texto (contorno), todas clicáveis. */
+function noteTagsBandHtml() {
+  const own = noteTagList();
+  const ownLower = new Set(own.map((tag) => tag.toLocaleLowerCase()));
+  const fromText = noteTextTags().filter((tag) => !ownLower.has(tag.toLocaleLowerCase()));
+  const chips = own
+    .map((tag) => `<span class="tag-chip" data-tag-chip="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Ver as notas com #${escapeHtml(tag)}">#${escapeHtml(tag)}</button><button type="button" class="tag-chip__tirar" data-tag-tirar="${escapeHtml(tag)}" aria-label="Tirar a tag ${escapeHtml(tag)}" title="Tirar a tag">${icon('fechar')}</button></span>`)
+    .concat(fromText.map((tag) => `<span class="tag-chip tag-chip--texto" data-tag-texto-chip="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}"><button type="button" class="tag-chip__nome" data-tag-ver="${escapeHtml(tag)}" title="Está escrita no texto da nota. Clique para ver as notas com #${escapeHtml(tag)}.">#${escapeHtml(tag)}</button></span>`))
     .join('');
-  return `<div class="propriedade propriedade--tags"><span class="propriedade__nome"><span class="propriedade__tipo" aria-hidden="true">${icon('tag')}</span><span>tags</span></span><div class="propriedade__valor tag-chips">${chips}<span class="tag-chip-novo"><button type="button" class="tag-chip-mais" id="tag-adicionar" aria-label="Adicionar tag" title="Adicionar tag">${icon('mais')}</button></span></div><span></span></div>`;
+  const empty = !own.length && !fromText.length;
+  return `<div class="nota-tags" id="nota-tags" role="group" aria-label="Tags da nota">${empty ? '' : `<span class="nota-tags__rotulo" aria-hidden="true">${icon('tag')}</span>`}${chips}<span class="nota-tags__campo tag-chip-novo"><button type="button" class="nota-tags__mais${empty ? ' nota-tags__mais--vazio' : ''}" id="tag-adicionar" aria-label="Adicionar tag" title="Adicionar uma tag a esta nota">${icon('mais')}<span>Tag</span></button></span></div>`;
 }
 
 function bindNoteTags() {
@@ -2784,33 +2903,61 @@ function bindNoteTags() {
     button.onclick = () => changeNoteTags({ remove: [button.dataset.tagTirar] });
   });
   const add = $('#tag-adicionar');
-  if (add)
-    add.onclick = () => {
-      const slot = add.parentElement;
-      slot.innerHTML = '<input id="tag-novo-campo" class="tag-chip-campo" list="tag-sugestoes" placeholder="nova-tag" aria-label="Nova tag" maxlength="60" autocomplete="off"><datalist id="tag-sugestoes"></datalist>';
-      const input = $('#tag-novo-campo');
-      input.focus();
-      const suggest = async () => {
-        try {
-          const result = await tool('tag.suggest', { prefix: input.value.replace(/^#/, ''), limit: 8 });
-          $('#tag-sugestoes').innerHTML = (result?.tags || []).map((item) => `<option value="${escapeHtml(item.name)}"></option>`).join('');
-        } catch {
-          /* sem sugestões, o campo continua valendo */
-        }
-      };
-      suggest();
-      input.oninput = suggest;
-      input.onkeydown = (event) => {
-        if (event.key === 'Escape') paintCenter();
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          const value = input.value.replace(/^#/, '').trim();
-          if (value) changeNoteTags({ add: [value] });
-          else paintCenter();
-        }
-      };
-      input.onblur = () => setTimeout(() => $('#tag-novo-campo') === input && !input.value.trim() && paintCenter(), 150);
+  if (!add) return;
+  add.onclick = () => {
+    const slot = add.parentElement;
+    slot.innerHTML = '<input id="tag-novo-campo" class="tag-chip-campo" placeholder="nova-tag" aria-label="Nova tag" maxlength="60" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="tag-sugestoes" aria-autocomplete="list"><div class="nota-tags__sugestoes" id="tag-sugestoes" role="listbox" hidden></div>';
+    const input = $('#tag-novo-campo');
+    const list = $('#tag-sugestoes');
+    let options = [];
+    let active = -1;
+    const own = new Set(noteTagList().map((tag) => tag.toLocaleLowerCase()));
+    const draw = () => {
+      const typed = input.value.replace(/^#/, '').trim();
+      const rows = options.map((item, index) => `<button type="button" class="nota-tags__sugestao${index === active ? ' is-ativa' : ''}" role="option" aria-selected="${index === active}" data-sugestao="${escapeHtml(item.name)}" style="--tag-h:${tagHue(item.name)}"><span class="tag-ponto" aria-hidden="true"></span><span>#${highlight(item.name, typed)}</span><small>${item.total} ${item.total === 1 ? 'nota' : 'notas'}</small></button>`);
+      if (typed && !options.some((item) => item.name.toLocaleLowerCase() === typed.toLocaleLowerCase()))
+        rows.push(`<button type="button" class="nota-tags__sugestao nota-tags__sugestao--nova${active === options.length ? ' is-ativa' : ''}" role="option" data-sugestao="${escapeHtml(typed)}">${icon('mais')}<span>Criar #${escapeHtml(typed)}</span></button>`);
+      list.innerHTML = rows.join('');
+      list.hidden = !rows.length;
+      input.setAttribute('aria-expanded', String(!list.hidden));
+      list.querySelectorAll('[data-sugestao]').forEach((button) => {
+        button.onmousedown = (event) => event.preventDefault();
+        button.onclick = () => changeNoteTags({ add: [button.dataset.sugestao] });
+      });
     };
+    const suggest = async () => {
+      const prefix = input.value.replace(/^#/, '').trim();
+      try {
+        const result = await tool('tag.suggest', { prefix, limit: 8 });
+        if ($('#tag-novo-campo') !== input) return;
+        options = (result?.tags || []).filter((item) => !own.has(item.name.toLocaleLowerCase()));
+      } catch {
+        options = [];
+      }
+      active = -1;
+      draw();
+    };
+    input.focus();
+    suggest();
+    input.oninput = suggest;
+    input.onkeydown = (event) => {
+      const count = list.querySelectorAll('[data-sugestao]').length;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (!count) return;
+        active = (active + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+        draw();
+      } else if (event.key === 'Escape') paintCenter();
+      else if (event.key === 'Enter') {
+        event.preventDefault();
+        const picked = active >= 0 ? list.querySelectorAll('[data-sugestao]')[active]?.dataset.sugestao : '';
+        const value = (picked || input.value).replace(/^#/, '').trim();
+        if (value) changeNoteTags({ add: [value] });
+        else paintCenter();
+      }
+    };
+    input.onblur = () => setTimeout(() => $('#tag-novo-campo') === input && !input.value.trim() && paintCenter(), 150);
+  };
 }
 
 async function changeNoteTags(change) {
@@ -2826,11 +2973,60 @@ async function changeNoteTags(change) {
 }
 
 /* ------------------------------------------------- #tag no texto e autocomplete */
+/* Cor de cada tag: um matiz estável (vem do nome da tag de topo, então #estudo/leitura herda de #estudo)
+   que a pessoa pode trocar. A escolha fica no front, por biblioteca. */
+const TAG_HUES = [
+  ['Lavanda', 250],
+  ['Azul', 212],
+  ['Turquesa', 182],
+  ['Verde', 148],
+  ['Oliva', 88],
+  ['Mostarda', 45],
+  ['Laranja', 24],
+  ['Vermelho', 356],
+  ['Rosa', 330],
+  ['Violeta', 285],
+];
+function tagColorKey() {
+  return `sophy-tag-cores:${state.libraryPath || state.libraryName || 'default'}`;
+}
+function tagColorStore() {
+  if (state.tagColorCache?.key === tagColorKey()) return state.tagColorCache.map;
+  let map = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(tagColorKey()) || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed;
+  } catch {
+    map = {};
+  }
+  state.tagColorCache = { key: tagColorKey(), map };
+  return map;
+}
 function tagHue(tag) {
-  const root = String(tag).split('/')[0].toLocaleLowerCase();
+  const clean = String(tag || '').replace(/^#/, '').toLocaleLowerCase();
+  const store = tagColorStore();
+  const parts = clean.split('/');
+  for (let i = parts.length; i > 0; i -= 1) {
+    const hue = Number(store[parts.slice(0, i).join('/')]);
+    if (Number.isFinite(hue)) return hue;
+  }
   let hash = 0;
-  for (const char of root) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  for (const char of parts[0]) hash = (hash * 31 + char.charCodeAt(0)) % 360;
   return hash;
+}
+function tagColorCss(tag) {
+  const hue = tagHue(tag);
+  return themeName() === 'dark' ? `hsl(${hue} 68% 70%)` : `hsl(${hue} 52% 46%)`;
+}
+function setTagHue(tag, hue) {
+  const store = { ...tagColorStore() };
+  const clean = String(tag || '').replace(/^#/, '').toLocaleLowerCase();
+  if (hue == null) delete store[clean];
+  else store[clean] = Math.round(Number(hue)) % 360;
+  try {
+    localStorage.setItem(tagColorKey(), JSON.stringify(store));
+  } catch {}
+  state.tagColorCache = { key: tagColorKey(), map: store };
 }
 
 const INLINE_TAG = /(^|[\s(>])#([\p{L}\p{N}_][\p{L}\p{N}_\-\/]*)/gu;
@@ -2891,7 +3087,7 @@ async function showTagMenu(el, found) {
     return;
   }
   const rows = tags
-    .map((tag) => `<button type="button" class="menu__item" role="option" data-insert="#${escapeHtml(tag.name)}">${icon('hash')}<span><span class="menu__titulo">${highlight(tag.name, found.query)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`)
+    .map((tag) => `<button type="button" class="menu__item" role="option" data-insert="#${escapeHtml(tag.name)}" style="--tag-h:${tagHue(tag.name)}"><span class="tag-ponto" aria-hidden="true"></span><span><span class="menu__titulo">${highlight(tag.name, found.query)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`)
     .join('');
   openMenu(el, 'menu menu--wiki menu-flutuante menu--tags', rows, (button) => {
     insertAt(el, found.start, found.start + 1 + found.query.length, button.dataset.insert);
@@ -3258,7 +3454,6 @@ function paintCenterBody(center) {
   const conflict = state.conflict
     ? `<div class="aviso" role="alert">${icon('erro')} <span>A nota mudou desde a leitura, fora do Sophy. Nada foi gravado ainda: escolha recarregar ou manter a sua versão.</span> <button type="button" class="btn btn--secundario" id="recarregar">${anim('sincronizar', 'sincronizar')}Recarregar</button></div>`
     : '';
-  const chips = tagChips(state.frontmatter);
   const crumb = noteCrumb(state.active);
   const dailyIso = dailyPathDate(state.active);
   const firstIsTitle = state.doc.blocks[0]?.type === 'heading';
@@ -3281,7 +3476,7 @@ function paintCenterBody(center) {
   const layout = noteLayout();
   const layoutClasses = [`nota--font-${layout.font}`, layout.small ? 'nota--small' : '', layout.wide ? 'nota--wide' : ''].filter(Boolean).join(' ');
   const noteTools = `<div class="nota-ferramentas"><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-filha" title="Criar uma página dentro desta">${icon('nota-nova')}<span>Página filha</span></button><button type="button" class="btn btn--fantasma btn--pequeno" id="nota-anexar" title="Anexar imagem ou arquivo (ou arraste para a nota)">${icon('anexo')}<span>Anexar</span></button><button type="button" class="btn ${state.focusMode ? 'btn--primario nota-foco-sair' : 'btn--icone'}" id="modo-foco" data-focus-toggle aria-label="${state.focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}" aria-pressed="${state.focusMode}">${state.focusMode ? 'Sair do foco' : icon('foco-no')}</button><button type="button" class="btn btn--icone" id="nota-mais" aria-label="Opções da nota" title="Opções da nota" aria-haspopup="true">${icon('mais-opcoes')}</button></div>`;
-  center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}<div class="nota__meta">${chips}</div>${notePropertiesHtml()}${blocks}<button type="button" class="nota-adicionar" id="nota-adicionar">${icon('mais')}<span>Adicionar bloco</span><span class="nota-adicionar__dica">ou digite <kbd class="kbd">/</kbd> numa linha vazia</span></button></article>`;
+  center.innerHTML = `${conflict}<article class="coluna ${layoutClasses}" id="coluna">${noteTools}${strip}${cover}<p class="nota__caminho">${crumb}</p>${title}${noteTagsBandHtml()}${notePropertiesHtml()}${blocks}<button type="button" class="nota-adicionar" id="nota-adicionar">${icon('mais')}<span>Adicionar bloco</span><span class="nota-adicionar__dica">ou digite <kbd class="kbd">/</kbd> numa linha vazia</span></button></article>`;
   const reload = $('#recarregar');
   if (reload) reload.onclick = () => openNote(state.active, { force: true });
   const changeCover = $('#trocar-capa');
@@ -8407,30 +8602,107 @@ async function paintGraph(center) {
     return;
   }
   if (request !== state.graphPaintSeq || state.view !== 'graph') return;
-  const shelves = state.workspaces.map((item) => item.name);
-  const tags = [...new Set((graph?.nodes || []).flatMap((node) => node.tags || []))].sort((a, b) =>
-    a.localeCompare(b),
-  );
-  const legend = state.workspaces
-    .map((item) => {
-      const mark = markFor(item.name);
-      const color = mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
-      return `<span class="grafo__legenda-item"><i style="--grafo-cor:${color}"></i>${escapeHtml(item.name)}</span>`;
-    })
-    .join('');
-  center.innerHTML = `<div class="grafo">
-    <div class="grafo__barra">
-      <div class="segmentado grafo__modo" role="group" aria-label="Escopo do grafo"><button type="button" class="is-escolhida" data-graph-mode="global">${icon('globo')} Global</button><button type="button" data-graph-mode="local">${icon('foco-no')} Local</button></div>
-      <label class="grafo__busca">${icon('busca')}<input id="grafo-busca" type="search" placeholder="Nota, tag ou #tag" aria-label="Buscar nota ou tag" /><kbd>/</kbd></label>
-      <label class="grafo__filtro"><span>Estante</span><select id="grafo-estante"><option value="">Todas</option>${shelves.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}</select></label>
-      <label class="grafo__filtro"><span>Tag</span><select id="grafo-tag"><option value="">Todas</option>${tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join('')}</select></label>
-      <label class="grafo__filtro"><span>Cor</span><select id="grafo-cor" aria-label="Cor das notas"><option value="estante">Estante</option><option value="tag">Tag</option></select></label>
-      <button type="button" class="btn btn--secundario" id="grafo-forcas-toggle" aria-expanded="false">${icon('configuracoes')} Forças</button>
-    </div>
-    <div class="grafo__chips" id="grafo-chips" hidden></div>
+  graph = { nodes: graph?.nodes || [], edges: graph?.edges || [] };
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const readLayout = () => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(`sophy-graph:${state.libraryPath || 'default'}`) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const savedLayout = readLayout();
+  const layoutV2 = savedLayout.version === 2 ? savedLayout : {};
+  const styles = getComputedStyle(document.documentElement);
+  const shelfColor = (workspace) => {
+    const mark = markFor(workspace || '');
+    return mark.color ? styles.getPropertyValue(`--shelf-${mark.color}`).trim() : styles.getPropertyValue('--ink-3').trim();
+  };
+  const shelfCss = (workspace) => {
+    const mark = markFor(workspace || '');
+    return mark.color ? `var(--shelf-${mark.color})` : 'var(--ink-3)';
+  };
+  const shelfOf = (node) => node.workspace || String(node.path).split('/')[0];
+  const shelfCounts = new Map();
+  for (const node of graph.nodes) shelfCounts.set(shelfOf(node), (shelfCounts.get(shelfOf(node)) || 0) + 1);
+  const shelves = [...new Set([...state.workspaces.map((item) => item.name), ...shelfCounts.keys()])].filter((name) => shelfCounts.has(name));
+  const tagCounts = new Map();
+  for (const node of graph.nodes) for (const tag of node.tags || []) tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+  const tags = [...tagCounts.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const topTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 10);
+  let colorMode = savedLayout.colorMode === 'tag' ? 'tag' : 'estante';
+  let view = ['notas', 'estantes', 'tags'].includes(layoutV2.view) ? layoutV2.view : 'notas';
+  const edgeKinds = { wiki: true, block: true, child: true, tag: false, ...(layoutV2.edgeKinds || {}) };
+  const chosenShelves = new Set(state.graphWorkspace ? [state.graphWorkspace] : []);
+  const panelOpen = localStorage.getItem('sophy-grafo-painel') !== '0';
+  const viewHelp = {
+    notas: 'Cada ponto é uma nota. As áreas coloridas são as estantes.',
+    estantes: 'Cada círculo é uma estante. A espessura mostra quantos links ligam duas estantes. Clique numa estante para abrir.',
+    tags: 'As tags viram pontos de encontro. As notas ficam perto das tags que usam.',
+  };
+  const edgeRows = [
+    ['wiki', 'Wikilinks', 'grafo__traco--wiki', 'Links [[nota]] entre notas'],
+    ['block', 'Blocos nomeados', 'grafo__traco--bloco', 'Links [[nota#bloco]] para um bloco de código com nome'],
+    ['child', 'Páginas filhas', 'grafo__traco--filha', 'Página dentro de outra página'],
+    ['tag', 'Tags em comum', 'grafo__traco--tag', 'Liga notas que usam a mesma tag'],
+  ];
+  const segmented = (attr, items, current) =>
+    items.map(([value, glyph, label]) => `<button type="button" data-${attr}="${value}" class="${value === current ? 'is-escolhida' : ''}" aria-pressed="${value === current}">${glyph ? icon(glyph) : ''}<span>${label}</span></button>`).join('');
+
+  if (!graph.nodes.length) {
+    center.innerHTML = `<div class="grafo grafo--vazio"><div class="vazio-ensina grafo__vazio-inicial">${ilustracao('grafo-vazio')}<h2>O seu grafo aparece aqui</h2><p>Cada nota vira um ponto e cada <code>[[link]]</code> vira uma linha. As estantes viram grupos coloridos.</p><div class="vazio-ensina__atalhos"><button type="button" class="btn btn--primario" id="grafo-criar-nota">${icon('nota-nova')} Criar a primeira nota</button></div></div></div>`;
+    $('#grafo-criar-nota').onclick = () => createNote();
+    return;
+  }
+
+  center.innerHTML = `<div class="grafo grafo--v4${panelOpen ? '' : ' is-painel-fechado'}">
+    <aside class="grafo__painel" id="grafo-painel" aria-label="Controles do grafo">
+      <header class="grafo__painel-topo"><strong>${icon('grafo')} Grafo</strong><button type="button" class="btn btn--icone" id="grafo-painel-recolher" aria-label="Esconder os controles" title="Esconder os controles">${icon('painel-lateral')}</button></header>
+      <section class="grafo__secao">
+        <p class="grafo__rotulo">Ver como</p>
+        <div class="segmentado grafo__visao" role="group" aria-label="Visão do grafo">${segmented('graph-view', [['notas', 'nota', 'Notas'], ['estantes', 'estante', 'Estantes'], ['tags', 'hash', 'Tags']], view)}</div>
+        <p class="grafo__dica" id="grafo-visao-dica">${viewHelp[view]}</p>
+      </section>
+      <section class="grafo__secao">
+        <label class="grafo__busca">${icon('busca')}<input id="grafo-busca" type="search" placeholder="Buscar nota ou #tag" aria-label="Buscar nota ou tag" /><kbd>/</kbd></label>
+        <div class="grafo__linha">
+          <div class="segmentado grafo__modo" role="group" aria-label="Escopo do grafo"><button type="button" class="is-escolhida" data-graph-mode="global">${icon('globo')} Tudo</button><button type="button" data-graph-mode="local">${icon('foco-no')} Vizinhos</button></div>
+          <button type="button" class="btn btn--secundario btn--pequeno" id="grafo-centralizar" title="Enquadrar tudo na tela">${icon('ajustar')} Centralizar</button>
+        </div>
+        <div class="grafo__local" id="grafo-local" hidden>${icon('foco-no')}<span id="grafo-foco">Escolha uma nota</span><label>Distância <select id="grafo-profundidade"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label></div>
+      </section>
+      <section class="grafo__secao">
+        <p class="grafo__rotulo">Estantes <span class="grafo__rotulo-acao" id="grafo-estantes-todas" role="button" tabindex="0">Todas</span></p>
+        <div class="grafo__estantes" id="grafo-estantes">${shelves.map((name) => `<button type="button" class="grafo__estante" data-graph-shelf="${escapeHtml(name)}" aria-pressed="false" style="--grafo-cor:${shelfCss(name)}"><i></i><span>${escapeHtml(name)}</span><small>${shelfCounts.get(name)}</small></button>`).join('')}</div>
+      </section>
+      <section class="grafo__secao">
+        <p class="grafo__rotulo">Tags</p>
+        <label class="grafo__campo">${icon('hash')}<select id="grafo-tag" aria-label="Filtrar por tag"><option value="">Todas as tags</option>${tags.map((tag) => `<option value="${escapeHtml(tag)}">#${escapeHtml(tag)} (${tagCounts.get(tag)})</option>`).join('')}</select></label>
+        ${topTags.length ? `<div class="grafo__tags-topo">${topTags.map(([tag, count]) => `<button type="button" class="tag-inline grafo__tag-atalho" data-graph-tag="${escapeHtml(tag)}" style="--tag-h:${tagHue(tag)}" title="${count} ${count === 1 ? 'nota' : 'notas'}">#${escapeHtml(tag)}</button>`).join('')}</div>` : '<p class="grafo__dica">Nenhuma tag ainda. Escreva <b>#nome</b> numa nota.</p>'}
+      </section>
+      <section class="grafo__secao">
+        <p class="grafo__rotulo">Período de criação</p>
+        <div class="grafo__periodo"><input type="date" id="grafo-de" aria-label="Criadas a partir de" /><span>até</span><input type="date" id="grafo-ate" aria-label="Criadas até" /></div>
+      </section>
+      <section class="grafo__secao">
+        <p class="grafo__rotulo">Ligações</p>
+        ${edgeRows.map(([kind, label, cls, title]) => `<label class="grafo__alternar" title="${escapeHtml(title)}"><input type="checkbox" data-graph-edge="${kind}" ${edgeKinds[kind] ? 'checked' : ''} /><i class="grafo__traco ${cls}"></i>${label}</label>`).join('')}
+      </section>
+      <section class="grafo__secao">
+        <p class="grafo__rotulo">Exibir</p>
+        <label class="grafo__alternar"><input type="checkbox" id="grafo-rotulos" checked /> Nomes das notas</label>
+        <label class="grafo__alternar"><input type="checkbox" id="grafo-orfas" checked /> Notas sem ligação</label>
+        <label class="grafo__campo grafo__campo--cor"><span>Cor dos pontos</span><select id="grafo-cor" aria-label="Cor das notas"><option value="estante">Pela estante</option><option value="tag">Pela primeira tag</option></select></label>
+        <button type="button" class="btn btn--fantasma btn--pequeno" id="grafo-forcas-toggle" aria-expanded="false">${icon('configuracoes')} Ajustar forças</button>
+      </section>
+    </aside>
+    <button type="button" class="btn btn--secundario grafo__painel-abrir" id="grafo-painel-abrir" ${panelOpen ? 'hidden' : ''}>${icon('filtro')} Controles</button>
     <div class="grafo__palco">
-      <canvas id="grafo-canvas" tabindex="0" role="application" aria-label="Grafo de notas. Use as setas para navegar e Enter para abrir uma nota."></canvas>
-      <div class="grafo__legenda">${legend}<span id="grafo-contagem">${anim('carregando')}Carregando…</span></div>
+      <canvas id="grafo-canvas" tabindex="0" role="application" aria-label="Grafo de notas. Use as setas para navegar e Enter para abrir."></canvas>
+      <div class="grafo__chips" id="grafo-chips" hidden></div>
+      <div class="grafo__relogio" id="grafo-relogio" aria-live="polite"><strong id="grafo-relogio-data"></strong><span id="grafo-relogio-conta"></span></div>
+      <div class="grafo__legenda" id="grafo-legenda"></div>
       <div class="grafo__cartao" id="grafo-cartao" hidden></div>
       <aside class="grafo__forcas" id="grafo-forcas" hidden aria-label="Controles de forças">
         <header><strong>${icon('foco-no')} Forças</strong><button type="button" class="btn btn--icone" id="grafo-forcas-fechar" aria-label="Fechar">${icon('fechar')}</button></header>
@@ -8438,12 +8710,10 @@ async function paintGraph(center) {
         <label><span>Repulsão</span><output>500</output><input type="range" min="80" max="1400" value="500" data-force="repulsion" /></label>
         <label><span>Força dos links</span><output>18</output><input type="range" min="2" max="80" value="18" data-force="linkForce" /></label>
         <label><span>Centro</span><output>6</output><input type="range" min="0" max="30" value="6" data-force="center" /></label>
-        <label><span>Ímã da estante</span><output>0</output><input type="range" min="0" max="30" value="0" data-force="shelfAttraction" /></label>
-        <label class="grafo__alternar"><input type="checkbox" id="grafo-rotulos" checked /> Mostrar rótulos</label>
-        <label class="grafo__alternar"><input type="checkbox" id="grafo-orfas" checked /> Mostrar órfãs</label>
-        <label class="grafo__alternar"><input type="checkbox" id="grafo-simulacao" ${matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'checked'} /> Simulação ativa</label>
+        <label><span>Ímã da estante</span><output>12</output><input type="range" min="0" max="30" value="12" data-force="shelfAttraction" /></label>
+        <label class="grafo__alternar"><input type="checkbox" id="grafo-simulacao" checked /> Simulação ativa</label>
         <button type="button" class="btn btn--secundario" id="grafo-forcas-restaurar">${icon('voltar')} Restaurar forças</button>
-        <p id="grafo-status" aria-live="polite">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'Pausado' : 'Organizando…'}</p>
+        <p id="grafo-status" aria-live="polite">${reduced ? 'Movimento reduzido: o grafo se organiza sem animar.' : 'Organizando…'}</p>
       </aside>
       <div class="grafo__minimapa"><canvas id="grafo-minimapa" aria-label="Minimapa do grafo"></canvas></div>
       <div class="grafo__zoom">
@@ -8452,45 +8722,72 @@ async function paintGraph(center) {
         <button type="button" class="btn btn--icone" id="grafo-menos" aria-label="Afastar">${icon('zoom-menos')}</button>
         <button type="button" class="btn btn--icone" id="grafo-ajustar" aria-label="Ajustar à rede">${icon('ajustar')}</button>
       </div>
-      <div class="grafo__local" id="grafo-local" hidden>${icon('foco-no')}<span id="grafo-foco"></span><label>Profundidade <select id="grafo-profundidade"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label></div>
+      <div class="grafo__tempo-barra" role="group" aria-label="Linha do tempo">
+        <button type="button" class="grafo__play" id="grafo-play" aria-label="Reproduzir a linha do tempo" title="Ver as notas surgirem na ordem em que foram criadas">${icon('reproduzir')}</button>
+        <div class="grafo__tempo-trilho">
+          <div class="grafo__tempo-topo"><span class="grafo__tempo-titulo">${icon('linha-do-tempo')} Linha do tempo</span><output id="grafo-tempo-data">hoje</output></div>
+          <input id="grafo-tempo" type="range" min="0" max="1000" value="1000" aria-label="Mostrar notas criadas até a data" />
+          <div class="grafo__quadros" id="grafo-quadros"></div>
+        </div>
+        <div class="segmentado grafo__velocidade" role="group" aria-label="Velocidade">${segmented('graph-speed', [['1', '', '1x'], ['2', '', '2x'], ['4', '', '4x']], '1')}</div>
+      </div>
     </div>
-    <div class="grafo__rodape"><label class="grafo__tempo">${icon('calendario')}<span>Linha do tempo</span><input id="grafo-tempo" type="range" min="0" max="100" value="${Math.round((state.graphUntil ?? 1) * 100)}" aria-label="Mostrar notas criadas até a data" /><output id="grafo-tempo-data">hoje</output></label><div class="grafo__quadros" id="grafo-quadros" aria-hidden="true"></div><span>Layout de força · <span id="grafo-status-rodape">${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'pausado' : 'estabilizando'}</span> · Ctrl mostra a nota</span></div>
   </div>`;
-
-  const readLayout = () => {
-    try {
-      const parsed = JSON.parse(
-        localStorage.getItem(`sophy-graph:${state.libraryPath || 'default'}`) || '{}',
-      );
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-  const savedLayout = readLayout();
   if (state.view !== 'graph' || !$('#grafo-canvas')) return;
-  const styles = getComputedStyle(document.documentElement);
-  const tagPalette = ['#6d64d8', '#c45b45', '#2f8f72', '#c4922a', '#3a78b4', '#b15486', '#6a8a32', '#8a623c'];
-  const tagColor = (tag) => {
-    let hash = 0;
-    const text = String(tag || '');
-    for (let i = 0; i < text.length; i += 1) hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
-    return tagPalette[hash % tagPalette.length];
-  };
-  let colorMode = savedLayout.colorMode === 'tag' ? 'tag' : 'estante';
-  const shelfColor = (workspace) => {
-    const mark = markFor(workspace || '');
-    return mark.color
-      ? styles.getPropertyValue(`--shelf-${mark.color}`).trim()
-      : styles.getPropertyValue('--ink-3').trim();
-  };
+
   const colorOf = (node) => {
-    if (colorMode === 'tag') {
-      const tag = node?.tags?.[0];
-      if (tag) return tagColor(tag);
-    }
-    return shelfColor(node?.workspace || '');
+    if (colorMode === 'tag' && node?.tags?.[0]) return tagColorCss(node.tags[0]);
+    return shelfColor(shelfOf(node || {}));
   };
+  const times = graph.nodes.map((node) => { const ms = Date.parse(node.createdAt); return Number.isNaN(ms) ? Number(node.modifiedAt) || 0 : ms; }).filter(Boolean).sort((a, b) => a - b);
+  const timeLabel = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const relogio = $('#grafo-relogio');
+  const paintClock = (info) => {
+    const playing = info.playing;
+    const atEnd = !info.cursor || info.cursor >= info.max;
+    relogio.classList.toggle('is-ativo', playing || !atEnd);
+    $('#grafo-relogio-data').textContent = info.cursor && info.max ? timeLabel(Math.min(info.cursor, info.max)) : '';
+    $('#grafo-relogio-conta').textContent = `${info.visible} de ${info.total} ${info.total === 1 ? 'nota' : 'notas'}`;
+    $('#grafo-tempo-data').textContent = atEnd ? 'hoje' : timeLabel(info.cursor);
+    const slider = $('#grafo-tempo');
+    if (slider && document.activeElement !== slider && info.max > info.min) slider.value = String(Math.round(((Math.min(info.cursor || info.max, info.max) - info.min) / (info.max - info.min)) * 1000));
+    const play = $('#grafo-play');
+    play.innerHTML = icon(playing ? 'pausar' : 'reproduzir');
+    play.setAttribute('aria-label', playing ? 'Pausar a linha do tempo' : 'Reproduzir a linha do tempo');
+    play.classList.toggle('is-tocando', playing);
+  };
+  const paintStats = (info) => {
+    paintLegend(info);
+    const count = $('#grafo-contagem');
+    const linkText = `${info.links} ${info.links === 1 ? 'link' : 'links'}`;
+    const text =
+      info.view === 'estantes'
+        ? `${info.shelves} ${info.shelves === 1 ? 'estante' : 'estantes'} · ${info.notes} ${info.notes === 1 ? 'nota aberta' : 'notas abertas'} · ${linkText}`
+        : info.view === 'tags'
+          ? `${info.notes} ${info.notes === 1 ? 'nota' : 'notas'} · ${info.tags} ${info.tags === 1 ? 'tag' : 'tags'}`
+          : `${info.notes} ${info.notes === 1 ? 'nota' : 'notas'} · ${linkText}`;
+    if (count) count.textContent = text;
+  };
+  const paintLegend = (info) => {
+    const host = $('#grafo-legenda');
+    if (!host) return;
+    const items = [];
+    if (colorMode === 'tag') {
+      for (const [tag] of topTags.slice(0, 6)) items.push(`<span class="grafo__legenda-item"><i style="--grafo-cor:${tagColorCss(tag)}"></i>#${escapeHtml(tag)}</span>`);
+    } else for (const name of shelves.slice(0, 8)) items.push(`<span class="grafo__legenda-item"><i style="--grafo-cor:${shelfCss(name)}"></i>${escapeHtml(name)}</span>`);
+    const kinds = info?.kinds || new Set();
+    const edgeLegend = [
+      ['wiki', 'grafo__traco--wiki', 'Wikilink'],
+      ['block', 'grafo__traco--bloco', 'Bloco nomeado'],
+      ['child', 'grafo__traco--filha', 'Página filha'],
+      ['tag', 'grafo__traco--tag', 'Tag em comum'],
+      ['shelf', 'grafo__traco--estante', 'Links entre estantes'],
+      ['member', 'grafo__traco--membro', 'Nota → tag'],
+    ].filter(([kind]) => kinds.has(kind) || (kind === 'wiki' && !kinds.size));
+    host.innerHTML = `<div class="grafo__legenda-grupo">${items.join('')}</div><div class="grafo__legenda-grupo">${edgeLegend.map(([, cls, label]) => `<span class="grafo__legenda-item"><i class="grafo__traco ${cls}"></i>${label}</span>`).join('')}${info?.view === 'tags' ? `<span class="grafo__legenda-item"><i class="grafo__forma-tag"></i>Tag</span>` : ''}${info?.view === 'estantes' ? `<span class="grafo__legenda-item"><i class="grafo__forma-estante"></i>Estante</span>` : ''}</div><span id="grafo-contagem"></span>`;
+  };
+  paintLegend(null);
+
   state.graphView = SophyGraphView.create({
     canvas: $('#grafo-canvas'),
     minimap: $('#grafo-minimapa'),
@@ -8498,78 +8795,79 @@ async function paintGraph(center) {
     activePath: state.active,
     saved: savedLayout,
     libraryKey: state.libraryPath || state.libraryName,
-    reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reducedMotion: reduced,
+    view,
     colorOf,
+    shelfColor,
+    tagColor: (tag) => tagColorCss(tag),
+    tagHue: (tag) => tagHue(tag),
     escape: escapeHtml,
     icon,
-    tagColor,
-    onSelect: (path) => {
-      const node = graph.nodes.find((item) => item.path === path);
-      if (node) {
-        const focus = $('#grafo-foco');
-        if (focus) focus.textContent = node.title || baseName(path);
-      }
+    onStats: paintStats,
+    onTimeline: paintClock,
+    onCamera: (k) => {
+      const label = $('#grafo-zoom-valor');
+      const text = `${Math.round(k * 100)}%`;
+      if (label && label.textContent !== text) label.textContent = text;
+    },
+    onExpand: () => applyFilters(),
+    onSelect: (path, node) => {
+      const focus = $('#grafo-foco');
+      if (focus && path) focus.textContent = node?.label || baseName(path);
     },
     onActivate: (path) => focusGraphNote(path),
+    onOpenTag: (tag) => showTag(tag),
   });
-  if (!state.graphView.supportsWorker) {
-    $('#grafo-status').textContent = 'Layout estático';
-    $('#grafo-status-rodape').textContent = 'estático';
-    document.querySelectorAll('[data-force], #grafo-simulacao, #grafo-forcas-restaurar').forEach((input) => { input.disabled = true; });
-    $('#grafo-simulacao').checked = false;
-  }
-  // Linha do tempo: mostra só as notas criadas até a data escolhida (createdAt, como o `to` de graph.query).
-  // O filtro roda aqui, sobre a mesma consulta, para o desenho não se refazer a cada passo do controle.
-  const createdTime = (node) => {
-    const created = Date.parse(node.createdAt);
-    return Number.isNaN(created) ? node.modifiedAt || 0 : created;
-  };
-  const times = (graph?.nodes || []).map(createdTime).filter(Boolean).sort((a, b) => a - b);
-  const timeLabel = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+  state.graphView.setBaseGraph(graph);
+  paintStats(state.graphView.stats());
   const frames = $('#grafo-quadros');
   if (frames && times.length) frames.innerHTML = `<span>${escapeHtml(timeLabel(times[0]))}</span><span>${escapeHtml(timeLabel(times[times.length - 1]))}</span>`;
   const timeline = $('#grafo-tempo');
-  const applyTime = () => {
-    const ratio = Number(timeline.value) / 100;
-    state.graphUntil = ratio;
-    const cutoff = ratio >= 1 || !times.length ? 0 : times[0] + (times[times.length - 1] - times[0]) * ratio;
-    $('#grafo-tempo-data').textContent = cutoff ? timeLabel(cutoff) : 'hoje';
-    state.graphView?.setUntil(cutoff);
+  const canPlay = times.length >= 2 && times[0] !== times[times.length - 1];
+  timeline.disabled = !canPlay;
+  $('#grafo-play').disabled = !canPlay;
+  if (!canPlay) $('#grafo-play').title = 'A linha do tempo precisa de notas criadas em datas diferentes.';
+  timeline.oninput = () => {
+    const ratio = Number(timeline.value) / 1000;
+    state.graphView?.pause();
+    state.graphView?.setUntil(ratio >= 1 ? 0 : times[0] + (times[times.length - 1] - times[0]) * ratio);
   };
-  if (timeline) {
-    timeline.disabled = times.length < 2;
-    timeline.oninput = applyTime;
-    applyTime();
-  }
+  $('#grafo-play').onclick = () => {
+    const info = state.graphView?.timeline;
+    if (info?.playing) state.graphView.pause();
+    else state.graphView?.play();
+  };
+  document.querySelectorAll('[data-graph-speed]').forEach((button) => {
+    button.onclick = () => {
+      document.querySelectorAll('[data-graph-speed]').forEach((item) => {
+        item.classList.toggle('is-escolhida', item === button);
+        item.setAttribute('aria-pressed', String(item === button));
+      });
+      state.graphView?.setSpeed(Number(button.dataset.graphSpeed));
+    };
+  });
+  paintClock({ ...state.graphView.timeline, visible: graph.nodes.length, total: graph.nodes.length });
 
+  const dayStart = (value, end) => {
+    if (!value) return null;
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y, m - 1, d, end ? 23 : 0, end ? 59 : 0, end ? 59 : 0, end ? 999 : 0).getTime();
+  };
   const applyFilters = () => {
     const rawQuery = ($('#grafo-busca')?.value || '').trim();
-    const fold = (value) =>
-      String(value || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLocaleLowerCase();
+    const fold = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
     const query = fold(rawQuery);
-    const tagSearch = query.startsWith('#')
-      ? query.slice(1).trim()
-      : query.startsWith('tag:')
-        ? query.slice(4).trim()
-        : '';
-    const workspace = $('#grafo-estante')?.value || '';
+    const tagSearch = query.startsWith('#') ? query.slice(1).trim() : query.startsWith('tag:') ? query.slice(4).trim() : '';
     const tag = $('#grafo-tag')?.value || '';
+    const from = dayStart($('#grafo-de')?.value, false);
+    const to = dayStart($('#grafo-ate')?.value, true);
     const filtered = {
       nodes: graph.nodes.filter((node) => {
-        const tags = (node.tags || []).map(fold);
-        const queryOk =
-          !query ||
-          (tagSearch
-            ? tags.some((item) => item.includes(tagSearch))
-            : fold(`${node.title} ${node.path} ${tags.join(' ')}`).includes(query));
-        return (
-          (!workspace || node.workspace === workspace) &&
-          (!tag || (node.tags || []).includes(tag)) &&
-          queryOk
-        );
+        const nodeTags = (node.tags || []).map(fold);
+        const queryOk = !query || (tagSearch ? nodeTags.some((item) => item.includes(tagSearch)) : fold(`${node.title} ${node.path} ${nodeTags.join(' ')}`).includes(query));
+        const created = Date.parse(node.createdAt);
+        const timeOk = (!from || Number.isNaN(created) || created >= from) && (!to || Number.isNaN(created) || created <= to);
+        return (!chosenShelves.size || chosenShelves.has(shelfOf(node))) && (!tag || (node.tags || []).some((item) => item === tag || item.startsWith(`${tag}/`))) && queryOk && timeOk;
       }),
       edges: [],
     };
@@ -8582,111 +8880,105 @@ async function paintGraph(center) {
         empty = document.createElement('div');
         empty.id = 'grafo-vazio';
         empty.className = 'grafo__vazio';
-        empty.innerHTML =
-          `<div>${ilustracao('grafo-vazio', 150)}<strong>Nenhuma nota com esses filtros</strong><p>Remova um filtro para ver mais conexões.</p></div>`;
+        empty.innerHTML = `<div>${ilustracao('grafo-vazio', 150)}<strong>Nenhuma nota com esses filtros</strong><p>Tire um filtro para ver mais conexões.</p><button type="button" class="btn btn--secundario" data-clear-graph-empty>Limpar filtros</button></div>`;
         $('.grafo__palco')?.append(empty);
+        empty.querySelector('[data-clear-graph-empty]').onclick = clearAll;
       }
     } else empty?.remove();
     const chips = [];
-    if (workspace)
-      chips.push([
-        'Estante',
-        workspace,
-        () => {
-          $('#grafo-estante').value = '';
-          applyFilters();
-        },
-      ]);
-    if (tag)
-      chips.push([
-        'Tag',
-        tag,
-        () => {
-          $('#grafo-tag').value = '';
-          applyFilters();
-        },
-      ]);
-    if (query)
-      chips.push([
-        tagSearch ? 'Tag' : 'Busca',
-        tagSearch || rawQuery,
-        () => {
-          $('#grafo-busca').value = '';
-          applyFilters();
-        },
-      ]);
-    if ($('#grafo-orfas')?.checked === false)
-      chips.push([
-        'Órfãs',
-        'Ocultas',
-        () => {
-          $('#grafo-orfas').checked = true;
-          state.graphView?.setShowOrphans(true);
-          applyFilters();
-        },
-      ]);
+    for (const name of chosenShelves)
+      chips.push(['Estante', name, () => { chosenShelves.delete(name); paintShelfButtons(); applyFilters(); }]);
+    if (tag) chips.push(['Tag', `#${tag}`, () => { $('#grafo-tag').value = ''; applyFilters(); }]);
+    if (query) chips.push([tagSearch ? 'Tag' : 'Busca', tagSearch || rawQuery, () => { $('#grafo-busca').value = ''; applyFilters(); }]);
+    if (from || to) chips.push(['Período', [$('#grafo-de').value, $('#grafo-ate').value].map((v) => (v ? new Date(`${v}T12:00`).toLocaleDateString('pt-BR') : '…')).join(' – '), () => { $('#grafo-de').value = ''; $('#grafo-ate').value = ''; applyFilters(); }]);
+    if ($('#grafo-orfas')?.checked === false) chips.push(['Sem ligação', 'Ocultas', () => { $('#grafo-orfas').checked = true; state.graphView?.setShowOrphans(true); applyFilters(); }]);
+    if (state.graphView?.view === 'estantes') for (const name of state.graphView.expanded) chips.push(['Aberta', name, () => state.graphView?.collapseShelf(name), 'recolher']);
     const host = $('#grafo-chips');
     if (host) {
       host.hidden = !chips.length;
-      host.innerHTML =
-        chips
-          .map(
-            ([label, value], index) =>
-              `<button type="button" data-chip="${index}">${escapeHtml(label)}: ${escapeHtml(value)} ${icon('fechar')}</button>`,
-          )
-          .join('') +
-        (chips.length ? '<button type="button" data-clear-graph>Limpar filtros</button>' : '');
-      host.querySelectorAll('[data-chip]').forEach((button) => {
-        button.onclick = chips[Number(button.dataset.chip)][2];
-      });
-      host.querySelector('[data-clear-graph]')?.addEventListener('click', () => {
-        $('#grafo-estante').value = '';
-        $('#grafo-tag').value = '';
-        $('#grafo-busca').value = '';
-        $('#grafo-orfas').checked = true;
-        state.graphView?.setShowOrphans(true);
-        applyFilters();
-      });
+      host.innerHTML = chips.map(([label, value, , kind], index) => `<button type="button" data-chip="${index}" class="${kind === 'recolher' ? 'is-estante' : ''}" title="${kind === 'recolher' ? 'Recolher a estante' : 'Tirar o filtro'}">${escapeHtml(label)}: ${escapeHtml(value)} ${icon('fechar')}</button>`).join('') + (chips.filter((chip) => chip[3] !== 'recolher').length ? '<button type="button" data-clear-graph>Limpar filtros</button>' : '');
+      host.querySelectorAll('[data-chip]').forEach((button) => { button.onclick = chips[Number(button.dataset.chip)][2]; });
+      host.querySelector('[data-clear-graph]')?.addEventListener('click', clearAll);
     }
-    const legendHost = document.querySelector('.grafo__legenda');
-    const legendCount = legendHost?.querySelector('#grafo-contagem');
-    if (legendHost && legendCount) {
-      const items =
-        colorMode === 'tag'
-          ? [...new Set(filtered.nodes.flatMap((node) => node.tags || []))]
-              .slice(0, 8)
-              .map(
-                (name) =>
-                  `<span class="grafo__legenda-item"><i style="--grafo-cor:${tagColor(name)}"></i>${escapeHtml(name)}</span>`,
-              )
-              .join('')
-          : legend;
-      legendHost.innerHTML = `${items}<span id="grafo-contagem">${legendCount.textContent}</span>`;
-    }
-    const count = $('#grafo-contagem');
-    if (count)
-      count.textContent = `${filtered.nodes.length} ${filtered.nodes.length === 1 ? 'nota' : 'notas'} · ${filtered.edges.length} ${filtered.edges.length === 1 ? 'link' : 'links'}`;
   };
-  $('#grafo-estante').value = state.graphWorkspace || '';
-  $('#grafo-estante').onchange = (event) => {
-    state.graphWorkspace = event.target.value;
+  const clearAll = () => {
+    chosenShelves.clear();
+    paintShelfButtons();
+    $('#grafo-tag').value = '';
+    $('#grafo-busca').value = '';
+    $('#grafo-de').value = '';
+    $('#grafo-ate').value = '';
+    $('#grafo-orfas').checked = true;
+    state.graphView?.setShowOrphans(true);
+    state.graphWorkspace = '';
     applyFilters();
   };
-  $('#grafo-tag').onchange = applyFilters;
-  const colorSelect = $('#grafo-cor');
-  if (colorSelect) {
-    colorSelect.value = colorMode;
-    colorSelect.onchange = (event) => {
-      colorMode = event.target.value === 'tag' ? 'tag' : 'estante';
-      try {
-        const key = `sophy-graph:${state.libraryPath || state.libraryName || 'default'}`;
-        const stored = JSON.parse(localStorage.getItem(key) || '{}');
-        stored.colorMode = colorMode;
-        localStorage.setItem(key, JSON.stringify(stored));
-      } catch {}
+  const paintShelfButtons = () => {
+    document.querySelectorAll('[data-graph-shelf]').forEach((button) => {
+      const on = chosenShelves.has(button.dataset.graphShelf);
+      button.classList.toggle('is-escolhida', on);
+      button.setAttribute('aria-pressed', String(on));
+    });
+    $('#grafo-estantes-todas')?.classList.toggle('is-escolhida', !chosenShelves.size);
+  };
+  document.querySelectorAll('[data-graph-shelf]').forEach((button) => {
+    button.onclick = () => {
+      const name = button.dataset.graphShelf;
+      if (chosenShelves.has(name)) chosenShelves.delete(name);
+      else chosenShelves.add(name);
+      state.graphWorkspace = chosenShelves.size === 1 ? [...chosenShelves][0] : '';
+      paintShelfButtons();
       applyFilters();
     };
+  });
+  const allShelves = $('#grafo-estantes-todas');
+  allShelves.onclick = () => { chosenShelves.clear(); state.graphWorkspace = ''; paintShelfButtons(); applyFilters(); };
+  allShelves.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); allShelves.click(); } };
+  paintShelfButtons();
+  if (state.graphTagFilter) {
+    const wanted = state.graphTagFilter;
+    state.graphTagFilter = '';
+    const select = $('#grafo-tag');
+    if (![...select.options].some((option) => option.value === wanted)) select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(wanted)}">#${escapeHtml(wanted)}</option>`);
+    select.value = wanted;
   }
+  $('#grafo-tag').onchange = applyFilters;
+  document.querySelectorAll('[data-graph-tag]').forEach((button) => {
+    button.onclick = () => {
+      const select = $('#grafo-tag');
+      select.value = select.value === button.dataset.graphTag ? '' : button.dataset.graphTag;
+      applyFilters();
+    };
+  });
+  $('#grafo-de').onchange = applyFilters;
+  $('#grafo-ate').onchange = applyFilters;
+  document.querySelectorAll('[data-graph-view]').forEach((button) => {
+    button.onclick = () => {
+      view = button.dataset.graphView;
+      document.querySelectorAll('[data-graph-view]').forEach((item) => {
+        item.classList.toggle('is-escolhida', item === button);
+        item.setAttribute('aria-pressed', String(item === button));
+      });
+      $('#grafo-visao-dica').textContent = viewHelp[view];
+      state.graphView?.setView(view);
+      applyFilters();
+    };
+  });
+  document.querySelectorAll('[data-graph-edge]').forEach((input) => {
+    input.onchange = () => state.graphView?.setEdgeKinds({ [input.dataset.graphEdge]: input.checked });
+  });
+  const colorSelect = $('#grafo-cor');
+  colorSelect.value = colorMode;
+  colorSelect.onchange = (event) => {
+    colorMode = event.target.value === 'tag' ? 'tag' : 'estante';
+    try {
+      const key = `sophy-graph:${state.libraryPath || state.libraryName || 'default'}`;
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      stored.colorMode = colorMode;
+      localStorage.setItem(key, JSON.stringify(stored));
+    } catch {}
+    paintGraph(center);
+  };
   $('#grafo-busca').oninput = applyFilters;
   $('#grafo-busca').onkeydown = (event) => {
     if (event.key === 'Enter') {
@@ -8699,24 +8991,28 @@ async function paintGraph(center) {
   };
   document.querySelectorAll('[data-graph-mode]').forEach((button) => {
     button.onclick = () => {
-      document
-        .querySelectorAll('[data-graph-mode]')
-        .forEach((item) => item.classList.toggle('is-escolhida', item === button));
+      document.querySelectorAll('[data-graph-mode]').forEach((item) => item.classList.toggle('is-escolhida', item === button));
       const local = button.dataset.graphMode === 'local';
-      const localPanel = $('#grafo-local');
-      if (localPanel) localPanel.hidden = !local;
-      state.graphView?.setMode(local ? 'local' : 'global');
+      $('#grafo-local').hidden = !local;
       if (local) {
         const centerPath = state.active || graph.nodes[0]?.path;
         if (centerPath) {
           state.graphView?.setSelected(centerPath);
-          $('#grafo-foco').textContent = baseName(centerPath);
+          $('#grafo-foco').textContent = graph.nodes.find((node) => node.path === centerPath)?.title || baseName(centerPath);
         }
       }
+      state.graphView?.setMode(local ? 'local' : 'global');
     };
   });
-  $('#grafo-profundidade').onchange = (event) =>
-    state.graphView?.setDepth(Number(event.target.value));
+  $('#grafo-profundidade').onchange = (event) => state.graphView?.setDepth(Number(event.target.value));
+  const setPanel = (open) => {
+    localStorage.setItem('sophy-grafo-painel', open ? '1' : '0');
+    $('.grafo--v4')?.classList.toggle('is-painel-fechado', !open);
+    $('#grafo-painel-abrir').hidden = open;
+  };
+  $('#grafo-painel-recolher').onclick = () => setPanel(false);
+  $('#grafo-painel-abrir').onclick = () => setPanel(true);
+  $('#grafo-centralizar').onclick = () => state.graphView?.fit();
   $('#grafo-forcas-toggle').onclick = () => {
     const panel = $('#grafo-forcas');
     panel.hidden = !panel.hidden;
@@ -8726,54 +9022,44 @@ async function paintGraph(center) {
     $('#grafo-forcas').hidden = true;
     $('#grafo-forcas-toggle').setAttribute('aria-expanded', 'false');
   };
+  const forceDefaults = { distance: 90, repulsion: 500, linkForce: 0.018, center: 0.006, shelfAttraction: 0.012 };
+  const scaled = (key) => ['linkForce', 'center', 'shelfAttraction'].includes(key);
   $('#grafo-forcas-restaurar').onclick = () => {
-    const defaults = { distance: 90, repulsion: 500, linkForce: 0.018, center: 0.006, shelfAttraction: 0 };
     document.querySelectorAll('[data-force]').forEach((input) => {
-      const value = defaults[input.dataset.force];
-      input.value = String(['linkForce', 'center', 'shelfAttraction'].includes(input.dataset.force) ? value * 1000 : value);
+      const value = forceDefaults[input.dataset.force];
+      input.value = String(scaled(input.dataset.force) ? value * 1000 : value);
       input.parentElement.querySelector('output').value = input.value;
     });
-    state.graphView?.resetOptions(defaults);
+    state.graphView?.resetOptions(forceDefaults);
   };
   document.querySelectorAll('[data-force]').forEach((input) => {
     const key = input.dataset.force;
-    const savedValue = Number(savedLayout.options?.[key]);
-    if (Number.isFinite(savedValue))
-      input.value = String(
-        key === 'linkForce' || key === 'center' || key === 'shelfAttraction'
-          ? savedValue * 1000
-          : savedValue,
-      );
+    const savedValue = Number(layoutV2.options?.[key]);
+    if (Number.isFinite(savedValue)) input.value = String(scaled(key) ? savedValue * 1000 : savedValue);
     input.parentElement.querySelector('output').value = input.value;
     input.oninput = () => {
       const val = Number(input.value);
-      const output = input.parentElement.querySelector('output');
-      output.value = String(val);
-      state.graphView?.setOption(
-        key,
-        ['linkForce', 'center', 'shelfAttraction'].includes(key) ? val / 1000 : val,
-      );
+      input.parentElement.querySelector('output').value = String(val);
+      state.graphView?.setOption(key, scaled(key) ? val / 1000 : val);
     };
   });
-  $('#grafo-rotulos').checked = savedLayout.showLabels !== false;
-  $('#grafo-orfas').checked = savedLayout.showOrphans !== false;
+  $('#grafo-rotulos').checked = layoutV2.showLabels !== false;
+  $('#grafo-orfas').checked = layoutV2.showOrphans !== false;
   $('#grafo-rotulos').onchange = (event) => state.graphView?.setShowLabels(event.target.checked);
   $('#grafo-orfas').onchange = (event) => {
     state.graphView?.setShowOrphans(event.target.checked);
     applyFilters();
   };
-  $('#grafo-simulacao').onchange = (event) =>
+  $('#grafo-simulacao').onchange = (event) => {
     state.graphView?.setForcesRunning(event.target.checked);
+    $('#grafo-status').textContent = event.target.checked ? 'Organizando…' : 'Pausado';
+  };
   $('#grafo-mais').onclick = () => state.graphView?.zoomBy(1.2);
   $('#grafo-menos').onclick = () => state.graphView?.zoomBy(1 / 1.2);
   $('#grafo-ajustar').onclick = () => state.graphView?.fit();
   if (state.graphKeyHandler) document.removeEventListener('keydown', state.graphKeyHandler);
   state.graphKeyHandler = (event) => {
-    if (
-      event.key === '/' &&
-      !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) &&
-      state.view === 'graph'
-    ) {
+    if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && state.view === 'graph') {
       event.preventDefault();
       $('#grafo-busca')?.focus();
     }
@@ -8857,6 +9143,9 @@ function openPalette() {
     const commands = tagTokens.length ? [] : (commandMode ? Cmd.COMMANDS : Cmd.COMMANDS.filter((item) => item.quando !== 'editor'))
       .filter((item) => !query || item.rotulo.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .map((item) => ({ label: item.rotulo, run: () => runCommand(item.id) }));
+    /* com #, a busca também oferece abrir a tela da tag */
+    const lastToken = (tagTokens[tagTokens.length - 1] || (/(?:^|\s)#$/.test(raw) ? '' : null));
+    const tagRows = lastToken == null ? [] : flatTags(state.tagTree || []).filter((tag) => tag.path.toLocaleLowerCase().startsWith(lastToken.toLocaleLowerCase())).sort((a, b) => b.total - a.total).slice(0, 5);
     const noteHits = hits.filter((hit) => hit.kind !== 'canvas');
     const canvasHits = hits.filter((hit) => hit.kind === 'canvas');
     const row = (hit) => {
@@ -8876,6 +9165,8 @@ function openPalette() {
       noteHits.map(row).join('') +
       (canvasHits.length ? '<div class="menu__grupo">Canvas</div>' : '') +
       canvasHits.map(row).join('') +
+      (tagRows.length ? '<div class="menu__grupo">Tags</div>' : '') +
+      tagRows.map((tag) => `<button type="button" class="menu__item" data-paleta-tag="${escapeHtml(tag.path)}" style="--tag-h:${tagHue(tag.path)}"><span class="tag-ponto" aria-hidden="true"></span><span><span class="menu__titulo">#${escapeHtml(tag.path)}</span></span><span class="menu__quando">${tag.total} ${tag.total === 1 ? 'nota' : 'notas'}</span></button>`).join('') +
       (commands.length && !commandMode ? '' : '') +
       (commands.length ? '<div class="menu__grupo">Comandos</div>' : '') +
       commands
@@ -8899,6 +9190,12 @@ function openPalette() {
       button.onclick = () => {
         closePalette();
         commands.find((item) => item.label === button.dataset.cmd)?.run();
+      };
+    });
+    list.querySelectorAll('[data-paleta-tag]').forEach((button) => {
+      button.onclick = () => {
+        closePalette();
+        showTag(button.dataset.paletaTag);
       };
     });
   };
